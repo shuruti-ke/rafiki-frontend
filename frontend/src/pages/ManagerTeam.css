@@ -1,0 +1,145 @@
+.mgr-team { max-width: 800px; }
+.mgr-team-title { font-weight: 800; font-size: 22px; margin-bottom: 4px; }
+.mgr-team-sub { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
+
+.mgr-team-empty {
+  text-align: center;
+  padding: 40px 0;
+  color: var(--muted);
+}
+.mgr-team-empty-hint { font-size: 13px; margin-top: 8px; }
+
+.mgr-team-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mgr-team-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.mgr-team-card-header {
+  all: unset;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.mgr-team-card-header:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.mgr-team-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+.mgr-team-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.mgr-team-name {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.mgr-team-meta {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 1px;
+}
+
+.mgr-team-rating {
+  flex-shrink: 0;
+}
+
+.mgr-rating-badge {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.12);
+  color: #3b82f6;
+}
+
+.mgr-rating-none {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.mgr-expand-icon {
+  color: var(--muted);
+  font-size: 14px;
+  transition: transform 0.15s;
+}
+.mgr-expand-icon.open {
+  transform: rotate(180deg);
+}
+
+/* Expanded detail */
+.mgr-team-detail {
+  padding: 0 18px 18px;
+  border-top: 1px solid var(--border);
+}
+
+.mgr-team-detail h3 {
+  font-size: 14px;
+  font-weight: 700;
+  margin: 14px 0 10px;
+}
+
+.mgr-detail-loading,
+.mgr-detail-empty {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.mgr-eval-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mgr-eval-card {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.mgr-eval-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.mgr-eval-field {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+.mgr-eval-label {
+  color: var(--text);
+  font-weight: 600;
+}

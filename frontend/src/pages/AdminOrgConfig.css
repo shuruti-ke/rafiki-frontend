@@ -1,0 +1,193 @@
+.aoc-page {
+  max-width: 700px;
+}
+
+.aoc-heading {
+  font-weight: 800;
+  font-size: 22px;
+  margin-bottom: 4px;
+}
+.aoc-subtitle {
+  color: var(--muted);
+  font-size: 14px;
+  margin-bottom: 20px;
+}
+
+.aoc-msg {
+  background: rgba(34, 197, 94, 0.1);
+  color: var(--accent);
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+
+/* Tabs */
+.aoc-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+.aoc-tab {
+  padding: 8px 16px;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.aoc-tab.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+/* Form */
+.aoc-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.aoc-label {
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  font-weight: 600;
+  gap: 6px;
+}
+.aoc-input {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+}
+.aoc-input:focus {
+  border-color: var(--accent);
+}
+
+/* Tags */
+.aoc-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.aoc-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  font-size: 12px;
+  background: rgba(34, 197, 94, 0.08);
+  color: var(--accent);
+  border-radius: 12px;
+}
+.aoc-tag button {
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.aoc-tag-input-row {
+  display: flex;
+  gap: 8px;
+}
+.aoc-tag-input-row .aoc-input {
+  flex: 1;
+}
+
+.aoc-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* Roles */
+.aoc-roles-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.aoc-role-form {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.aoc-role-form h3 {
+  font-weight: 700;
+  font-size: 16px;
+  margin: 0;
+}
+
+.aoc-stressor-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.aoc-role-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.aoc-role-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+.aoc-role-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.aoc-role-card-header strong {
+  font-size: 14px;
+}
+.aoc-role-card-actions {
+  display: flex;
+  gap: 6px;
+}
+.aoc-role-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.aoc-role-stressors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.btnDanger {
+  color: #ef4444 !important;
+  border-color: #ef4444 !important;
+}
+.btnDanger:hover {
+  background: rgba(239, 68, 68, 0.1);
+}

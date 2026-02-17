@@ -1,0 +1,159 @@
+.amc { max-width: 900px; }
+.amc-title { font-weight: 800; font-size: 22px; margin-bottom: 4px; }
+.amc-sub { color: var(--muted); font-size: 14px; margin-bottom: 20px; }
+.amc-empty { color: var(--muted); text-align: center; padding: 30px 0; }
+
+.amc-tabs {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.amc-actions {
+  margin-bottom: 16px;
+}
+
+/* Form */
+.amc-form {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px;
+  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.amc-form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.amc-form-row label {
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.amc-chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.amc-level-help {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+/* Manager cards */
+.amc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.amc-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px 18px;
+}
+
+.amc-card.inactive {
+  opacity: 0.6;
+}
+
+.amc-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.amc-card-badges {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.amc-status {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  text-transform: uppercase;
+}
+
+.amc-status.active {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+
+.amc-status.inactive {
+  background: rgba(148, 163, 184, 0.1);
+  color: var(--muted);
+}
+
+.amc-card-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.amc-detail-row {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.amc-detail-label {
+  color: var(--text);
+  font-weight: 600;
+  margin-right: 6px;
+}
+
+.amc-card-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Audit table */
+.amc-audit {
+  overflow-x: auto;
+}
+
+.amc-audit-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.amc-audit-table th {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.amc-audit-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+  color: var(--text);
+}
+
+.amc-audit-details {
+  color: var(--muted);
+  font-size: 12px;
+  max-width: 250px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

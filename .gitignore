@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+*.egg
+
+# Environment
+.env
+.env.local
+.env.production
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+nul
+
+# Uploads (user data, not tracked)
+backend/uploads/text/*
+backend/uploads/images/*
+backend/uploads/project_files.json
+backend/static/uploads/
+
+# Keep directories
+!backend/uploads/.gitkeep
+!backend/uploads/text/.gitkeep
+!backend/uploads/images/.gitkeep
+!backend/static/uploads/.gitkeep
+
+# Alembic
+*.pyc
+
+# Claude
+.claude/

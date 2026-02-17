@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: rafiki-backend
+    runtime: python
+    region: virginia
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt && alembic upgrade head
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: rafiki-db
+          property: connectionString
+      - key: BONSAI_API_KEY
+        sync: false
+      - key: BONSAI_BASE_URL
+        value: https://go.trybons.ai
+      - key: BONSAI_DEFAULT_MODEL
+        value: anthropic/claude-sonnet-4.5
+      - key: CORS_ORIGINS
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: PYTHON_VERSION
+        value: "3.12.0"
+
+databases:
+  - name: rafiki-db
+    plan: free
+    region: virginia
