@@ -1,0 +1,219 @@
+.mgr-coaching { max-width: 800px; }
+.mgr-coaching-title { font-weight: 800; font-size: 22px; margin-bottom: 4px; }
+.mgr-coaching-sub { color: var(--muted); font-size: 14px; margin-bottom: 20px; }
+
+/* Tabs */
+.mgr-coaching-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+}
+
+.mgr-tab {
+  all: unset;
+  cursor: pointer;
+  padding: 8px 16px;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  transition: all 0.15s;
+}
+
+.mgr-tab:hover { background: rgba(255, 255, 255, 0.04); color: var(--text); }
+.mgr-tab.active {
+  background: rgba(59, 130, 246, 0.12);
+  color: #3b82f6;
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+/* Form */
+.mgr-coaching-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.mgr-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mgr-form-label {
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.mgr-form-select,
+.mgr-form-textarea {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  resize: vertical;
+}
+
+.mgr-form-select:focus,
+.mgr-form-textarea:focus {
+  border-color: rgba(59, 130, 246, 0.45);
+}
+
+.mgr-form-hint {
+  color: var(--muted);
+  font-size: 12px;
+  text-align: right;
+}
+
+.mgr-generate-btn {
+  align-self: flex-start;
+  border-color: rgba(59, 130, 246, 0.55);
+  background: rgba(59, 130, 246, 0.20);
+}
+.mgr-generate-btn:hover { background: rgba(59, 130, 246, 0.26); }
+
+.mgr-coaching-error {
+  color: var(--danger);
+  font-size: 13px;
+  padding: 10px;
+  background: rgba(239, 68, 68, 0.08);
+  border-radius: 10px;
+}
+
+/* Plan result */
+.mgr-plan {
+  margin-top: 8px;
+  padding: 20px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+
+.mgr-plan-heading {
+  font-size: 18px;
+  font-weight: 800;
+  margin-bottom: 16px;
+  color: #3b82f6;
+}
+
+.mgr-plan-section {
+  margin-bottom: 18px;
+}
+
+.mgr-plan-section h3 {
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.mgr-plan-section p {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.mgr-plan-script {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+  white-space: pre-wrap;
+  font-family: inherit;
+}
+
+.mgr-plan-actions {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.mgr-plan-actions li {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.mgr-plan-outcome {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.mgr-plan-outcome h3 {
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.mgr-outcome-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.mgr-outcome-btn {
+  font-weight: 600;
+  font-size: 13px;
+}
+.mgr-outcome-btn.improved { border-color: rgba(34, 197, 94, 0.4); color: #22c55e; }
+.mgr-outcome-btn.improved:hover { background: rgba(34, 197, 94, 0.12); }
+.mgr-outcome-btn.same { border-color: rgba(234, 179, 8, 0.4); color: #eab308; }
+.mgr-outcome-btn.same:hover { background: rgba(234, 179, 8, 0.12); }
+.mgr-outcome-btn.worse { border-color: rgba(239, 68, 68, 0.4); color: #ef4444; }
+.mgr-outcome-btn.worse:hover { background: rgba(239, 68, 68, 0.12); }
+
+/* History */
+.mgr-coaching-history {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mgr-history-empty {
+  color: var(--muted);
+  text-align: center;
+  padding: 30px 0;
+}
+
+.mgr-history-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 18px;
+}
+
+.mgr-history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.mgr-history-date {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.mgr-history-concern {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+  margin-bottom: 10px;
+}
+
+.mgr-history-footer {
+  display: flex;
+  align-items: center;
+}
+
+.mgr-outcome-buttons-small {
+  display: flex;
+  gap: 6px;
+}

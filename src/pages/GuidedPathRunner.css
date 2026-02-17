@@ -1,0 +1,259 @@
+.gpr-page {
+  max-width: 700px;
+  margin: 0 auto;
+  padding: 24px 16px;
+}
+
+.gpr-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.gpr-title {
+  font-weight: 800;
+  font-size: 18px;
+  flex: 1;
+}
+.gpr-progress {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.gpr-progress-bar {
+  height: 4px;
+  background: var(--border);
+  border-radius: 4px;
+  margin-bottom: 24px;
+  overflow: hidden;
+}
+.gpr-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.gpr-step-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 24px;
+}
+
+.gpr-step-type {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: rgba(34, 197, 94, 0.08);
+  padding: 3px 10px;
+  border-radius: 6px;
+  margin-bottom: 16px;
+}
+
+/* Video container — responsive 16:9 */
+.gpr-video-container {
+  position: relative;
+  width: 100%;
+  padding-bottom: 56.25%;
+  margin-bottom: 16px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #000;
+}
+.gpr-video-container iframe,
+.gpr-video-container video {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+/* Audio container */
+.gpr-audio-container {
+  margin-bottom: 16px;
+}
+.gpr-audio-container audio {
+  width: 100%;
+  border-radius: 8px;
+}
+
+.gpr-message {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text);
+  white-space: pre-wrap;
+  margin-bottom: 20px;
+}
+
+.gpr-input {
+  width: 100%;
+  min-height: 80px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 12px;
+  outline: none;
+  resize: vertical;
+  margin-bottom: 16px;
+}
+.gpr-input:focus {
+  border-color: var(--accent);
+}
+
+.gpr-rating {
+  margin-bottom: 16px;
+}
+.gpr-rating label {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  display: block;
+}
+.gpr-rating input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+.gpr-rating-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--muted);
+}
+.gpr-rating-value {
+  text-align: center;
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--accent);
+  margin-top: 4px;
+}
+
+.gpr-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.gpr-loading,
+.gpr-error {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--muted);
+}
+
+.gpr-complete,
+.gpr-outcome-screen {
+  text-align: center;
+  padding: 60px 20px;
+}
+.gpr-complete-icon {
+  font-size: 48px;
+  color: var(--accent);
+  margin-bottom: 16px;
+}
+.gpr-complete h2,
+.gpr-outcome-screen h2 {
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+.gpr-complete p,
+.gpr-outcome-screen p {
+  color: var(--muted);
+  margin-bottom: 24px;
+}
+
+/* ─── Context collection screen ──────────────────────────────────── */
+
+.gpr-context-screen {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 32px 24px;
+}
+.gpr-context-screen h2 {
+  font-weight: 800;
+  font-size: 20px;
+  margin-bottom: 4px;
+}
+.gpr-context-subtitle {
+  color: var(--muted);
+  font-size: 14px;
+  margin-bottom: 24px;
+}
+
+.gpr-context-section {
+  margin-bottom: 20px;
+}
+.gpr-context-section > label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+/* Theme chips */
+.gpr-theme-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.gpr-chip {
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.gpr-chip:hover {
+  border-color: var(--accent);
+}
+.gpr-chip.active {
+  background: var(--accent);
+  color: #000;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+/* Time selector */
+.gpr-time-options {
+  display: flex;
+  gap: 8px;
+}
+.gpr-time-btn {
+  flex: 1;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.gpr-time-btn:hover {
+  border-color: var(--accent);
+}
+.gpr-time-btn.active {
+  background: var(--accent);
+  color: #000;
+  border-color: var(--accent);
+}
+
+/* Outcome screen */
+.gpr-outcome-screen .gpr-context-section {
+  max-width: 400px;
+  margin: 0 auto;
+  text-align: left;
+}
+.gpr-outcome-screen .gpr-actions {
+  justify-content: center;
+}

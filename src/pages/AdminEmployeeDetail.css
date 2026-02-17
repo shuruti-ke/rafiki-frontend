@@ -1,0 +1,153 @@
+.aed-page { max-width: 900px; }
+
+.aed-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.aed-header h1 { font-weight: 800; font-size: 22px; }
+
+.aed-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 4px;
+}
+.aed-tab {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  padding: 8px 16px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  border-radius: 8px 8px 0 0;
+  transition: all 0.15s;
+}
+.aed-tab:hover { color: var(--text); background: rgba(255,255,255,.03); }
+.aed-tab.active {
+  color: var(--accent);
+  background: rgba(34,197,94,.08);
+  border-bottom: 2px solid var(--accent);
+}
+
+.aed-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.aed-section-head h2 { font-size: 16px; font-weight: 700; }
+
+.aed-table { display: grid; gap: 1px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.aed-table-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 0.7fr 0.8fr 1.3fr;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--card);
+  align-items: center;
+  font-size: 14px;
+}
+.aed-table-row:hover { background: rgba(255,255,255,.02); }
+.aed-table-row span:last-child { display: flex; gap: 6px; }
+
+.aed-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(148,163,184,.1);
+  color: var(--muted);
+  text-transform: capitalize;
+  width: fit-content;
+}
+
+.aed-form {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.aed-form input,
+.aed-form textarea,
+.aed-form select {
+  width: 100%;
+  background: rgba(255,255,255,.03);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 10px;
+  outline: none;
+}
+.aed-form textarea { min-height: 60px; resize: vertical; }
+.aed-form-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.aed-form-row label { font-size: 14px; color: var(--muted); white-space: nowrap; }
+.aed-form-row input[type="number"] { width: 80px; }
+
+.aed-eval-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 10px;
+}
+.aed-eval-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.aed-rating { font-size: 14px; }
+.aed-star-filled { color: #f59e0b; }
+.aed-star-empty { color: var(--muted); }
+
+.aed-eval-card label {
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  font-weight: 700;
+}
+.aed-eval-card p {
+  font-size: 14px;
+  margin: 4px 0 10px;
+  line-height: 1.4;
+}
+
+.aed-disc-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 10px;
+}
+.aed-disc-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.aed-disc-type {
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  text-transform: capitalize;
+  font-weight: 700;
+}
+.aed-disc-verbal_warning { background: rgba(245,158,11,.1); color: #f59e0b; }
+.aed-disc-written_warning { background: rgba(239,68,68,.1); color: #ef4444; }
+.aed-disc-suspension { background: rgba(239,68,68,.15); color: #ef4444; }
+.aed-disc-termination { background: rgba(239,68,68,.2); color: #dc2626; }
+.aed-disc-other { background: rgba(148,163,184,.1); color: var(--muted); }
+.aed-disc-card p { font-size: 14px; line-height: 1.4; }
+.aed-disc-card label { font-size: 12px; color: var(--muted); text-transform: uppercase; font-weight: 700; }
+
+.aed-muted { color: var(--muted); font-size: 13px; }
