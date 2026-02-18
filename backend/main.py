@@ -25,8 +25,6 @@ from app.routers.chat import router as chat_router
 from app.routers.guided_paths import router as gp_router
 from app.routers.org_profile import router as org_router
 from app.routers.manager import router as mgr_router
-from app.routers.auth import router as auth_router
-
 from app.routers.auth import (
     router as auth_router,
     v1_router as auth_v1_router,
@@ -46,7 +44,6 @@ app.include_router(chat_router)
 app.include_router(gp_router)
 app.include_router(org_router)
 app.include_router(mgr_router)
-app.include_router(auth_router)
 
 # --- Create uploads directory & mount static files ---
 STATIC_UPLOADS = Path(__file__).parent / "static" / "uploads"
@@ -94,14 +91,19 @@ OPENAI_MODEL_VISION = os.getenv("OPENAI_MODEL_VISION", "gpt-4o-mini")
 vision_client = OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL)
 
 
-CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
+CORS_ORIGINS = os.getenv(
+    "CORS_ORIGINS",
+    "https://rafiki-frontend-five.vercel.app,http://localhost:5173,http://localhost:3000",
+).split(",")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o.strip() for o in CORS_ORIGINS],
+    allow_origins=[o.strip() for o in CORS_ORIGINS if o.strip()],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 SUPPORTED_MODELS = [
     "claude-sonnet-4-5-20250929",
     "claude-opus-4-20250514",
@@ -354,5 +356,4 @@ def debug_bonsai():
 @app.get("/health")
 def health():
     return {"ok": True}
-
 
