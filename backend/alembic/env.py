@@ -20,7 +20,7 @@ config.set_main_option("sqlalchemy.url", db_url)
 
 from app.database import Base
 from app.models import document, announcement, employee_document, performance, audit_log
-from app.models import guided_path, org_profile
+from app.models import guided_path, org_profile, toolkit
 
 target_metadata = Base.metadata
 
