@@ -27,6 +27,18 @@ from app.routers.org_profile import router as org_router
 from app.routers.manager import router as mgr_router
 from app.routers.auth import router as auth_router
 
+from app.routers.auth import (
+    router as auth_router,
+    v1_router as auth_v1_router,
+    super_admin_router,
+    super_admin_v1_router,
+)
+
+app.include_router(auth_router)
+app.include_router(auth_v1_router)
+app.include_router(super_admin_router)
+app.include_router(super_admin_v1_router)
+
 app.include_router(kb_router)
 app.include_router(ann_router)
 app.include_router(emp_router)
