@@ -17,7 +17,7 @@ if config.config_file_name is not None:
 # Reuse the engine from database.py — it already handles URL normalization
 from app.database import engine, Base
 from app.models import document, announcement, employee_document, performance, audit_log
-from app.models import guided_path, org_profile, toolkit
+from app.models import guided_path, org_profile, toolkit, user
 
 target_metadata = Base.metadata
 

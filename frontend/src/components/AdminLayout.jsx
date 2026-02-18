@@ -1,7 +1,16 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import "./AdminLayout.css";
 
 export default function AdminLayout() {
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    localStorage.removeItem("rafiki_token");
+    localStorage.removeItem("rafiki_role");
+    localStorage.removeItem("rafiki_user");
+    navigate("/admin/login");
+  };
+
   return (
     <div className="admin-layout">
       <aside className="admin-sidebar">
@@ -44,6 +53,9 @@ export default function AdminLayout() {
           <NavLink to="/" className="admin-nav-link">
             Back to Chat
           </NavLink>
+          <button onClick={handleLogout} className="admin-nav-link" style={{ background: "none", border: "none", cursor: "pointer", textAlign: "left", width: "100%", font: "inherit" }}>
+            Logout
+          </button>
         </div>
       </aside>
 

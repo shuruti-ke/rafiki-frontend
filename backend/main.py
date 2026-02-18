@@ -25,6 +25,8 @@ from app.routers.chat import router as chat_router
 from app.routers.guided_paths import router as gp_router
 from app.routers.org_profile import router as org_router
 from app.routers.manager import router as mgr_router
+from app.routers.auth import router as auth_router
+from app.routers.super_admin import router as sa_router
 
 app.include_router(kb_router)
 app.include_router(ann_router)
@@ -33,6 +35,8 @@ app.include_router(chat_router)
 app.include_router(gp_router)
 app.include_router(org_router)
 app.include_router(mgr_router)
+app.include_router(auth_router)
+app.include_router(sa_router)
 
 # --- Create uploads directory & mount static files ---
 STATIC_UPLOADS = Path(__file__).parent / "static" / "uploads"
