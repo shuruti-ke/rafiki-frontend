@@ -18,13 +18,24 @@ import ManagerDashboard from "./pages/ManagerDashboard.jsx";
 import ManagerTeam from "./pages/ManagerTeam.jsx";
 import ManagerCoaching from "./pages/ManagerCoaching.jsx";
 import ManagerToolkit from "./pages/ManagerToolkit.jsx";
+import LoginPage from "./pages/LoginPage.jsx";
+import HRAdminLoginPage from "./pages/HRAdminLoginPage.jsx";
+import EmployeeLoginPage from "./pages/EmployeeLoginPage.jsx";
+import SuperAdminLayout from "./components/SuperAdminLayout.jsx";
+import SuperAdminDashboard from "./pages/SuperAdminDashboard.jsx";
+import AuthGuard from "./components/AuthGuard.jsx";
 import "./App.css";
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Main chat interface (original app) */}
+        {/* Login pages */}
+        <Route path="/login" element={<EmployeeLoginPage />} />
+        <Route path="/super-admin/login" element={<LoginPage />} />
+        <Route path="/admin/login" element={<HRAdminLoginPage />} />
+
+        {/* Main chat interface (employee) */}
         <Route path="/" element={<ChatPage />} />
 
         {/* Employee-facing pages */}
@@ -55,7 +66,7 @@ export default function App() {
           </div>
         } />
 
-        {/* Guided Paths — explore/browse */}
+        {/* Guided Paths */}
         <Route path="/guided-paths" element={
           <div className="employee-page-wrapper">
             <nav className="employee-nav">
@@ -69,8 +80,6 @@ export default function App() {
             <GuidedPathExplore />
           </div>
         } />
-
-        {/* Guided Path Runner (employee-facing) */}
         <Route path="/guided-paths/:moduleId" element={
           <div className="employee-page-wrapper">
             <nav className="employee-nav">
@@ -85,8 +94,21 @@ export default function App() {
           </div>
         } />
 
+        {/* Super Admin Portal */}
+        <Route path="/super-admin" element={
+          <AuthGuard requiredRoles={["super_admin"]} loginPath="/super-admin/login">
+            <SuperAdminLayout />
+          </AuthGuard>
+        }>
+          <Route index element={<SuperAdminDashboard />} />
+        </Route>
+
         {/* Manager Portal */}
-        <Route path="/manager" element={<ManagerLayout />}>
+        <Route path="/manager" element={
+          <AuthGuard requiredRoles={["manager", "hr_admin", "super_admin"]} loginPath="/admin/login">
+            <ManagerLayout />
+          </AuthGuard>
+        }>
           <Route index element={<ManagerDashboard />} />
           <Route path="team" element={<ManagerTeam />} />
           <Route path="coaching" element={<ManagerCoaching />} />
@@ -94,7 +116,11 @@ export default function App() {
         </Route>
 
         {/* Admin HR Portal */}
-        <Route path="/admin" element={<AdminLayout />}>
+        <Route path="/admin" element={
+          <AuthGuard requiredRoles={["hr_admin", "super_admin"]} loginPath="/admin/login">
+            <AdminLayout />
+          </AuthGuard>
+        }>
           <Route index element={<AdminDashboard />} />
           <Route path="knowledge-base" element={<AdminKnowledgeBase />} />
           <Route path="announcements" element={<AdminAnnouncements />} />

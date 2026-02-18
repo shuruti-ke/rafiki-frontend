@@ -1,7 +1,16 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import "./ManagerLayout.css";
 
 export default function ManagerLayout() {
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    localStorage.removeItem("rafiki_token");
+    localStorage.removeItem("rafiki_role");
+    localStorage.removeItem("rafiki_user");
+    navigate("/admin/login");
+  };
+
   return (
     <div className="mgr-layout">
       <aside className="mgr-sidebar">
@@ -35,6 +44,9 @@ export default function ManagerLayout() {
           <NavLink to="/admin" className="mgr-nav-link">
             HR Portal
           </NavLink>
+          <button onClick={handleLogout} className="mgr-nav-link" style={{ background: "none", border: "none", cursor: "pointer", textAlign: "left", width: "100%", font: "inherit" }}>
+            Logout
+          </button>
         </div>
       </aside>
 

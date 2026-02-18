@@ -1,0 +1,136 @@
+.sa-dashboard h1 {
+  font-size: 22px;
+  font-weight: 800;
+  margin: 0 0 24px;
+}
+
+.sa-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.sa-stat-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 20px;
+}
+
+.sa-stat-card .label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.sa-stat-card .value {
+  font-size: 28px;
+  font-weight: 800;
+}
+
+.sa-section {
+  margin-bottom: 32px;
+}
+
+.sa-section h2 {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0 0 16px;
+}
+
+.sa-actions {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.sa-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.sa-table th,
+.sa-table td {
+  text-align: left;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.sa-table th {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.sa-table td {
+  color: var(--text);
+}
+
+/* Modal overlay */
+.sa-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.sa-modal {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 32px;
+  width: 100%;
+  max-width: 440px;
+}
+
+.sa-modal h3 {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0 0 20px;
+}
+
+.sa-modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sa-modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.sa-modal-field label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.sa-modal-field input,
+.sa-modal-field select {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 10px 12px;
+  outline: none;
+  font-size: 14px;
+}
+
+.sa-modal-field input:focus,
+.sa-modal-field select:focus {
+  border-color: rgba(34, 197, 94, 0.45);
+}
+
+.sa-modal-btns {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
