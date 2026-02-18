@@ -164,7 +164,7 @@ def get_team_member_evaluations(
 # --- Coaching AI ---
 
 @router.post("/coaching", response_model=CoachingResponse)
-async def create_coaching_session(
+def create_coaching_session(
     data: CoachingRequest,
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
@@ -178,7 +178,7 @@ async def create_coaching_session(
     if not can_use_feature(db, user_id, org_id, "coaching_ai"):
         raise HTTPException(status_code=403, detail="Coaching AI feature not enabled for your role")
 
-    result = await generate_coaching_plan(
+    result = generate_coaching_plan(
         db=db,
         manager_id=user_id,
         employee_user_id=data.employee_member_id,

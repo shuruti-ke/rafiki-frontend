@@ -44,7 +44,7 @@ Respond in valid JSON with this structure:
 }"""
 
 
-async def assemble_manager_context(
+def assemble_manager_context(
     db: Session,
     manager_user_id: int,
     employee_user_id: int,
@@ -142,7 +142,7 @@ def _build_coaching_prompt(context: dict, concern: str) -> str:
     return "\n".join(parts)
 
 
-async def generate_coaching_plan(
+def generate_coaching_plan(
     db: Session,
     manager_id: int,
     employee_user_id: int,
@@ -156,7 +156,7 @@ async def generate_coaching_plan(
     action_options, escalation_path.
     """
     # 1. Assemble performance-only context
-    context = await assemble_manager_context(db, manager_id, employee_user_id, org_id)
+    context = assemble_manager_context(db, manager_id, employee_user_id, org_id)
 
     # 2. Build prompts
     user_prompt = _build_coaching_prompt(context, concern)
@@ -180,8 +180,8 @@ async def generate_coaching_plan(
                 "messages": [{"role": "user", "content": user_prompt}],
             }
 
-            async with httpx.AsyncClient() as client:
-                r = await client.post(bonsai_url, headers=headers, json=payload, timeout=60)
+            with httpx.Client() as client:
+                r = client.post(bonsai_url, headers=headers, json=payload, timeout=60)
 
             if r.status_code < 400:
                 data = r.json()
