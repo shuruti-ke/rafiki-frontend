@@ -20,6 +20,10 @@ elif DATABASE_URL.startswith("postgresql://"):
 elif "+asyncpg" in DATABASE_URL:
     DATABASE_URL = DATABASE_URL.replace("+asyncpg", "+psycopg2")
 
+# Render appends ?ssl=true which psycopg2 doesn't understand — it needs sslmode=require
+DATABASE_URL = DATABASE_URL.replace("?ssl=true", "?sslmode=require")
+DATABASE_URL = DATABASE_URL.replace("&ssl=true", "&sslmode=require")
+
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()

@@ -23,6 +23,9 @@ elif db_url.startswith("postgresql://"):
     db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
 elif "+asyncpg" in db_url:
     db_url = db_url.replace("+asyncpg", "+psycopg2")
+# Render appends ?ssl=true which psycopg2 doesn't understand
+db_url = db_url.replace("?ssl=true", "?sslmode=require")
+db_url = db_url.replace("&ssl=true", "&sslmode=require")
 config.set_main_option("sqlalchemy.url", db_url)
 
 from app.database import Base
