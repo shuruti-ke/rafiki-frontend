@@ -3,26 +3,33 @@ services:
     name: rafiki-backend
     runtime: python
     region: virginia
-    rootDir: backend
-    buildCommand: pip install -r requirements.txt && alembic upgrade head
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    repo: https://github.com/shuruti-ke/rafiki-at-work
+    branch: master
+    buildCommand: pip install -r requirements.txt
+    startCommand: bash start.sh
     envVars:
       - key: DATABASE_URL
-        fromDatabase:
-          name: rafiki-db
-          property: connectionString
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
       - key: BONSAI_API_KEY
         sync: false
       - key: BONSAI_BASE_URL
         value: https://go.trybons.ai
       - key: BONSAI_DEFAULT_MODEL
         value: anthropic/claude-sonnet-4.5
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_MODEL
+        value: claude-sonnet-4-5-20250929
       - key: CORS_ORIGINS
         sync: false
       - key: OPENAI_API_KEY
         sync: false
+      - key: ENVIRONMENT
+        value: production
       - key: PYTHON_VERSION
-        value: "3.12.0"
+        value: "3.12.3"
 
 databases:
   - name: rafiki-db
