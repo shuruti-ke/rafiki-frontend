@@ -20,14 +20,14 @@ DEMO_USER_ID = 1
 # --- Employee Documents ---
 
 @router.post("/{user_id}/upload", response_model=EmployeeDocumentResponse)
-async def upload_employee_doc(
+def upload_employee_doc(
     user_id: int,
     file: UploadFile = File(...),
     doc_type: str = Query(default="other"),
     title: str = Query(...),
     db: Session = Depends(get_db),
 ):
-    file_path, original_name, size = await save_upload(file, subfolder="employee_docs")
+    file_path, original_name, size = save_upload(file, subfolder="employee_docs")
 
     doc = EmployeeDocument(
         user_id=user_id,

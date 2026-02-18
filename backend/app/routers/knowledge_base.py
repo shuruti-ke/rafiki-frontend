@@ -20,7 +20,7 @@ DEMO_IS_ADMIN = True
 
 
 @router.post("/upload", response_model=DocumentResponse)
-async def upload_document(
+def upload_document(
     file: UploadFile = File(...),
     title: str = Query(...),
     description: str = Query(default=""),
@@ -28,7 +28,7 @@ async def upload_document(
     tags: str = Query(default=""),
     db: Session = Depends(get_db),
 ):
-    file_path, original_name, size = await save_upload(file, subfolder="documents")
+    file_path, original_name, size = save_upload(file, subfolder="documents")
 
     tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
 
@@ -155,7 +155,7 @@ def delete_document(doc_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{doc_id}/new-version", response_model=DocumentResponse)
-async def upload_new_version(
+def upload_new_version(
     doc_id: int,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
@@ -166,7 +166,7 @@ async def upload_new_version(
     if not parent:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    file_path, original_name, size = await save_upload(file, subfolder="documents")
+    file_path, original_name, size = save_upload(file, subfolder="documents")
 
     new_doc = Document(
         org_id=DEMO_ORG_ID,

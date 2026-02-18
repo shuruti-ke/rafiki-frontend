@@ -17,12 +17,12 @@ ALLOWED_MIME_TYPES = {
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 
 
-async def save_upload(file: UploadFile, subfolder: str = "documents") -> tuple[str, str, int]:
+def save_upload(file: UploadFile, subfolder: str = "documents") -> tuple[str, str, int]:
     """Save an uploaded file with UUID naming. Returns (path, original_name, size)."""
     if file.content_type and file.content_type not in ALLOWED_MIME_TYPES:
         raise HTTPException(status_code=400, detail=f"File type not allowed: {file.content_type}")
 
-    content = await file.read()
+    content = file.file.read()
     size = len(content)
 
     if size > MAX_FILE_SIZE:
