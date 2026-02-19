@@ -49,6 +49,11 @@ app.include_router(org_router)
 app.include_router(mgr_router)
 app.include_router(sa_router)
 
+# --- DEBUG: List all registered routes ---
+@app.get("/__routes")
+def __routes():
+    return sorted([r.path for r in app.routes])
+
 # --- CORS middleware ---
 # FIX: Parse CORS_ORIGINS correctly, stripping whitespace from each origin
 CORS_ORIGINS_ENV = os.getenv(
