@@ -2,18 +2,15 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import Optional
-
 from app.database import get_db
 from app.models.user import User
 from app.services.auth import verify_password, create_access_token, decode_access_token
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-
 class LoginRequest(BaseModel):
     email: str
     password: str
-
 
 class UserOut(BaseModel):
     id: int
@@ -22,21 +19,19 @@ class UserOut(BaseModel):
     role: str
     org_id: int | None
 
-
 class LoginResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserOut
 
-
 @router.post("/login", response_model=LoginResponse)
 def login(body: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == body.email).first()
-    if not user or not verify_password(body.password, user.password.hash):
+    # FIX: password_hash not password.hash
+    if not user or not verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account disabled")
-
     token = create_access_token({"sub": str(user.id), "role": user.role, "org_id": user.org_id})
     return LoginResponse(
         access_token=token,
@@ -49,7 +44,6 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
         ),
     )
 
-
 @router.get("/me", response_model=UserOut)
 def me(
     db: Session = Depends(get_db),
@@ -57,7 +51,6 @@ def me(
 ):
     if not authorization:
         raise HTTPException(status_code=401, detail="Not authenticated")
-
     token = authorization.removeprefix("Bearer ").strip()
     payload = decode_access_token(token)
     if not payload:
