@@ -5,6 +5,7 @@ Authentication router — login and company code verification.
 import os
 import hashlib
 import secrets
+import logging
 from datetime import timedelta
 from typing import Optional
 
@@ -20,6 +21,8 @@ from app.services.auth import (
     verify_password as _verify_password,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 JWT_EXPIRY_HOURS = int(os.getenv("JWT_EXPIRY_HOURS", "24"))
@@ -34,7 +37,6 @@ def _hash_password(password: str) -> str:
 
 
 def _create_token(user: User) -> str:
-    """JWT sub must be users_legacy.user_id (UUID) as string."""
     return create_access_token(
         data={"sub": str(user.user_id)},
         expires_delta=timedelta(hours=JWT_EXPIRY_HOURS),
@@ -98,36 +100,43 @@ def verify_code(body: VerifyCodeRequest, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=LoginResponse)
 def login(body: LoginRequest, db: Session = Depends(get_db)):
-    email = body.email.strip().lower()
-    user = db.query(User).filter(User.email == email).first()
+    try:
+        email = (body.email or "").strip().lower()
+        user = db.query(User).filter(User.email == email).first()
 
-    if not user or not _verify_password(body.password, user.password_hash):
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+        if not user or not _verify_password(body.password, user.password_hash):
+            raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    if user.is_active is False:
-        raise HTTPException(status_code=403, detail="Account disabled")
+        if user.is_active is False:
+            raise HTTPException(status_code=403, detail="Account disabled")
 
-    if body.org_code:
-        org_code = body.org_code.strip()
-        org = db.query(Organization).filter(Organization.org_code == org_code).first()
-        if not org:
-            raise HTTPException(status_code=404, detail="Company code not found")
+        if body.org_code:
+            org_code = body.org_code.strip()
+            org = db.query(Organization).filter(Organization.org_code == org_code).first()
+            if not org:
+                raise HTTPException(status_code=404, detail="Company code not found")
 
-        if str(user.org_id) != str(org.org_id):
-            raise HTTPException(status_code=403, detail="You do not belong to this organization")
+            if str(user.org_id) != str(org.org_id):
+                raise HTTPException(status_code=403, detail="You do not belong to this organization")
 
-    token = _create_token(user)
+        token = _create_token(user)
 
-    return LoginResponse(
-        access_token=token,
-        user=UserOut(
-            user_id=str(user.user_id),
-            email=user.email,
-            full_name=user.name,  # users_legacy uses "name"
-            role=str(user.role),
-            org_id=str(user.org_id) if user.org_id else None,
-        ),
-    )
+        return LoginResponse(
+            access_token=token,
+            user=UserOut(
+                user_id=str(user.user_id),
+                email=user.email,
+                full_name=user.name,
+                role=str(user.role),
+                org_id=str(user.org_id) if user.org_id else None,
+            ),
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Login error for email={getattr(body, 'email', None)}: {e}")
+        raise HTTPException(status_code=500, detail="Login failed (server error)")
 
 
 @router.get("/me", response_model=UserOut)
@@ -141,7 +150,6 @@ def me(
     token = authorization.removeprefix("Bearer ").strip()
     payload = verify_token(token)
 
-    # users_legacy.user_id is UUID; don't int-cast
     user = db.query(User).filter(User.user_id == payload["user_id"]).first()
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
