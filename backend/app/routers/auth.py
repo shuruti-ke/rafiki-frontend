@@ -136,8 +136,7 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
         raise
     except Exception as e:
         logger.exception(f"Login error for email={getattr(body, 'email', None)}: {e}")
-        raise HTTPException(status_code=500, detail="Login failed (server error)")
-
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/me", response_model=UserOut)
 def me(
