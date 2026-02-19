@@ -27,7 +27,7 @@ class LoginResponse(BaseModel):
 @router.post("/login", response_model=LoginResponse)
 def login(body: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == body.email).first()
-    # FIX: password_hash not password.hash
+    # FIX: Use password_hash (database column) not password.hash
     if not user or not verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     if not user.is_active:
@@ -35,6 +35,7 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
     token = create_access_token({"sub": str(user.id), "role": user.role, "org_id": user.org_id})
     return LoginResponse(
         access_token=token,
+        token_type="bearer",
         user=UserOut(
             id=user.id,
             email=user.email,
