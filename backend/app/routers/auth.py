@@ -8,9 +8,10 @@ import hmac
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, EmailStr
+from fastapi import APIRouter, Depends, Header, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from typing import Optional
 
 from app.database import get_db
 from app.models.user import Organization, User
@@ -74,14 +75,21 @@ class VerifyCodeResponse(BaseModel):
     org_name: str
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    email: str
     password: str
     org_code: str | None = None
 
-class LoginResponse(BaseModel):
-    token: str
+class UserOut(BaseModel):
+    id: int
+    email: str
+    full_name: str | None
     role: str
-    user: dict
+    org_id: int | None
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserOut
 
 
 # ---------- endpoints ----------
@@ -100,6 +108,9 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
     if not user or not _verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
+    if hasattr(user, "is_active") and not user.is_active:
+        raise HTTPException(status_code=403, detail="Account disabled")
+
     # If org_code provided, verify the user belongs to that org
     if body.org_code:
         org = db.query(Organization).filter(Organization.code == body.org_code.strip().lower()).first()
@@ -110,7 +121,36 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
 
     token = _create_token(user)
     return LoginResponse(
-        token=token,
+        access_token=token,
+        user=UserOut(
+            id=user.id,
+            email=user.email,
+            full_name=user.full_name,
+            role=user.role,
+            org_id=user.org_id,
+        ),
+    )
+
+
+@router.get("/me", response_model=UserOut)
+def me(
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(default=None),
+):
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    token = authorization.removeprefix("Bearer ").strip()
+    payload = verify_token(token)
+
+    user = db.query(User).filter(User.id == payload["user_id"]).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    return UserOut(
+        id=user.id,
+        email=user.email,
+        full_name=user.full_name,
         role=user.role,
-        user={"id": user.id, "email": user.email, "full_name": user.full_name, "role": user.role, "org_id": user.org_id},
+        org_id=user.org_id,
     )

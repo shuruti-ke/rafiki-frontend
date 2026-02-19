@@ -43,6 +43,7 @@ def seed_super_admin(db):
             full_name=SUPER_ADMIN_NAME,
             role="super_admin",
             org_id=org.id,
+            is_active=True,
         )
         db.add(user)
         db.commit()
