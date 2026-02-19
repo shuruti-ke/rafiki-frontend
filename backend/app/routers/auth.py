@@ -36,4 +36,12 @@ def _hash_password(password: str) -> str:
 
 def _create_token(user: User) -> str:
     """Create a JWT token compatible with dependencies.py."""
-    return c
+    return create_access_token(
+        data={"sub": str(user.id)},  # keep as string
+        expires_delta=timedelta(hours=JWT_EXPIRY_HOURS),
+    )
+
+
+def verify_token(token: str) -> dict:
+    """Returns {user_id} or raises."""
+    payload = decode_access_token(toke
