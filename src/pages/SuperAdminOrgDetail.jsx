@@ -41,6 +41,7 @@ export default function SuperAdminOrgDetail() {
   const [hrSuccess, setHrSuccess] = useState("");
 
   const fetchOrg = async () => {
+    if (!orgId) return; // ✅ FIX: guard against undefined orgId
     try {
       const [orgRes, usersRes] = await Promise.all([
         fetch(`${API}/super-admin/orgs/${orgId}`, { headers: getHeaders() }),
@@ -55,7 +56,7 @@ export default function SuperAdminOrgDetail() {
       const orgData = await orgRes.json();
       setOrg(orgData);
       setName(orgData.name || "");
-      setCode(orgData.code || "");
+      setCode(orgData.org_code || ""); // ✅ FIX: backend returns org_code, not code
       setIndustry(orgData.industry || "");
       setDescription(orgData.description || "");
       setEmployeeCount(orgData.employee_count != null ? String(orgData.employee_count) : "");
@@ -77,7 +78,13 @@ export default function SuperAdminOrgDetail() {
     setSuccess("");
     setSaving(true);
     try {
-      const body = { name, code, industry, description, is_active: isActive };
+      const body = {
+        name,
+        org_code: code, // ✅ FIX: backend expects org_code, not code
+        industry,
+        description,
+        is_active: isActive,
+      };
       if (employeeCount) body.employee_count = Number(employeeCount);
 
       const res = await fetch(`${API}/super-admin/orgs/${orgId}`, {
@@ -220,8 +227,8 @@ export default function SuperAdminOrgDetail() {
             </thead>
             <tbody>
               {users.map((u) => (
-                <tr key={u.id}>
-                  <td>{u.full_name || "—"}</td>
+                <tr key={u.user_id}>{/* ✅ FIX: backend returns user_id, not id */}
+                  <td>{u.name || "—"}</td>{/* ✅ FIX: backend returns name, not full_name */}
                   <td>{u.email}</td>
                   <td>
                     <span className={`sa-role-badge sa-role-${u.role}`}>
