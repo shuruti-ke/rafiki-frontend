@@ -56,7 +56,7 @@ export default function SuperAdminDashboard() {
     setError("");
     try {
       const body = { name: orgName };
-      if (orgCode.trim()) body.code = orgCode.trim();
+      if (orgCode.trim()) body.org_code = orgCode.trim(); // ✅ FIXED
       if (orgIndustry.trim()) body.industry = orgIndustry.trim();
       if (orgDescription.trim()) body.description = orgDescription.trim();
       if (orgEmployeeCount) body.employee_count = Number(orgEmployeeCount);
@@ -130,7 +130,6 @@ export default function SuperAdminDashboard() {
         </button>
       </div>
 
-      {/* Organizations table */}
       <div className="sa-section">
         <h2>Organizations</h2>
         {loading ? (
@@ -152,12 +151,12 @@ export default function SuperAdminDashboard() {
             <tbody>
               {orgs.map((o) => (
                 <tr
-                  key={o.id}
+                  key={o.org_id} // ✅ FIXED
                   className="sa-table-row-link"
-                  onClick={() => navigate(`/super-admin/orgs/${o.id}`)}
+                  onClick={() => navigate(`/super-admin/orgs/${o.org_id}`)} // ✅ FIXED
                 >
                   <td>{o.name}</td>
-                  <td><code className="sa-code">{o.code}</code></td>
+                  <td><code className="sa-code">{o.org_code}</code></td> {/* ✅ FIXED */}
                   <td>{o.industry || "—"}</td>
                   <td>{o.user_count}</td>
                   <td>{o.admin_email || "—"}</td>
@@ -173,7 +172,6 @@ export default function SuperAdminDashboard() {
         )}
       </div>
 
-      {/* Onboard Company Modal */}
       {showOrgModal && (
         <div className="sa-modal-overlay" onClick={() => setShowOrgModal(false)}>
           <div className="sa-modal" onClick={(e) => e.stopPropagation()}>
@@ -185,7 +183,7 @@ export default function SuperAdminDashboard() {
               </div>
               <div className="sa-modal-field">
                 <label>Company Code (auto-generated if blank)</label>
-                <input value={orgCode} onChange={(e) => setOrgCode(e.target.value)} placeholder="e.g. ACME1" />
+                <input value={orgCode} onChange={(e) => setOrgCode(e.target.value)} placeholder="e.g. 54321" />
               </div>
               <div className="sa-modal-field">
                 <label>Industry</label>
@@ -209,7 +207,6 @@ export default function SuperAdminDashboard() {
         </div>
       )}
 
-      {/* Create HR Admin Modal */}
       {showHRModal && (
         <div className="sa-modal-overlay" onClick={() => setShowHRModal(false)}>
           <div className="sa-modal" onClick={(e) => e.stopPropagation()}>
@@ -220,7 +217,9 @@ export default function SuperAdminDashboard() {
                 <select value={hrOrgId} onChange={(e) => setHrOrgId(e.target.value)} required>
                   <option value="">Select organization...</option>
                   {orgs.map((o) => (
-                    <option key={o.id} value={o.id}>{o.name} ({o.code})</option>
+                    <option key={o.org_id} value={o.org_id}>
+                      {o.name} ({o.org_code})
+                    </option>
                   ))}
                 </select>
               </div>
