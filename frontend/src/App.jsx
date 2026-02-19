@@ -23,6 +23,7 @@ import HRAdminLoginPage from "./pages/HRAdminLoginPage.jsx";
 import EmployeeLoginPage from "./pages/EmployeeLoginPage.jsx";
 import SuperAdminLayout from "./components/SuperAdminLayout.jsx";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard.jsx";
+import SuperAdminOrgDetail from "./pages/SuperAdminOrgDetail.jsx";
 import AuthGuard from "./components/AuthGuard.jsx";
 import "./App.css";
 
@@ -101,6 +102,7 @@ export default function App() {
           </AuthGuard>
         }>
           <Route index element={<SuperAdminDashboard />} />
+          <Route path="orgs/:orgId" element={<SuperAdminOrgDetail />} />
         </Route>
 
         {/* Manager Portal */}

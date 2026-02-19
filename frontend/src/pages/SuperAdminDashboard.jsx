@@ -1,26 +1,32 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import "./SuperAdminDashboard.css";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 function getHeaders() {
+  const token = localStorage.getItem("rafiki_token");
   return {
     "Content-Type": "application/json",
-    "X-User-Role": "super_admin",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 }
 
 export default function SuperAdminDashboard() {
-  const [stats, setStats] = useState({ total_orgs: 0, total_users: 0, total_hr_admins: 0 });
+  const navigate = useNavigate();
+  const [stats, setStats] = useState({ total_orgs: 0, total_users: 0, active_orgs: 0 });
   const [orgs, setOrgs] = useState([]);
-  const [hrAdmins, setHrAdmins] = useState([]);
   const [showOrgModal, setShowOrgModal] = useState(false);
   const [showHRModal, setShowHRModal] = useState(false);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
 
   // Org form
   const [orgName, setOrgName] = useState("");
   const [orgCode, setOrgCode] = useState("");
+  const [orgIndustry, setOrgIndustry] = useState("");
+  const [orgDescription, setOrgDescription] = useState("");
+  const [orgEmployeeCount, setOrgEmployeeCount] = useState("");
 
   // HR Admin form
   const [hrEmail, setHrEmail] = useState("");
@@ -30,16 +36,16 @@ export default function SuperAdminDashboard() {
 
   const fetchAll = async () => {
     try {
-      const [sRes, oRes, hRes] = await Promise.all([
-        fetch(`${API}/api/v1/super-admin/stats`, { headers: getHeaders() }),
-        fetch(`${API}/api/v1/super-admin/organizations`, { headers: getHeaders() }),
-        fetch(`${API}/api/v1/super-admin/hr-admins`, { headers: getHeaders() }),
+      const [sRes, oRes] = await Promise.all([
+        fetch(`${API}/super-admin/stats`, { headers: getHeaders() }),
+        fetch(`${API}/super-admin/orgs`, { headers: getHeaders() }),
       ]);
       if (sRes.ok) setStats(await sRes.json());
       if (oRes.ok) setOrgs(await oRes.json());
-      if (hRes.ok) setHrAdmins(await hRes.json());
     } catch {
       /* ignore fetch errors on load */
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -49,16 +55,25 @@ export default function SuperAdminDashboard() {
     e.preventDefault();
     setError("");
     try {
-      const res = await fetch(`${API}/api/v1/super-admin/organizations`, {
+      const body = { name: orgName };
+      if (orgCode.trim()) body.code = orgCode.trim();
+      if (orgIndustry.trim()) body.industry = orgIndustry.trim();
+      if (orgDescription.trim()) body.description = orgDescription.trim();
+      if (orgEmployeeCount) body.employee_count = Number(orgEmployeeCount);
+
+      const res = await fetch(`${API}/super-admin/orgs`, {
         method: "POST",
         headers: getHeaders(),
-        body: JSON.stringify({ name: orgName, code: orgCode }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Failed to create org");
       setShowOrgModal(false);
       setOrgName("");
       setOrgCode("");
+      setOrgIndustry("");
+      setOrgDescription("");
+      setOrgEmployeeCount("");
       fetchAll();
     } catch (err) {
       setError(err.message);
@@ -69,10 +84,10 @@ export default function SuperAdminDashboard() {
     e.preventDefault();
     setError("");
     try {
-      const res = await fetch(`${API}/api/v1/super-admin/hr-admins`, {
+      const res = await fetch(`${API}/super-admin/orgs/${hrOrgId}/admin`, {
         method: "POST",
         headers: getHeaders(),
-        body: JSON.stringify({ email: hrEmail, password: hrPassword, full_name: hrName, org_id: Number(hrOrgId) }),
+        body: JSON.stringify({ email: hrEmail, password: hrPassword, full_name: hrName }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Failed to create HR admin");
@@ -101,8 +116,8 @@ export default function SuperAdminDashboard() {
           <div className="value">{stats.total_users}</div>
         </div>
         <div className="sa-stat-card">
-          <div className="label">HR Admins</div>
-          <div className="value">{stats.total_hr_admins}</div>
+          <div className="label">Active Orgs</div>
+          <div className="value">{stats.active_orgs}</div>
         </div>
       </div>
 
@@ -118,35 +133,40 @@ export default function SuperAdminDashboard() {
       {/* Organizations table */}
       <div className="sa-section">
         <h2>Organizations</h2>
-        {orgs.length === 0 ? (
+        {loading ? (
+          <p style={{ color: "var(--muted)", fontSize: 13 }}>Loading...</p>
+        ) : orgs.length === 0 ? (
           <p style={{ color: "var(--muted)", fontSize: 13 }}>No organizations yet.</p>
         ) : (
           <table className="sa-table">
             <thead>
-              <tr><th>ID</th><th>Name</th><th>Code</th></tr>
+              <tr>
+                <th>Name</th>
+                <th>Code</th>
+                <th>Industry</th>
+                <th>Users</th>
+                <th>HR Admin</th>
+                <th>Status</th>
+              </tr>
             </thead>
             <tbody>
               {orgs.map((o) => (
-                <tr key={o.id}><td>{o.id}</td><td>{o.name}</td><td>{o.code}</td></tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      {/* HR Admins table */}
-      <div className="sa-section">
-        <h2>HR Admins</h2>
-        {hrAdmins.length === 0 ? (
-          <p style={{ color: "var(--muted)", fontSize: 13 }}>No HR admins yet.</p>
-        ) : (
-          <table className="sa-table">
-            <thead>
-              <tr><th>ID</th><th>Name</th><th>Email</th><th>Org ID</th></tr>
-            </thead>
-            <tbody>
-              {hrAdmins.map((u) => (
-                <tr key={u.id}><td>{u.id}</td><td>{u.full_name}</td><td>{u.email}</td><td>{u.org_id}</td></tr>
+                <tr
+                  key={o.id}
+                  className="sa-table-row-link"
+                  onClick={() => navigate(`/super-admin/orgs/${o.id}`)}
+                >
+                  <td>{o.name}</td>
+                  <td><code className="sa-code">{o.code}</code></td>
+                  <td>{o.industry || "—"}</td>
+                  <td>{o.user_count}</td>
+                  <td>{o.admin_email || "—"}</td>
+                  <td>
+                    <span className={`sa-badge ${o.is_active ? "sa-badge-active" : "sa-badge-inactive"}`}>
+                      {o.is_active ? "Active" : "Inactive"}
+                    </span>
+                  </td>
+                </tr>
               ))}
             </tbody>
           </table>
@@ -160,12 +180,24 @@ export default function SuperAdminDashboard() {
             <h3>Onboard Company</h3>
             <form className="sa-modal-form" onSubmit={handleCreateOrg}>
               <div className="sa-modal-field">
-                <label>Company Name</label>
+                <label>Company Name *</label>
                 <input value={orgName} onChange={(e) => setOrgName(e.target.value)} placeholder="Acme Corp" required />
               </div>
               <div className="sa-modal-field">
-                <label>Company Code</label>
-                <input value={orgCode} onChange={(e) => setOrgCode(e.target.value)} placeholder="acme" required />
+                <label>Company Code (auto-generated if blank)</label>
+                <input value={orgCode} onChange={(e) => setOrgCode(e.target.value)} placeholder="e.g. ACME1" />
+              </div>
+              <div className="sa-modal-field">
+                <label>Industry</label>
+                <input value={orgIndustry} onChange={(e) => setOrgIndustry(e.target.value)} placeholder="e.g. Technology" />
+              </div>
+              <div className="sa-modal-field">
+                <label>Description</label>
+                <input value={orgDescription} onChange={(e) => setOrgDescription(e.target.value)} placeholder="Brief description" />
+              </div>
+              <div className="sa-modal-field">
+                <label>Employee Count</label>
+                <input type="number" value={orgEmployeeCount} onChange={(e) => setOrgEmployeeCount(e.target.value)} placeholder="e.g. 50" min="0" />
               </div>
               {error && <div className="login-error">{error}</div>}
               <div className="sa-modal-btns">
@@ -184,25 +216,25 @@ export default function SuperAdminDashboard() {
             <h3>Create HR Admin</h3>
             <form className="sa-modal-form" onSubmit={handleCreateHR}>
               <div className="sa-modal-field">
-                <label>Full Name</label>
-                <input value={hrName} onChange={(e) => setHrName(e.target.value)} placeholder="Jane Doe" required />
-              </div>
-              <div className="sa-modal-field">
-                <label>Email</label>
-                <input type="email" value={hrEmail} onChange={(e) => setHrEmail(e.target.value)} placeholder="hr@company.com" required />
-              </div>
-              <div className="sa-modal-field">
-                <label>Password</label>
-                <input type="password" value={hrPassword} onChange={(e) => setHrPassword(e.target.value)} placeholder="Set a password" required />
-              </div>
-              <div className="sa-modal-field">
-                <label>Organization</label>
+                <label>Organization *</label>
                 <select value={hrOrgId} onChange={(e) => setHrOrgId(e.target.value)} required>
                   <option value="">Select organization...</option>
                   {orgs.map((o) => (
                     <option key={o.id} value={o.id}>{o.name} ({o.code})</option>
                   ))}
                 </select>
+              </div>
+              <div className="sa-modal-field">
+                <label>Full Name *</label>
+                <input value={hrName} onChange={(e) => setHrName(e.target.value)} placeholder="Jane Doe" required />
+              </div>
+              <div className="sa-modal-field">
+                <label>Email *</label>
+                <input type="email" value={hrEmail} onChange={(e) => setHrEmail(e.target.value)} placeholder="hr@company.com" required />
+              </div>
+              <div className="sa-modal-field">
+                <label>Password *</label>
+                <input type="password" value={hrPassword} onChange={(e) => setHrPassword(e.target.value)} placeholder="Set a password" required />
               </div>
               {error && <div className="login-error">{error}</div>}
               <div className="sa-modal-btns">

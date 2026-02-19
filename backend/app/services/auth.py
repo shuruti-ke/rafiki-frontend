@@ -27,9 +27,15 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     if hashed_password.startswith("$2b$") or hashed_password.startswith("$2a$"):
         return pwd_context.verify(plain_password, hashed_password)
     
-    # Handle legacy salt$hash format
+    # Handle legacy salt$hash format (PBKDF2 from routers/auth.py)
     try:
         salt, hash_value = hashed_password.split("$")
+        # Try PBKDF2 first (routers/auth.py format)
+        import hmac as _hmac
+        computed = hashlib.pbkdf2_hmac("sha256", plain_password.encode(), salt.encode(), 100_000)
+        if secrets.compare_digest(computed.hex(), hash_value):
+            return True
+        # Fallback: simple SHA256(salt + password)
         computed_hash = hashlib.sha256((salt + plain_password).encode()).hexdigest()
         return secrets.compare_digest(computed_hash, hash_value)
     except (ValueError, AttributeError):

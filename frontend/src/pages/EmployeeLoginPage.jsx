@@ -50,8 +50,8 @@ export default function EmployeeLoginPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Login failed");
 
-      localStorage.setItem("rafiki_token", data.token);
-      localStorage.setItem("rafiki_role", data.role);
+      localStorage.setItem("rafiki_token", data.access_token);
+      localStorage.setItem("rafiki_role", data.user.role);
       localStorage.setItem("rafiki_user", JSON.stringify(data.user));
       navigate("/");
     } catch (err) {

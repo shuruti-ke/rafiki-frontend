@@ -4,9 +4,8 @@ Authentication router — login and company code verification.
 
 import os
 import hashlib
-import hmac
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
@@ -15,10 +14,15 @@ from typing import Optional
 
 from app.database import get_db
 from app.models.user import Organization, User
+from app.services.auth import (
+    create_access_token,
+    decode_access_token,
+    verify_password as _verify_password,
+    get_password_hash,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-JWT_SECRET = os.getenv("JWT_SECRET", "rafiki-dev-secret-change-in-prod")
 JWT_EXPIRY_HOURS = int(os.getenv("JWT_EXPIRY_HOURS", "24"))
 
 
@@ -30,39 +34,21 @@ def _hash_password(password: str) -> str:
     return f"{salt}${h.hex()}"
 
 
-def _verify_password(password: str, stored: str) -> bool:
-    try:
-        salt, h = stored.split("$", 1)
-        expected = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 100_000)
-        return hmac.compare_digest(expected.hex(), h)
-    except Exception:
-        return False
-
-
 def _create_token(user: User) -> str:
-    """Simple HMAC-based token: user_id.role.org_id.exp.signature"""
-    exp = int((datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRY_HOURS)).timestamp())
-    payload = f"{user.id}.{user.role}.{user.org_id or 0}.{exp}"
-    sig = hmac.new(JWT_SECRET.encode(), payload.encode(), "sha256").hexdigest()[:32]
-    return f"{payload}.{sig}"
+    """Create a JWT token compatible with dependencies.py."""
+    return create_access_token(
+        data={"sub": str(user.id)},
+        expires_delta=timedelta(hours=JWT_EXPIRY_HOURS),
+    )
 
 
 def verify_token(token: str) -> dict:
     """Returns {user_id, role, org_id} or raises."""
-    try:
-        parts = token.rsplit(".", 1)
-        if len(parts) != 2:
-            raise ValueError
-        payload, sig = parts
-        expected = hmac.new(JWT_SECRET.encode(), payload.encode(), "sha256").hexdigest()[:32]
-        if not hmac.compare_digest(sig, expected):
-            raise ValueError
-        user_id_s, role, org_id_s, exp_s = payload.split(".")
-        if int(exp_s) < int(datetime.now(timezone.utc).timestamp()):
-            raise ValueError("expired")
-        return {"user_id": int(user_id_s), "role": role, "org_id": int(org_id_s)}
-    except Exception:
+    payload = decode_access_token(token)
+    if not payload:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
+    user_id = int(payload["sub"])
+    return {"user_id": user_id}
 
 
 # ---------- schemas ----------
