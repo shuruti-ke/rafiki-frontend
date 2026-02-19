@@ -15,6 +15,7 @@ function getHeaders() {
 
 export default function SuperAdminOrgDetail() {
   const { orgId } = useParams();
+  console.log("PARAMS orgId:", orgId); 
   const navigate = useNavigate();
 
   const [org, setOrg] = useState(null);
