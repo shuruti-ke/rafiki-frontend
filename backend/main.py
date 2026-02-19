@@ -1,10 +1,10 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import Response
 from pathlib import Path
 from PIL import Image
 from openai import OpenAI
-import httpx
 import json
 import os
 import base64
@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Load environment variables
 try:
     env_path = Path(__file__).parent / ".env"
     load_dotenv(dotenv_path=env_path, override=False)
@@ -22,22 +23,41 @@ except Exception:
 
 app = FastAPI(title="Rafiki API")
 
-# ✅ CORS middleware SHOULD be added immediately after app creation
+# --------------------
+# CORS (FIXED + ROBUST)
+# --------------------
+def _normalize_origin(o: str) -> str:
+    return o.strip().rstrip("/")
+
 CORS_ORIGINS_ENV = os.getenv(
     "CORS_ORIGINS",
     "https://rafiki-frontend-five.vercel.app,http://localhost:5173,http://localhost:3000",
 )
-ALLOWED_ORIGINS = [o.strip() for o in CORS_ORIGINS_ENV.split(",") if o.strip()]
+
+ALLOWED_ORIGINS = [_normalize_origin(o) for o in CORS_ORIGINS_ENV.split(",") if o.strip()]
+
+# Helpful log to confirm what Render actually loaded
+logger.info(f"CORS allowed origins: {ALLOWED_ORIGINS}")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["*"],  # includes Authorization
+    expose_headers=["*"],
+    max_age=86400,
 )
 
-# --- Register routers AFTER middleware ---
+# Some platforms/proxies can behave oddly with preflight.
+# This ensures OPTIONS always returns a valid response (middleware will attach headers).
+@app.options("/{path:path}")
+def preflight_handler(path: str, request: Request):
+    return Response(status_code=204)
+
+# --------------------
+# Routers
+# --------------------
 from app.routers.knowledge_base import router as kb_router
 from app.routers.announcements import router as ann_router
 from app.routers.employee_docs import router as emp_router
@@ -62,7 +82,9 @@ app.include_router(sa_router)
 def __routes():
     return sorted([r.path for r in app.routes])
 
-# --- Create uploads directory & mount static files ---
+# --------------------
+# Static + uploads
+# --------------------
 STATIC_DIR = Path(__file__).parent / "static"
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -91,13 +113,14 @@ def _write_project_manifest(files):
     files = [Path(x).name for x in files]
     PROJECT_MANIFEST.write_text(json.dumps(files, indent=2), encoding="utf-8")
 
-# FIX: NO TRAILING SPACES IN EXTENSIONS
 ALLOWED_TEXT_EXTS = {".txt", ".md", ".py", ".js", ".ts", ".json", ".csv", ".html", ".css", ".yml", ".yaml"}
 ALLOWED_IMG_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
 MAX_TEXT_BYTES = 500_000
 MAX_IMG_BYTES = 8_000_000
 
-# --- API Configuration ---
+# --------------------
+# API configuration
+# --------------------
 BONSAI_API_KEY = os.getenv("BONSAI_API_KEY", "").strip()
 BONSAI_BASE_URL = os.getenv("BONSAI_BASE_URL", "https://go.trybons.ai").strip().rstrip("/")
 BONSAI_DEFAULT_MODEL = os.getenv("BONSAI_DEFAULT_MODEL", "anthropic/claude-sonnet-4.5").strip()
@@ -106,13 +129,8 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").strip()
 OPENAI_MODEL_VISION = os.getenv("OPENAI_MODEL_VISION", "gpt-4o-mini").strip()
 
-# FIX: Initialize client safely only if key exists
-if OPENAI_API_KEY:
-    vision_client = OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL)
-else:
-    vision_client = None
+vision_client = OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL) if OPENAI_API_KEY else None
 
-# --- Support models ---
 SUPPORTED_MODELS = [
     "claude-sonnet-4-5-20250929",
     "claude-opus-4-20250514",
@@ -182,20 +200,20 @@ MAX_DESCRIBE_PROMPT_LEN = 2000
 def describe_image(name: str, prompt: str = "Describe this image briefly and extract any visible text."):
     if not vision_client or not OPENAI_API_KEY:
         raise HTTPException(status_code=503, detail="Vision not configured. Set OPENAI_API_KEY.")
-    
+
     if len(prompt) > MAX_DESCRIBE_PROMPT_LEN:
         raise HTTPException(status_code=400, detail=f"Prompt too long (max {MAX_DESCRIBE_PROMPT_LEN} chars)")
-    
+
     safe_name = Path(name).name
     path = IMG_DIR / safe_name
     if not path.exists() or not path.is_file():
         raise HTTPException(status_code=404, detail="Image not found")
-    
+
     ext = path.suffix.lower()
     mime = "image/png" if ext == ".png" else "image/jpeg" if ext in [".jpg", ".jpeg"] else "image/webp"
-    
+
     b64 = base64.b64encode(path.read_bytes()).decode("utf-8")
-    
+
     try:
         resp = vision_client.chat.completions.create(
             model=OPENAI_MODEL_VISION,
