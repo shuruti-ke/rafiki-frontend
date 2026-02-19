@@ -11,23 +11,33 @@ import base64
 import logging
 from dotenv import load_dotenv
 
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Load environment variables
-# FIX: Use __file__ correctly
 try:
     env_path = Path(__file__).parent / ".env"
-    # override=False ensures system environment variables take precedence over .env
     load_dotenv(dotenv_path=env_path, override=False)
 except Exception:
     pass
 
 app = FastAPI(title="Rafiki API")
 
-# --- Register HR Portal routers ---
-# Note: Ensure 'app' package is in PYTHONPATH
+# ✅ CORS middleware SHOULD be added immediately after app creation
+CORS_ORIGINS_ENV = os.getenv(
+    "CORS_ORIGINS",
+    "https://rafiki-frontend-five.vercel.app,http://localhost:5173,http://localhost:3000",
+)
+ALLOWED_ORIGINS = [o.strip() for o in CORS_ORIGINS_ENV.split(",") if o.strip()]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# --- Register routers AFTER middleware ---
 from app.routers.knowledge_base import router as kb_router
 from app.routers.announcements import router as ann_router
 from app.routers.employee_docs import router as emp_router
@@ -35,7 +45,6 @@ from app.routers.chat import router as chat_router
 from app.routers.guided_paths import router as gp_router
 from app.routers.org_profile import router as org_router
 from app.routers.manager import router as mgr_router
-# FIX: Only import 'router' - the other routers don't exist in auth.py
 from app.routers.auth import router as auth_router
 from app.routers.super_admin import router as sa_router
 
@@ -49,26 +58,9 @@ app.include_router(org_router)
 app.include_router(mgr_router)
 app.include_router(sa_router)
 
-# --- DEBUG: List all registered routes ---
 @app.get("/__routes")
 def __routes():
     return sorted([r.path for r in app.routes])
-
-# --- CORS middleware ---
-# FIX: Parse CORS_ORIGINS correctly, stripping whitespace from each origin
-CORS_ORIGINS_ENV = os.getenv(
-    "CORS_ORIGINS",
-    "https://rafiki-frontend-five.vercel.app,http://localhost:5173,http://localhost:3000",
-)
-ALLOWED_ORIGINS = [origin.strip() for origin in CORS_ORIGINS_ENV.split(",") if origin.strip()]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # --- Create uploads directory & mount static files ---
 STATIC_DIR = Path(__file__).parent / "static"
