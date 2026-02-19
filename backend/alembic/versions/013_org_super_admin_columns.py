@@ -16,13 +16,17 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # Organization columns
     op.execute("ALTER TABLE organizations ADD COLUMN IF NOT EXISTS industry VARCHAR(255)")
     op.execute("ALTER TABLE organizations ADD COLUMN IF NOT EXISTS description TEXT")
     op.execute("ALTER TABLE organizations ADD COLUMN IF NOT EXISTS employee_count INTEGER")
     op.execute("ALTER TABLE organizations ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE")
+    # User columns (is_active may be missing from local 012)
+    op.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE")
 
 
 def downgrade() -> None:
+    op.execute("ALTER TABLE users DROP COLUMN IF EXISTS is_active")
     op.execute("ALTER TABLE organizations DROP COLUMN IF EXISTS is_active")
     op.execute("ALTER TABLE organizations DROP COLUMN IF EXISTS employee_count")
     op.execute("ALTER TABLE organizations DROP COLUMN IF EXISTS description")
