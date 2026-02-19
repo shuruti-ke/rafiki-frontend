@@ -9,23 +9,15 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import require_super_admin
-
-# ✅ Keep imports aligned to your current project structure:
-# Organization is in app.models.user (table: orgs, PK: org_id UUID, code: org_code)
-# User is in app.models.user (table: users_legacy, PK: user_id UUID, role enum)
 from app.models.user import Organization, User
-
-# Documents are UUID-based too (table: documents, PK: id UUID, org_id UUID)
 from app.models.document import Document
-
-# Password helper (legacy format) used when creating HR admins
 from app.routers.auth import _hash_password
 
 router = APIRouter(prefix="/super-admin", tags=["super-admin"])
@@ -54,7 +46,7 @@ class OrgCreate(BaseModel):
     org_code: Optional[str] = None
     industry: Optional[str] = None
     description: Optional[str] = None
-    employee_count: Optional[int] = None  # ✅ FIXED
+    employee_count: Optional[int] = None
 
 
 class OrgUpdate(BaseModel):
@@ -62,7 +54,7 @@ class OrgUpdate(BaseModel):
     org_code: Optional[str] = None
     industry: Optional[str] = None
     description: Optional[str] = None
-    employee_count: Optional[int] = None  # ✅ FIXED
+    employee_count: Optional[int] = None
     is_active: Optional[bool] = None
 
 
@@ -78,7 +70,7 @@ class OrgOut(BaseModel):
     org_code: Optional[str] = None
     industry: Optional[str] = None
     description: Optional[str] = None
-    employee_count: Optional[int] = None  # ✅ FIXED
+    employee_count: Optional[int] = None
     is_active: bool = True
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
@@ -141,7 +133,7 @@ def get_platform_stats(
     )
 
 
-# ---------- Org CRUD + analytics ----------
+# ---------- Org list ----------
 
 @router.get("/orgs", response_model=list[OrgListItem])
 def list_orgs(
@@ -176,7 +168,7 @@ def list_orgs(
                 org_code=org.org_code,
                 industry=org.industry,
                 description=org.description,
-                employee_count=org.employee_count,  # ✅ now matches schema
+                employee_count=org.employee_count,
                 is_active=bool(org.is_active) if org.is_active is not None else True,
                 created_at=org.created_at,
                 updated_at=getattr(org, "updated_at", None),
@@ -187,3 +179,201 @@ def list_orgs(
         )
 
     return result
+
+
+# ---------- Org details ----------
+
+@router.get("/orgs/{org_id}", response_model=OrgListItem)
+def get_org(
+    org_id: UUID,
+    role: str = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    org = db.query(Organization).filter(Organization.org_id == org_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    user_count = (
+        db.query(func.count(User.user_id))
+        .filter(User.org_id == org_id)
+        .scalar()
+        or 0
+    )
+    documents_count = (
+        db.query(func.count(Document.id))
+        .filter(Document.org_id == org_id)
+        .scalar()
+        or 0
+    )
+    admin = (
+        db.query(User)
+        .filter(User.org_id == org_id, User.role == "hr_admin")
+        .first()
+    )
+
+    return OrgListItem(
+        org_id=org.org_id,
+        name=org.name,
+        org_code=org.org_code,
+        industry=org.industry,
+        description=org.description,
+        employee_count=org.employee_count,
+        is_active=bool(org.is_active) if org.is_active is not None else True,
+        created_at=org.created_at,
+        updated_at=getattr(org, "updated_at", None),
+        user_count=int(user_count),
+        documents_count=int(documents_count),
+        admin_email=admin.email if admin else None,
+    )
+
+
+@router.get("/orgs/{org_id}/users", response_model=list[UserOut])
+def list_org_users(
+    org_id: UUID,
+    role: str = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    org = db.query(Organization).filter(Organization.org_id == org_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    users = (
+        db.query(User)
+        .filter(User.org_id == org_id)
+        .order_by(User.created_at.desc())
+        .all()
+    )
+    return users
+
+
+# ---------- Org create / update / status ----------
+
+@router.post("/orgs", response_model=OrgOut, status_code=201)
+def create_org(
+    payload: OrgCreate,
+    role: str = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    code = (payload.org_code or _unique_code(db)).strip()
+
+    if db.query(Organization).filter(Organization.org_code == code).first():
+        raise HTTPException(status_code=409, detail="Organization code already in use")
+
+    org = Organization(
+        name=payload.name,
+        org_code=code,
+        industry=payload.industry,
+        description=payload.description,
+        employee_count=payload.employee_count,
+        is_active=True,
+    )
+    db.add(org)
+    db.commit()
+    db.refresh(org)
+    return org
+
+
+@router.put("/orgs/{org_id}", response_model=OrgOut)
+def update_org(
+    org_id: UUID,
+    payload: OrgUpdate,
+    role: str = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    org = db.query(Organization).filter(Organization.org_id == org_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    updates = payload.model_dump(exclude_unset=True)
+
+    if "org_code" in updates and updates["org_code"] and updates["org_code"] != org.org_code:
+        existing = (
+            db.query(Organization)
+            .filter(Organization.org_code == updates["org_code"], Organization.org_id != org_id)
+            .first()
+        )
+        if existing:
+            raise HTTPException(status_code=409, detail="Organization code already in use")
+
+    for key, value in updates.items():
+        setattr(org, key, value)
+
+    db.commit()
+    db.refresh(org)
+    return org
+
+
+@router.patch("/orgs/{org_id}/status", response_model=OrgOut)
+def set_org_status(
+    org_id: UUID,
+    payload: OrgStatusUpdate,
+    role: str = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    org = db.query(Organization).filter(Organization.org_id == org_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    org.is_active = payload.is_active
+    db.commit()
+    db.refresh(org)
+    return org
+
+
+# ---------- Delete org (optional) ----------
+# NOTE: consider "soft delete" via is_active=False instead of hard delete.
+
+@router.delete("/orgs/{org_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_org(
+    org_id: UUID,
+    role: str = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    org = db.query(Organization).filter(Organization.org_id == org_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    # Guard: do not delete orgs that still have users/documents
+    users_exist = db.query(User.user_id).filter(User.org_id == org_id).first() is not None
+    docs_exist = db.query(Document.id).filter(Document.org_id == org_id).first() is not None
+    if users_exist or docs_exist:
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot delete org with existing users/documents. Deactivate instead.",
+        )
+
+    db.delete(org)
+    db.commit()
+    return None
+
+
+# ---------- Create HR admin ----------
+
+@router.post("/orgs/{org_id}/admin", response_model=UserOut, status_code=201)
+def create_hr_admin(
+    org_id: UUID,
+    payload: HRAdminCreate,
+    role: str = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    org = db.query(Organization).filter(Organization.org_id == org_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    email = payload.email.strip().lower()
+
+    if db.query(User).filter(User.email == email).first():
+        raise HTTPException(status_code=409, detail="Email already registered")
+
+    user = User(
+        email=email,
+        password_hash=_hash_password(payload.password),
+        name=payload.full_name,
+        role="hr_admin",
+        org_id=org_id,
+        is_active=True,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
