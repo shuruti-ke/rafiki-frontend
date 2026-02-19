@@ -3,46 +3,47 @@ Super Admin router — org management, HR admin creation, platform stats.
 All endpoints require super_admin role.
 """
 
-import string
 import random
-from uuid import UUID
-from typing import Optional
+import string
 from datetime import datetime
+from typing import Optional
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy.orm import Session
 from sqlalchemy import func
+from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import require_super_admin
 
-# ✅ IMPORTANT:
-# - Organization must map to table "orgs" with columns org_id, org_code, is_active, etc.
-# - User must map to table "users_legacy" with columns user_id, org_id, role, etc.
-from app.models.org import Organization
-from app.models.user import User
+# ✅ Keep imports aligned to your current project structure:
+# Organization is in app.models.user (table: orgs, PK: org_id UUID, code: org_code)
+# User is in app.models.user (table: users_legacy, PK: user_id UUID, role enum)
+from app.models.user import Organization, User
 
+# Documents are UUID-based too (table: documents, PK: id UUID, org_id UUID)
 from app.models.document import Document
 
-# ⚠️ Avoid importing _hash_password from routers/auth if you can.
-# If you already have a hashing helper in services/auth.py, use it instead.
-# Keeping your existing import for now:
+# Password helper (legacy format) used when creating HR admins
 from app.routers.auth import _hash_password
 
 router = APIRouter(prefix="/super-admin", tags=["super-admin"])
 
 
+# ---------- helpers ----------
+
 def _generate_code(length: int = 5) -> str:
-    # Your org_code examples are numeric strings ("54321"), but you can keep alnum if you want.
+    # Your sample org codes are numeric strings ("54321"), so generate digits
     chars = string.digits
     return "".join(random.choices(chars, k=length))
 
 
 def _unique_code(db: Session, length: int = 5) -> str:
-    for _ in range(20):
+    for _ in range(50):
         code = _generate_code(length)
-        if not db.query(Organization).filter(Organization.org_code == code).first():
+        exists = db.query(Organization).filter(Organization.org_code == code).first()
+        if not exists:
             return code
     raise HTTPException(status_code=500, detail="Could not generate unique org code")
 
@@ -103,14 +104,17 @@ class UserOut(BaseModel):
     email: Optional[str] = None
     name: Optional[str] = None
     role: str
+    org_id: Optional[UUID] = None
     is_active: bool = True
     created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
 
 class PlatformStats(BaseModel):
     total_orgs: int
     total_users: int
     active_orgs: int
+    total_documents: int
 
 
 # ---------- Platform stats ----------
@@ -128,10 +132,13 @@ def get_platform_stats(
         .scalar()
         or 0
     )
+    total_documents = db.query(func.count(Document.id)).scalar() or 0
+
     return PlatformStats(
         total_orgs=int(total_orgs),
         total_users=int(total_users),
         active_orgs=int(active_orgs),
+        total_documents=int(total_documents),
     )
 
 
@@ -144,20 +151,19 @@ def list_orgs(
 ):
     orgs = db.query(Organization).order_by(Organization.created_at.desc()).all()
 
-    # Precompute counts in 2 queries (faster than N+1 counting)
+    # Bulk counts (avoid N+1 queries)
     user_counts = dict(
         db.query(User.org_id, func.count(User.user_id))
         .group_by(User.org_id)
         .all()
     )
-
     doc_counts = dict(
         db.query(Document.org_id, func.count(Document.id))
         .group_by(Document.org_id)
         .all()
     )
 
-    result = []
+    result: list[OrgListItem] = []
     for org in orgs:
         admin = (
             db.query(User)
@@ -173,7 +179,7 @@ def list_orgs(
                 industry=org.industry,
                 description=org.description,
                 employee_count=org.employee_count,
-                is_active=org.is_active if org.is_active is not None else True,
+                is_active=bool(org.is_active) if org.is_active is not None else True,
                 created_at=org.created_at,
                 updated_at=getattr(org, "updated_at", None),
                 user_count=int(user_counts.get(org.org_id, 0)),
@@ -181,6 +187,7 @@ def list_orgs(
                 admin_email=admin.email if admin else None,
             )
         )
+
     return result
 
 
@@ -244,7 +251,7 @@ def get_org(
         industry=org.industry,
         description=org.description,
         employee_count=org.employee_count,
-        is_active=org.is_active if org.is_active is not None else True,
+        is_active=bool(org.is_active) if org.is_active is not None else True,
         created_at=org.created_at,
         updated_at=getattr(org, "updated_at", None),
         user_count=int(user_count),
@@ -266,7 +273,7 @@ def update_org(
 
     updates = payload.model_dump(exclude_unset=True)
 
-    if "org_code" in updates and updates["org_code"] != org.org_code:
+    if "org_code" in updates and updates["org_code"] and updates["org_code"] != org.org_code:
         existing = (
             db.query(Organization)
             .filter(Organization.org_code == updates["org_code"], Organization.org_id != org_id)
@@ -283,7 +290,6 @@ def update_org(
     return org
 
 
-# ✅ Clean toggle endpoint the UI can call
 @router.patch("/orgs/{org_id}/status", response_model=OrgOut)
 def set_org_status(
     org_id: UUID,
@@ -335,12 +341,14 @@ def create_hr_admin(
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
 
-    existing = db.query(User).filter(User.email == payload.email.strip().lower()).first()
-    if existing:
+    email = payload.email.strip().lower()
+
+    if db.query(User).filter(User.email == email).first():
         raise HTTPException(status_code=409, detail="Email already registered")
 
+    # NOTE: users_legacy uses "name" not "full_name"
     user = User(
-        email=payload.email.strip().lower(),
+        email=email,
         password_hash=_hash_password(payload.password),
         name=payload.full_name,
         role="hr_admin",
