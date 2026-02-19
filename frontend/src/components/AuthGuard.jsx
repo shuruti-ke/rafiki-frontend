@@ -1,14 +1,18 @@
-import { Navigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 
-export default function AuthGuard({ children, requiredRoles, loginPath = "/login" }) {
-  const token = localStorage.getItem("rafiki_token");
-  const role = localStorage.getItem("rafiki_role");
+export default function AuthGuard({ children, requiredRoles = [], loginPath = "/login" }) {
+  const location = useLocation();
 
+  const token = localStorage.getItem("rafiki_token"); // or whatever you store
+  const role = localStorage.getItem("rafiki_role");   // adjust to your app
+
+  // ✅ If we're already on the login page, do NOT redirect again (prevents loops)
   if (!token) {
-    return <Navigate to={loginPath} replace />;
+    if (location.pathname === loginPath) return children;
+    return <Navigate to={loginPath} replace state={{ from: location.pathname }} />;
   }
 
-  if (requiredRoles && !requiredRoles.includes(role)) {
+  if (requiredRoles.length && !requiredRoles.includes(role)) {
     return <Navigate to={loginPath} replace />;
   }
 
