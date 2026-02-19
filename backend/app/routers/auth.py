@@ -6,11 +6,11 @@ import os
 import hashlib
 import secrets
 from datetime import timedelta
+from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from typing import Optional
 
 from app.database import get_db
 from app.models.user import Organization, User
@@ -18,7 +18,6 @@ from app.services.auth import (
     create_access_token,
     decode_access_token,
     verify_password as _verify_password,
-    get_password_hash,
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -35,20 +34,18 @@ def _hash_password(password: str) -> str:
 
 
 def _create_token(user: User) -> str:
-    """Create a JWT token compatible with dependencies.py."""
+    """JWT sub must be users_legacy.user_id (UUID) as string."""
     return create_access_token(
-        data={"sub": str(user.id)},  # keep as string
+        data={"sub": str(user.user_id)},
         expires_delta=timedelta(hours=JWT_EXPIRY_HOURS),
     )
 
 
 def verify_token(token: str) -> dict:
-    """Returns {user_id} or raises."""
     payload = decode_access_token(token)
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
-    # IMPORTANT: do NOT cast to int, keep whatever your users.id type is (often int, sometimes uuid)
     user_id = payload.get("sub")
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid token payload")
@@ -63,7 +60,7 @@ class VerifyCodeRequest(BaseModel):
 
 
 class VerifyCodeResponse(BaseModel):
-    org_id: str          # UUID in your DB
+    org_id: str
     org_name: str
 
 
@@ -74,11 +71,11 @@ class LoginRequest(BaseModel):
 
 
 class UserOut(BaseModel):
-    id: int              # keep int if users.id is int in DB
-    email: str
+    user_id: str
+    email: str | None
     full_name: str | None
     role: str
-    org_id: str | None   # UUID in your DB
+    org_id: str | None
 
 
 class LoginResponse(BaseModel):
@@ -91,7 +88,7 @@ class LoginResponse(BaseModel):
 
 @router.post("/verify-code", response_model=VerifyCodeResponse)
 def verify_code(body: VerifyCodeRequest, db: Session = Depends(get_db)):
-    code = body.code.strip()  # keep as-is, your org_code is numeric strings
+    code = body.code.strip()
     org = db.query(Organization).filter(Organization.org_code == code).first()
     if not org:
         raise HTTPException(status_code=404, detail="Company code not found")
@@ -101,14 +98,15 @@ def verify_code(body: VerifyCodeRequest, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=LoginResponse)
 def login(body: LoginRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == body.email.strip().lower()).first()
+    email = body.email.strip().lower()
+    user = db.query(User).filter(User.email == email).first()
+
     if not user or not _verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    if hasattr(user, "is_active") and not user.is_active:
+    if user.is_active is False:
         raise HTTPException(status_code=403, detail="Account disabled")
 
-    # If org_code provided, verify the user belongs to that org
     if body.org_code:
         org_code = body.org_code.strip()
         org = db.query(Organization).filter(Organization.org_code == org_code).first()
@@ -119,13 +117,14 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
             raise HTTPException(status_code=403, detail="You do not belong to this organization")
 
     token = _create_token(user)
+
     return LoginResponse(
         access_token=token,
         user=UserOut(
-            id=user.id,
+            user_id=str(user.user_id),
             email=user.email,
-            full_name=user.full_name,
-            role=user.role,
+            full_name=user.name,  # users_legacy uses "name"
+            role=str(user.role),
             org_id=str(user.org_id) if user.org_id else None,
         ),
     )
@@ -142,21 +141,15 @@ def me(
     token = authorization.removeprefix("Bearer ").strip()
     payload = verify_token(token)
 
-    # If users.id is int, cast here safely, otherwise leave it
-    user_id = payload["user_id"]
-    try:
-        user_id_int = int(user_id)
-    except Exception:
-        user_id_int = user_id  # supports UUID user ids too
-
-    user = db.query(User).filter(User.id == user_id_int).first()
+    # users_legacy.user_id is UUID; don't int-cast
+    user = db.query(User).filter(User.user_id == payload["user_id"]).first()
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
 
     return UserOut(
-        id=user.id,
+        user_id=str(user.user_id),
         email=user.email,
-        full_name=user.full_name,
-        role=user.role,
+        full_name=user.name,
+        role=str(user.role),
         org_id=str(user.org_id) if user.org_id else None,
     )
