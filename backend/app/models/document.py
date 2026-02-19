@@ -25,10 +25,10 @@ class DocumentCategory(str, enum.Enum):
 class Document(Base):
     __tablename__ = "documents"
 
-    # ✅ DB: id uuid
+    # DB: uuid
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
-    # ✅ DB: org_id uuid
+    # DB: uuid
     org_id = Column(UUID(as_uuid=True), nullable=False, index=True)
 
     title = Column(String(500), nullable=False)
@@ -42,18 +42,19 @@ class Document(Base):
 
     version = Column(Integer, nullable=False, default=1)
 
-    # ✅ DB: parent_id uuid
+    # DB: uuid
     parent_id = Column(UUID(as_uuid=True), ForeignKey("documents.id"), nullable=True)
 
     is_current = Column(Boolean, nullable=False, default=True)
     is_indexed = Column(Boolean, nullable=False, default=False)
 
-    # ✅ DB: uploaded_by uuid
+    # DB: uuid
     uploaded_by = Column(UUID(as_uuid=True), nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
+    # relationships
     chunks = relationship("DocumentChunk", back_populates="document", cascade="all, delete-orphan")
     parent = relationship("Document", remote_side=[id], backref="versions")
 
@@ -61,8 +62,10 @@ class Document(Base):
 class DocumentChunk(Base):
     __tablename__ = "document_chunks"
 
+    # DB: uuid
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
+    # DB: uuid
     document_id = Column(
         UUID(as_uuid=True),
         ForeignKey("documents.id", ondelete="CASCADE"),
@@ -70,6 +73,7 @@ class DocumentChunk(Base):
         index=True,
     )
 
+    # DB: uuid
     org_id = Column(UUID(as_uuid=True), nullable=False, index=True)
 
     chunk_index = Column(Integer, nullable=False)
