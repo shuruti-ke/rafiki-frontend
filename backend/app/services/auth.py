@@ -1,6 +1,6 @@
-# app/services/auth.py
 import hashlib
 import secrets
+import os
 from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
@@ -9,21 +9,21 @@ from passlib.context import CryptContext
 # Bcrypt for NEW passwords
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# JWT Configuration
-SECRET_KEY = "your-secret-key-change-in-production"  # Set via environment variable!
+# JWT Configuration - MUST come from environment!
+SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """
     Verify password against BOTH formats:
-    - Legacy: salt$hash (SHA256)
+    - Legacy: salt$hash (SHA256) - YOUR CURRENT FORMAT
     - New: bcrypt ($2b$...)
     """
     if not hashed_password:
         return False
     
-    # Check if it's bcrypt format (starts with $2b$ or $2a$)
+    # Check if it's bcrypt format
     if hashed_password.startswith("$2b$") or hashed_password.startswith("$2a$"):
         return pwd_context.verify(plain_password, hashed_password)
     
