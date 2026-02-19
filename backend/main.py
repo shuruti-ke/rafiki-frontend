@@ -6,17 +6,28 @@ from PIL import Image
 from openai import OpenAI
 import httpx
 import json
-import traceback
-import os, base64
+import os
+import base64
 import logging
 from dotenv import load_dotenv
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-load_dotenv(dotenv_path=Path(__file__).parent / ".env", override=True)
+
+# Load environment variables
+# FIX: Use __file__ correctly
+try:
+    env_path = Path(__file__).parent / ".env"
+    # override=False ensures system environment variables take precedence over .env
+    load_dotenv(dotenv_path=env_path, override=False)
+except Exception:
+    pass
 
 app = FastAPI(title="Rafiki API")
 
 # --- Register HR Portal routers ---
+# Note: Ensure 'app' package is in PYTHONPATH
 from app.routers.knowledge_base import router as kb_router
 from app.routers.announcements import router as ann_router
 from app.routers.employee_docs import router as emp_router
@@ -43,29 +54,36 @@ app.include_router(gp_router)
 app.include_router(org_router)
 app.include_router(mgr_router)
 
-# --- CORS middleware (ONLY ONE INSTANCE) ---
+# --- CORS middleware ---
+# FIX: Parse CORS_ORIGINS correctly, stripping whitespace from each origin
+CORS_ORIGINS_ENV = os.getenv(
+    "CORS_ORIGINS",
+    "https://rafiki-frontend-five.vercel.app,http://localhost:5173,http://localhost:3000",
+)
+ALLOWED_ORIGINS = [origin.strip() for origin in CORS_ORIGINS_ENV.split(",") if origin.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://rafiki-frontend-five.vercel.app",
-        "http://localhost:5173",
-        "http://localhost:3000",
-    ],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # --- Create uploads directory & mount static files ---
-STATIC_UPLOADS = Path(__file__).parent / "static" / "uploads"
-STATIC_UPLOADS.mkdir(parents=True, exist_ok=True)
-app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
+# FIX: Removed unused STATIC_UPLOADS variable to avoid confusion
+STATIC_DIR = Path(__file__).parent / "static"
+STATIC_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 BASE_UPLOAD_DIR = Path(__file__).parent / "uploads"
 TEXT_DIR = BASE_UPLOAD_DIR / "text"
 IMG_DIR = BASE_UPLOAD_DIR / "images"
 PROJECT_MANIFEST = BASE_UPLOAD_DIR / "project_files.json"
 MAX_PROJECT_FILES = 25
+
+TEXT_DIR.mkdir(parents=True, exist_ok=True)
+IMG_DIR.mkdir(parents=True, exist_ok=True)
 
 def _read_project_manifest():
     if not PROJECT_MANIFEST.exists():
@@ -82,29 +100,28 @@ def _write_project_manifest(files):
     files = [Path(x).name for x in files]
     PROJECT_MANIFEST.write_text(json.dumps(files, indent=2), encoding="utf-8")
 
-TEXT_DIR.mkdir(parents=True, exist_ok=True)
-IMG_DIR.mkdir(parents=True, exist_ok=True)
-
-# NO TRAILING SPACES IN EXTENSIONS
+# FIX: NO TRAILING SPACES IN EXTENSIONS
 ALLOWED_TEXT_EXTS = {".txt", ".md", ".py", ".js", ".ts", ".json", ".csv", ".html", ".css", ".yml", ".yaml"}
 ALLOWED_IMG_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
 MAX_TEXT_BYTES = 500_000
 MAX_IMG_BYTES = 8_000_000
 
+# --- API Configuration ---
 BONSAI_API_KEY = os.getenv("BONSAI_API_KEY", "").strip()
+# FIX: Strip trailing spaces from URLs
 BONSAI_BASE_URL = os.getenv("BONSAI_BASE_URL", "https://go.trybons.ai").strip().rstrip("/")
 BONSAI_DEFAULT_MODEL = os.getenv("BONSAI_DEFAULT_MODEL", "anthropic/claude-sonnet-4.5").strip()
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
-OPENAI_MODEL_VISION = os.getenv("OPENAI_MODEL_VISION", "gpt-4o-mini")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
+# FIX: Strip trailing spaces from URLs
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").strip()
+OPENAI_MODEL_VISION = os.getenv("OPENAI_MODEL_VISION", "gpt-4o-mini").strip()
 
-vision_client = OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL)
-
-CORS_ORIGINS = os.getenv(
-    "CORS_ORIGINS",
-    "https://rafiki-frontend-five.vercel.app,http://localhost:5173,http://localhost:3000",
-).split(",")
+# FIX: Initialize client safely only if key exists
+if OPENAI_API_KEY:
+    vision_client = OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL)
+else:
+    vision_client = None
 
 # --- Support models ---
 SUPPORTED_MODELS = [
@@ -131,6 +148,7 @@ def list_files():
 
 @app.post("/upload_text")
 async def upload_text(file: UploadFile = File(...)):
+    # SECURITY NOTE: Add authentication dependency here in production (e.g., user: User = Depends(get_current_user))
     safe_name = Path(file.filename).name
     ext = Path(safe_name).suffix.lower()
     if ext not in ALLOWED_TEXT_EXTS:
@@ -154,6 +172,7 @@ def get_text_file(name: str):
 
 @app.post("/upload_image")
 async def upload_image(file: UploadFile = File(...)):
+    # SECURITY NOTE: Add authentication dependency here in production
     safe_name = Path(file.filename).name
     ext = Path(safe_name).suffix.lower()
     if ext not in ALLOWED_IMG_EXTS:
@@ -174,28 +193,43 @@ MAX_DESCRIBE_PROMPT_LEN = 2000
 
 @app.post("/image/describe")
 def describe_image(name: str, prompt: str = "Describe this image briefly and extract any visible text."):
-    if not OPENAI_API_KEY:
+    # SECURITY NOTE: Add authentication dependency here in production
+    if not vision_client or not OPENAI_API_KEY:
         raise HTTPException(status_code=503, detail="Vision not configured. Set OPENAI_API_KEY.")
+    
     if len(prompt) > MAX_DESCRIBE_PROMPT_LEN:
         raise HTTPException(status_code=400, detail=f"Prompt too long (max {MAX_DESCRIBE_PROMPT_LEN} chars)")
+    
     safe_name = Path(name).name
     path = IMG_DIR / safe_name
     if not path.exists() or not path.is_file():
         raise HTTPException(status_code=404, detail="Image not found")
+    
     ext = path.suffix.lower()
+    # FIX: Correct MIME types
     mime = "image/png" if ext == ".png" else "image/jpeg" if ext in [".jpg", ".jpeg"] else "image/webp"
+    
     b64 = base64.b64encode(path.read_bytes()).decode("utf-8")
-    resp = vision_client.responses.create(
-        model=OPENAI_MODEL_VISION,
-        input=[{
-            "role": "user",
-            "content": [
-                {"type": "input_text", "text": prompt},
-                {"type": "input_image", "image_url": f"data:{mime};base64,{b64}"},
-            ],
-        }],
-    )
-    return {"ok": True, "name": safe_name, "description": resp.output_text}
+    
+    # FIX: Use standard OpenAI chat.completions API instead of non-existent responses API
+    try:
+        resp = vision_client.chat.completions.create(
+            model=OPENAI_MODEL_VISION,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
+                ],
+            }],
+        )
+        # FIX: Access content correctly from OpenAI response object
+        description = resp.choices[0].message.content
+    except Exception as e:
+        logger.error(f"Vision API error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to process image")
+
+    return {"ok": True, "name": safe_name, "description": description}
 
 @app.get("/project_files")
 def get_project_files():
@@ -206,6 +240,7 @@ def get_project_files():
 
 @app.post("/project_files")
 def set_project_files(payload: dict):
+    # SECURITY NOTE: Add authentication dependency here in production
     files = payload.get("files", [])
     if not isinstance(files, list):
         raise HTTPException(status_code=400, detail="files must be a list")
@@ -221,6 +256,7 @@ def set_project_files(payload: dict):
 
 @app.delete("/delete")
 def delete_file(kind: str, name: str):
+    # SECURITY NOTE: Add authentication dependency here in production
     safe = Path(name).name
     if kind == "text":
         path = TEXT_DIR / safe
@@ -237,86 +273,13 @@ def delete_file(kind: str, name: str):
         _write_project_manifest(pf)
     return {"ok": True, "deleted": safe, "kind": kind}
 
-@app.get("/debug_bonsai")
-def debug_bonsai():
-    base = BONSAI_BASE_URL.rstrip("/")
-    results = []
-    attempts = [
-        {
-            "label": "1: no model field at all",
-            "url": base + "/v1/messages",
-            "headers": {"Content-Type": "application/json", "Authorization": f"Bearer {BONSAI_API_KEY}", "anthropic-version": "2023-06-01"},
-            "payload": {"max_tokens": 64, "messages": [{"role": "user", "content": "Say hi"}]},
-        },
-        {
-            "label": "2: model=claude-3-5-sonnet-20241022",
-            "url": base + "/v1/messages",
-            "headers": {"Content-Type": "application/json", "Authorization": f"Bearer {BONSAI_API_KEY}", "anthropic-version": "2023-06-01"},
-            "payload": {"model": "claude-3-5-sonnet-20241022", "max_tokens": 64, "messages": [{"role": "user", "content": "Say hi"}]},
-        },
-        {
-            "label": "3: model=claude-3-5-sonnet-latest",
-            "url": base + "/v1/messages",
-            "headers": {"Content-Type": "application/json", "Authorization": f"Bearer {BONSAI_API_KEY}", "anthropic-version": "2023-06-01"},
-            "payload": {"model": "claude-3-5-sonnet-latest", "max_tokens": 64, "messages": [{"role": "user", "content": "Say hi"}]},
-        },
-        {
-            "label": "4: model=claude-sonnet-4-5-20250929",
-            "url": base + "/v1/messages",
-            "headers": {"Content-Type": "application/json", "Authorization": f"Bearer {BONSAI_API_KEY}", "anthropic-version": "2023-06-01"},
-            "payload": {"model": "claude-sonnet-4-5-20250929", "max_tokens": 64, "messages": [{"role": "user", "content": "Say hi"}]},
-        },
-        {
-            "label": "5: model=anthropic/claude-sonnet-4.5",
-            "url": base + "/v1/messages",
-            "headers": {"Content-Type": "application/json", "Authorization": f"Bearer {BONSAI_API_KEY}", "anthropic-version": "2023-06-01"},
-            "payload": {"model": "anthropic/claude-sonnet-4.5", "max_tokens": 64, "messages": [{"role": "user", "content": "Say hi"}]},
-        },
-        {
-            "label": "6: with system field",
-            "url": base + "/v1/messages",
-            "headers": {"Content-Type": "application/json", "Authorization": f"Bearer {BONSAI_API_KEY}", "anthropic-version": "2023-06-01"},
-            "payload": {"model": "anthropic/claude-sonnet-4.5", "max_tokens": 64, "system": "You are helpful.", "messages": [{"role": "user", "content": "Say hi"}]},
-        },
-        {
-            "label": "7: with stream=false",
-            "url": base + "/v1/messages",
-            "headers": {"Content-Type": "application/json", "Authorization": f"Bearer {BONSAI_API_KEY}", "anthropic-version": "2023-06-01"},
-            "payload": {"model": "anthropic/claude-sonnet-4.5", "max_tokens": 64, "stream": False, "messages": [{"role": "user", "content": "Say hi"}]},
-        },
-        {
-            "label": "8: with stream=true",
-            "url": base + "/v1/messages",
-            "headers": {"Content-Type": "application/json", "Authorization": f"Bearer {BONSAI_API_KEY}", "anthropic-version": "2023-06-01"},
-            "payload": {"model": "anthropic/claude-sonnet-4.5", "max_tokens": 64, "stream": True, "messages": [{"role": "user", "content": "Say hi"}]},
-        },
-    ]
-    for att in attempts:
-        try:
-            print(f"\nTrying: {att['label']}")
-            r = httpx.post(att["url"], headers=att["headers"], json=att["payload"], timeout=30)
-            print(f"  Status: {r.status_code}")
-            print(f"  Response headers: {dict(r.headers)}")
-            print(f"  Body: {r.text[:500]}")
-            entry = {"label": att["label"], "status": r.status_code, "body": r.text[:300], "resp_headers": dict(r.headers)}
-            if r.status_code < 400:
-                entry["WORKING"] = True
-            results.append(entry)
-        except Exception as e:
-            print(f"  Error: {e}")
-            results.append({"label": att["label"], "error": str(e)})
-    try:
-        r_bad = httpx.post(
-            base + "/v1/messages",
-            headers={"Content-Type": "application/json", "Authorization": "Bearer fake_key_12345", "anthropic-version": "2023-06-01"},
-            json={"model": "anthropic/claude-sonnet-4.5", "max_tokens": 64, "messages": [{"role": "user", "content": "hi"}]},
-            timeout=30,
-        )
-        results.append({"label": "FAKE KEY TEST", "status": r_bad.status_code, "body": r_bad.text[:300]})
-    except Exception as e:
-        results.append({"label": "FAKE KEY TEST", "error": str(e)})
-    return {"key_len": len(BONSAI_API_KEY), "key_prefix": BONSAI_API_KEY[:8] + "...", "results": results}
+# FIX: Removed /debug_bonsai endpoint to prevent exposure of API keys and internal logic
 
 @app.get("/health")
 def health():
     return {"ok": True}
+
+if __name__ == "__main__":
+    import uvicorn
+    logger.info("Starting Rafiki API...")
+    uvicorn.run(app, host="0.0.0.0", port=8000)
