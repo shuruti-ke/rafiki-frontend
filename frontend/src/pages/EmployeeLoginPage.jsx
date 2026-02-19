@@ -53,7 +53,7 @@ export default function EmployeeLoginPage() {
       localStorage.setItem("rafiki_token", data.access_token);
       localStorage.setItem("rafiki_role", data.user.role);
       localStorage.setItem("rafiki_user", JSON.stringify(data.user));
-      navigate("/");
+      navigate("/chat");
     } catch (err) {
       setError(err.message);
     } finally {
