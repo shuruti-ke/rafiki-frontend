@@ -6,10 +6,24 @@ const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 export default function HRAdminLoginPage() {
   const navigate = useNavigate();
-  const [step, setStep] = useState(1);
-  const [code, setCode] = useState("");
-  const [orgName, setOrgName] = useState("");
-  const [orgCode, setOrgCode] = useState("");
+
+  // ✅ Restore org state from storage (prevents reset loop)
+  const [step, setStep] = useState(() =>
+    localStorage.getItem("rafiki_org_code") ? 2 : 1
+  );
+
+  const [code, setCode] = useState(
+    () => localStorage.getItem("rafiki_org_code") || ""
+  );
+
+  const [orgName, setOrgName] = useState(
+    () => localStorage.getItem("rafiki_org_name") || ""
+  );
+
+  const [orgCode, setOrgCode] = useState(
+    () => localStorage.getItem("rafiki_org_code") || ""
+  );
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -19,16 +33,26 @@ export default function HRAdminLoginPage() {
     e.preventDefault();
     setError("");
     setLoading(true);
+
     try {
+      const cleanCode = code.trim();
+
       const res = await fetch(`${API}/auth/verify-code`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: code.trim() }),
+        body: JSON.stringify({ code: cleanCode }),
       });
+
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Invalid company code");
+
       setOrgName(data.org_name);
-      setOrgCode(code.trim());
+      setOrgCode(cleanCode);
+
+      // ✅ Persist org
+      localStorage.setItem("rafiki_org_name", data.org_name);
+      localStorage.setItem("rafiki_org_code", cleanCode);
+
       setStep(2);
     } catch (err) {
       setError(err.message);
@@ -41,19 +65,29 @@ export default function HRAdminLoginPage() {
     e.preventDefault();
     setError("");
     setLoading(true);
+
     try {
       const res = await fetch(`${API}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, org_code: orgCode }),
+        body: JSON.stringify({
+          email: email.trim(),
+          password,
+          org_code: orgCode,
+        }),
       });
+
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Login failed");
 
+      // ✅ Save auth safely
       localStorage.setItem("rafiki_token", data.access_token);
-      localStorage.setItem("rafiki_role", data.user.role);
+      localStorage.setItem("rafiki_role", String(data.user.role || ""));
       localStorage.setItem("rafiki_user", JSON.stringify(data.user));
-      navigate("/admin");
+
+      // ✅ Prevent back button bounce
+      navigate("/admin", { replace: true });
+
     } catch (err) {
       setError(err.message);
     } finally {
@@ -62,9 +96,14 @@ export default function HRAdminLoginPage() {
   };
 
   const resetCode = () => {
+    // ✅ Clear persisted org
+    localStorage.removeItem("rafiki_org_name");
+    localStorage.removeItem("rafiki_org_code");
+
     setStep(1);
     setOrgName("");
     setOrgCode("");
+    setCode("");
     setError("");
   };
 
@@ -75,6 +114,7 @@ export default function HRAdminLoginPage() {
           <div className="login-logo-dot" />
           <div className="login-brand-title">Rafiki</div>
         </div>
+
         <div className="login-subtitle">HR Admin Portal</div>
 
         {step === 1 ? (
@@ -89,7 +129,9 @@ export default function HRAdminLoginPage() {
                 required
               />
             </div>
+
             {error && <div className="login-error">{error}</div>}
+
             <button className="login-btn" type="submit" disabled={loading}>
               {loading ? "Verifying..." : "Continue"}
             </button>
@@ -98,8 +140,11 @@ export default function HRAdminLoginPage() {
           <form className="login-form" onSubmit={handleLogin}>
             <div className="login-org-badge">
               <span className="org-name">{orgName}</span>
-              <button type="button" onClick={resetCode}>Change</button>
+              <button type="button" onClick={resetCode}>
+                Change
+              </button>
             </div>
+
             <div className="login-field">
               <label>Email</label>
               <input
@@ -110,6 +155,7 @@ export default function HRAdminLoginPage() {
                 required
               />
             </div>
+
             <div className="login-field">
               <label>Password</label>
               <input
@@ -120,7 +166,9 @@ export default function HRAdminLoginPage() {
                 required
               />
             </div>
+
             {error && <div className="login-error">{error}</div>}
+
             <button className="login-btn" type="submit" disabled={loading}>
               {loading ? "Signing in..." : "Sign In"}
             </button>
