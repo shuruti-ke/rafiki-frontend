@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Boolean, DateTime, Text
+from sqlalchemy import Column, String, Boolean, DateTime, Text, Enum
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import UUID
 
@@ -15,8 +15,6 @@ class Organization(Base):
     description = Column(Text, nullable=True)
     industry = Column(String(255), nullable=True)
 
-    # Keep Integer only if your orgs.employee_count is actually integer in Postgres
-    # If unsure, leave as String until confirmed.
     employee_count = Column(String(50), nullable=True)
 
     is_active = Column(Boolean, default=True)
@@ -34,8 +32,8 @@ class User(Base):
     email = Column(String(255), nullable=True, index=True)
     password_hash = Column(String(255), nullable=False)
 
-    # Postgres enum maps cleanly to String for reads/writes unless you explicitly declare Enum
-    role = Column(String(50), nullable=False)
+    # ✅ Correct: map Postgres enum
+    role = Column(Enum(name="user_role_enum", create_type=False), nullable=False)
 
     language_preference = Column(String(50), nullable=True)
     is_active = Column(Boolean, default=True)
