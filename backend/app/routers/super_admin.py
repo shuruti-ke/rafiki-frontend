@@ -34,7 +34,6 @@ router = APIRouter(prefix="/super-admin", tags=["super-admin"])
 # ---------- helpers ----------
 
 def _generate_code(length: int = 5) -> str:
-    # Your sample org codes are numeric strings ("54321"), so generate digits
     chars = string.digits
     return "".join(random.choices(chars, k=length))
 
@@ -55,7 +54,7 @@ class OrgCreate(BaseModel):
     org_code: Optional[str] = None
     industry: Optional[str] = None
     description: Optional[str] = None
-    employee_count: Optional[str] = None
+    employee_count: Optional[int] = None  # ✅ FIXED
 
 
 class OrgUpdate(BaseModel):
@@ -63,7 +62,7 @@ class OrgUpdate(BaseModel):
     org_code: Optional[str] = None
     industry: Optional[str] = None
     description: Optional[str] = None
-    employee_count: Optional[str] = None
+    employee_count: Optional[int] = None  # ✅ FIXED
     is_active: Optional[bool] = None
 
 
@@ -79,7 +78,7 @@ class OrgOut(BaseModel):
     org_code: Optional[str] = None
     industry: Optional[str] = None
     description: Optional[str] = None
-    employee_count: Optional[str] = None
+    employee_count: Optional[int] = None  # ✅ FIXED
     is_active: bool = True
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
@@ -151,7 +150,6 @@ def list_orgs(
 ):
     orgs = db.query(Organization).order_by(Organization.created_at.desc()).all()
 
-    # Bulk counts (avoid N+1 queries)
     user_counts = dict(
         db.query(User.org_id, func.count(User.user_id))
         .group_by(User.org_id)
@@ -178,7 +176,7 @@ def list_orgs(
                 org_code=org.org_code,
                 industry=org.industry,
                 description=org.description,
-                employee_count=org.employee_count,
+                employee_count=org.employee_count,  # ✅ now matches schema
                 is_active=bool(org.is_active) if org.is_active is not None else True,
                 created_at=org.created_at,
                 updated_at=getattr(org, "updated_at", None),
@@ -189,173 +187,3 @@ def list_orgs(
         )
 
     return result
-
-
-@router.post("/orgs", response_model=OrgOut, status_code=201)
-def create_org(
-    payload: OrgCreate,
-    role: str = Depends(require_super_admin),
-    db: Session = Depends(get_db),
-):
-    code = (payload.org_code or _unique_code(db)).strip()
-
-    if db.query(Organization).filter(Organization.org_code == code).first():
-        raise HTTPException(status_code=409, detail="Organization code already in use")
-
-    org = Organization(
-        name=payload.name,
-        org_code=code,
-        industry=payload.industry,
-        description=payload.description,
-        employee_count=payload.employee_count,
-        is_active=True,
-    )
-    db.add(org)
-    db.commit()
-    db.refresh(org)
-    return org
-
-
-@router.get("/orgs/{org_id}", response_model=OrgListItem)
-def get_org(
-    org_id: UUID,
-    role: str = Depends(require_super_admin),
-    db: Session = Depends(get_db),
-):
-    org = db.query(Organization).filter(Organization.org_id == org_id).first()
-    if not org:
-        raise HTTPException(status_code=404, detail="Organization not found")
-
-    user_count = (
-        db.query(func.count(User.user_id))
-        .filter(User.org_id == org_id)
-        .scalar()
-        or 0
-    )
-    documents_count = (
-        db.query(func.count(Document.id))
-        .filter(Document.org_id == org_id)
-        .scalar()
-        or 0
-    )
-    admin = (
-        db.query(User)
-        .filter(User.org_id == org_id, User.role == "hr_admin")
-        .first()
-    )
-
-    return OrgListItem(
-        org_id=org.org_id,
-        name=org.name,
-        org_code=org.org_code,
-        industry=org.industry,
-        description=org.description,
-        employee_count=org.employee_count,
-        is_active=bool(org.is_active) if org.is_active is not None else True,
-        created_at=org.created_at,
-        updated_at=getattr(org, "updated_at", None),
-        user_count=int(user_count),
-        documents_count=int(documents_count),
-        admin_email=admin.email if admin else None,
-    )
-
-
-@router.put("/orgs/{org_id}", response_model=OrgOut)
-def update_org(
-    org_id: UUID,
-    payload: OrgUpdate,
-    role: str = Depends(require_super_admin),
-    db: Session = Depends(get_db),
-):
-    org = db.query(Organization).filter(Organization.org_id == org_id).first()
-    if not org:
-        raise HTTPException(status_code=404, detail="Organization not found")
-
-    updates = payload.model_dump(exclude_unset=True)
-
-    if "org_code" in updates and updates["org_code"] and updates["org_code"] != org.org_code:
-        existing = (
-            db.query(Organization)
-            .filter(Organization.org_code == updates["org_code"], Organization.org_id != org_id)
-            .first()
-        )
-        if existing:
-            raise HTTPException(status_code=409, detail="Organization code already in use")
-
-    for key, value in updates.items():
-        setattr(org, key, value)
-
-    db.commit()
-    db.refresh(org)
-    return org
-
-
-@router.patch("/orgs/{org_id}/status", response_model=OrgOut)
-def set_org_status(
-    org_id: UUID,
-    payload: OrgStatusUpdate,
-    role: str = Depends(require_super_admin),
-    db: Session = Depends(get_db),
-):
-    org = db.query(Organization).filter(Organization.org_id == org_id).first()
-    if not org:
-        raise HTTPException(status_code=404, detail="Organization not found")
-
-    org.is_active = payload.is_active
-    db.commit()
-    db.refresh(org)
-    return org
-
-
-# ---------- Org users ----------
-
-@router.get("/orgs/{org_id}/users", response_model=list[UserOut])
-def list_org_users(
-    org_id: UUID,
-    role: str = Depends(require_super_admin),
-    db: Session = Depends(get_db),
-):
-    org = db.query(Organization).filter(Organization.org_id == org_id).first()
-    if not org:
-        raise HTTPException(status_code=404, detail="Organization not found")
-
-    users = (
-        db.query(User)
-        .filter(User.org_id == org_id)
-        .order_by(User.created_at.desc())
-        .all()
-    )
-    return users
-
-
-# ---------- Create HR admin ----------
-
-@router.post("/orgs/{org_id}/admin", response_model=UserOut, status_code=201)
-def create_hr_admin(
-    org_id: UUID,
-    payload: HRAdminCreate,
-    role: str = Depends(require_super_admin),
-    db: Session = Depends(get_db),
-):
-    org = db.query(Organization).filter(Organization.org_id == org_id).first()
-    if not org:
-        raise HTTPException(status_code=404, detail="Organization not found")
-
-    email = payload.email.strip().lower()
-
-    if db.query(User).filter(User.email == email).first():
-        raise HTTPException(status_code=409, detail="Email already registered")
-
-    # NOTE: users_legacy uses "name" not "full_name"
-    user = User(
-        email=email,
-        password_hash=_hash_password(payload.password),
-        name=payload.full_name,
-        role="hr_admin",
-        org_id=org_id,
-        is_active=True,
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    return user
