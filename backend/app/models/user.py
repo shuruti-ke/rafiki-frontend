@@ -11,8 +11,24 @@ USER_ROLE_ENUM = ENUM(
     "clinical_reviewer",
     "super_admin",
     name="user_role_enum",
-    create_type=False,  # DO NOT let SQLAlchemy try to recreate it
+    create_type=False,
 )
+
+
+class Organization(Base):
+    __tablename__ = "orgs"
+
+    org_id = Column(UUID(as_uuid=True), primary_key=True)
+    name = Column(String(200), nullable=False)
+    org_code = Column(String(50), nullable=False, unique=True, index=True)
+
+    description = Column(Text, nullable=True)
+    industry = Column(String(255), nullable=True)
+    employee_count = Column(String(50), nullable=True)
+
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
 class User(Base):
@@ -29,7 +45,6 @@ class User(Base):
 
     language_preference = Column(String(50), nullable=True)
     is_active = Column(Boolean, default=True)
-
     name = Column(String(200), nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
