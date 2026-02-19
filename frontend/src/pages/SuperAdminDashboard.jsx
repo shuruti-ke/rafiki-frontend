@@ -49,7 +49,9 @@ export default function SuperAdminDashboard() {
     }
   };
 
-  useEffect(() => { fetchAll(); }, []);
+  useEffect(() => {
+    fetchAll();
+  }, []);
 
   const handleCreateOrg = async (e) => {
     e.preventDefault();
@@ -68,6 +70,7 @@ export default function SuperAdminDashboard() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Failed to create org");
+
       setShowOrgModal(false);
       setOrgName("");
       setOrgCode("");
@@ -76,7 +79,7 @@ export default function SuperAdminDashboard() {
       setOrgEmployeeCount("");
       fetchAll();
     } catch (err) {
-      setError(err.message);
+      setError(err.message || "Failed to create org");
     }
   };
 
@@ -91,6 +94,7 @@ export default function SuperAdminDashboard() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Failed to create HR admin");
+
       setShowHRModal(false);
       setHrEmail("");
       setHrPassword("");
@@ -98,7 +102,7 @@ export default function SuperAdminDashboard() {
       setHrOrgId("");
       fetchAll();
     } catch (err) {
-      setError(err.message);
+      setError(err.message || "Failed to create HR admin");
     }
   };
 
@@ -122,14 +126,27 @@ export default function SuperAdminDashboard() {
       </div>
 
       <div className="sa-actions">
-        <button className="btn btnPrimary" onClick={() => { setError(""); setShowOrgModal(true); }}>
+        <button
+          className="btn btnPrimary"
+          onClick={() => {
+            setError("");
+            setShowOrgModal(true);
+          }}
+        >
           Onboard Company
         </button>
-        <button className="btn btnPrimary" onClick={() => { setError(""); setShowHRModal(true); }}>
+        <button
+          className="btn btnPrimary"
+          onClick={() => {
+            setError("");
+            setShowHRModal(true);
+          }}
+        >
           Create HR Admin
         </button>
       </div>
 
+      {/* Organizations table */}
       <div className="sa-section">
         <h2>Organizations</h2>
         {loading ? (
@@ -156,7 +173,9 @@ export default function SuperAdminDashboard() {
                   onClick={() => navigate(`/super-admin/orgs/${o.org_id}`)} // ✅ FIXED
                 >
                   <td>{o.name}</td>
-                  <td><code className="sa-code">{o.org_code}</code></td> {/* ✅ FIXED */}
+                  <td>
+                    <code className="sa-code">{o.org_code}</code> {/* ✅ FIXED */}
+                  </td>
                   <td>{o.industry || "—"}</td>
                   <td>{o.user_count}</td>
                   <td>{o.admin_email || "—"}</td>
@@ -172,6 +191,7 @@ export default function SuperAdminDashboard() {
         )}
       </div>
 
+      {/* Onboard Company Modal */}
       {showOrgModal && (
         <div className="sa-modal-overlay" onClick={() => setShowOrgModal(false)}>
           <div className="sa-modal" onClick={(e) => e.stopPropagation()}>
@@ -179,34 +199,64 @@ export default function SuperAdminDashboard() {
             <form className="sa-modal-form" onSubmit={handleCreateOrg}>
               <div className="sa-modal-field">
                 <label>Company Name *</label>
-                <input value={orgName} onChange={(e) => setOrgName(e.target.value)} placeholder="Acme Corp" required />
+                <input
+                  value={orgName}
+                  onChange={(e) => setOrgName(e.target.value)}
+                  placeholder="Acme Corp"
+                  required
+                />
               </div>
               <div className="sa-modal-field">
                 <label>Company Code (auto-generated if blank)</label>
-                <input value={orgCode} onChange={(e) => setOrgCode(e.target.value)} placeholder="e.g. 54321" />
+                <input
+                  value={orgCode}
+                  onChange={(e) => setOrgCode(e.target.value)}
+                  placeholder="e.g. 54321"
+                />
               </div>
               <div className="sa-modal-field">
                 <label>Industry</label>
-                <input value={orgIndustry} onChange={(e) => setOrgIndustry(e.target.value)} placeholder="e.g. Technology" />
+                <input
+                  value={orgIndustry}
+                  onChange={(e) => setOrgIndustry(e.target.value)}
+                  placeholder="e.g. Technology"
+                />
               </div>
               <div className="sa-modal-field">
                 <label>Description</label>
-                <input value={orgDescription} onChange={(e) => setOrgDescription(e.target.value)} placeholder="Brief description" />
+                <input
+                  value={orgDescription}
+                  onChange={(e) => setOrgDescription(e.target.value)}
+                  placeholder="Brief description"
+                />
               </div>
               <div className="sa-modal-field">
                 <label>Employee Count</label>
-                <input type="number" value={orgEmployeeCount} onChange={(e) => setOrgEmployeeCount(e.target.value)} placeholder="e.g. 50" min="0" />
+                <input
+                  type="number"
+                  value={orgEmployeeCount}
+                  onChange={(e) => setOrgEmployeeCount(e.target.value)}
+                  placeholder="e.g. 50"
+                  min="0"
+                />
               </div>
+
               {error && <div className="login-error">{error}</div>}
+
               <div className="sa-modal-btns">
-                <button type="submit" className="btn btnPrimary">Create</button>
-                <button type="button" className="btn" onClick={() => setShowOrgModal(false)}>Cancel</button>
+                <button type="submit" className="btn btnPrimary">
+                  Create
+                </button>
+                <button type="button" className="btn" onClick={() => setShowOrgModal(false)}>
+                  Cancel
+                </button>
               </div>
             </form>
           </div>
         </div>
       )}
 
+      {/* Create HR Admin Modal */}
       {showHRModal && (
         <div className="sa-modal-overlay" onClick={() => setShowHRModal(false)}>
           <div className="sa-modal" onClick={(e) => e.stopPropagation()}>
@@ -223,22 +273,48 @@ export default function SuperAdminDashboard() {
                   ))}
                 </select>
               </div>
+
               <div className="sa-modal-field">
                 <label>Full Name *</label>
-                <input value={hrName} onChange={(e) => setHrName(e.target.value)} placeholder="Jane Doe" required />
+                <input
+                  value={hrName}
+                  onChange={(e) => setHrName(e.target.value)}
+                  placeholder="Jane Doe"
+                  required
+                />
               </div>
+
               <div className="sa-modal-field">
                 <label>Email *</label>
-                <input type="email" value={hrEmail} onChange={(e) => setHrEmail(e.target.value)} placeholder="hr@company.com" required />
+                <input
+                  type="email"
+                  value={hrEmail}
+                  onChange={(e) => setHrEmail(e.target.value)}
+                  placeholder="hr@company.com"
+                  required
+                />
               </div>
+
               <div className="sa-modal-field">
                 <label>Password *</label>
-                <input type="password" value={hrPassword} onChange={(e) => setHrPassword(e.target.value)} placeholder="Set a password" required />
+                <input
+                  type="password"
+                  value={hrPassword}
+                  onChange={(e) => setHrPassword(e.target.value)}
+                  placeholder="Set a password"
+                  required
+                />
               </div>
+
               {error && <div className="login-error">{error}</div>}
+
               <div className="sa-modal-btns">
-                <button type="submit" className="btn btnPrimary">Create</button>
-                <button type="button" className="btn" onClick={() => setShowHRModal(false)}>Cancel</button>
+                <button type="submit" className="btn btnPrimary">
+                  Create
+                </button>
+                <button type="button" className="btn" onClick={() => setShowHRModal(false)}>
+                  Cancel
+                </button>
               </div>
             </form>
           </div>
