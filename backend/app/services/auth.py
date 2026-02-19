@@ -12,11 +12,6 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.user import Organization, User
-from app.services.auth import (
-    create_access_token,
-    decode_access_token,
-    verify_password as _verify_password,
-)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -26,7 +21,9 @@ JWT_EXPIRY_HOURS = int(os.getenv("JWT_EXPIRY_HOURS", "24"))
 # ---------- helpers ----------
 
 def _create_token(user: User) -> str:
-    """JWT 'sub' should be the UUID user_id as a string."""
+    # Lazy import prevents circular dependency
+    from app.services.auth import create_access_token
+
     return create_access_token(
         data={"sub": str(user.user_id)},
         expires_delta=timedelta(hours=JWT_EXPIRY_HOURS),
@@ -34,6 +31,8 @@ def _create_token(user: User) -> str:
 
 
 def verify_token(token: str) -> dict:
+    from app.services.auth import decode_access_token
+
     payload = decode_access_token(token)
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
@@ -90,6 +89,8 @@ def verify_code(body: VerifyCodeRequest, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=LoginResponse)
 def login(body: LoginRequest, db: Session = Depends(get_db)):
+    from app.services.auth import verify_password as _verify_password
+
     email = body.email.strip().lower()
     user = db.query(User).filter(User.email == email).first()
 
@@ -99,7 +100,6 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
     if user.is_active is False:
         raise HTTPException(status_code=403, detail="Account disabled")
 
-    # If org_code provided, verify the user belongs to that org
     if body.org_code:
         org_code = body.org_code.strip()
         org = db.query(Organization).filter(Organization.org_code == org_code).first()
