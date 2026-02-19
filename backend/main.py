@@ -35,17 +35,10 @@ from app.routers.chat import router as chat_router
 from app.routers.guided_paths import router as gp_router
 from app.routers.org_profile import router as org_router
 from app.routers.manager import router as mgr_router
-from app.routers.auth import (
-    router as auth_router,
-    v1_router as auth_v1_router,
-    super_admin_router,
-    super_admin_v1_router,
-)
+# FIX: Only import 'router' - the other routers don't exist in auth.py
+from app.routers.auth import router as auth_router
 
 app.include_router(auth_router)
-app.include_router(auth_v1_router)
-app.include_router(super_admin_router)
-app.include_router(super_admin_v1_router)
 app.include_router(kb_router)
 app.include_router(ann_router)
 app.include_router(emp_router)
@@ -71,7 +64,6 @@ app.add_middleware(
 )
 
 # --- Create uploads directory & mount static files ---
-# FIX: Removed unused STATIC_UPLOADS variable to avoid confusion
 STATIC_DIR = Path(__file__).parent / "static"
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -108,12 +100,10 @@ MAX_IMG_BYTES = 8_000_000
 
 # --- API Configuration ---
 BONSAI_API_KEY = os.getenv("BONSAI_API_KEY", "").strip()
-# FIX: Strip trailing spaces from URLs
 BONSAI_BASE_URL = os.getenv("BONSAI_BASE_URL", "https://go.trybons.ai").strip().rstrip("/")
 BONSAI_DEFAULT_MODEL = os.getenv("BONSAI_DEFAULT_MODEL", "anthropic/claude-sonnet-4.5").strip()
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
-# FIX: Strip trailing spaces from URLs
 OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").strip()
 OPENAI_MODEL_VISION = os.getenv("OPENAI_MODEL_VISION", "gpt-4o-mini").strip()
 
@@ -148,7 +138,6 @@ def list_files():
 
 @app.post("/upload_text")
 async def upload_text(file: UploadFile = File(...)):
-    # SECURITY NOTE: Add authentication dependency here in production (e.g., user: User = Depends(get_current_user))
     safe_name = Path(file.filename).name
     ext = Path(safe_name).suffix.lower()
     if ext not in ALLOWED_TEXT_EXTS:
@@ -172,7 +161,6 @@ def get_text_file(name: str):
 
 @app.post("/upload_image")
 async def upload_image(file: UploadFile = File(...)):
-    # SECURITY NOTE: Add authentication dependency here in production
     safe_name = Path(file.filename).name
     ext = Path(safe_name).suffix.lower()
     if ext not in ALLOWED_IMG_EXTS:
@@ -193,7 +181,6 @@ MAX_DESCRIBE_PROMPT_LEN = 2000
 
 @app.post("/image/describe")
 def describe_image(name: str, prompt: str = "Describe this image briefly and extract any visible text."):
-    # SECURITY NOTE: Add authentication dependency here in production
     if not vision_client or not OPENAI_API_KEY:
         raise HTTPException(status_code=503, detail="Vision not configured. Set OPENAI_API_KEY.")
     
@@ -206,12 +193,10 @@ def describe_image(name: str, prompt: str = "Describe this image briefly and ext
         raise HTTPException(status_code=404, detail="Image not found")
     
     ext = path.suffix.lower()
-    # FIX: Correct MIME types
     mime = "image/png" if ext == ".png" else "image/jpeg" if ext in [".jpg", ".jpeg"] else "image/webp"
     
     b64 = base64.b64encode(path.read_bytes()).decode("utf-8")
     
-    # FIX: Use standard OpenAI chat.completions API instead of non-existent responses API
     try:
         resp = vision_client.chat.completions.create(
             model=OPENAI_MODEL_VISION,
@@ -223,7 +208,6 @@ def describe_image(name: str, prompt: str = "Describe this image briefly and ext
                 ],
             }],
         )
-        # FIX: Access content correctly from OpenAI response object
         description = resp.choices[0].message.content
     except Exception as e:
         logger.error(f"Vision API error: {e}")
@@ -240,7 +224,6 @@ def get_project_files():
 
 @app.post("/project_files")
 def set_project_files(payload: dict):
-    # SECURITY NOTE: Add authentication dependency here in production
     files = payload.get("files", [])
     if not isinstance(files, list):
         raise HTTPException(status_code=400, detail="files must be a list")
@@ -256,7 +239,6 @@ def set_project_files(payload: dict):
 
 @app.delete("/delete")
 def delete_file(kind: str, name: str):
-    # SECURITY NOTE: Add authentication dependency here in production
     safe = Path(name).name
     if kind == "text":
         path = TEXT_DIR / safe
@@ -272,8 +254,6 @@ def delete_file(kind: str, name: str):
         pf = [x for x in pf if x != safe]
         _write_project_manifest(pf)
     return {"ok": True, "deleted": safe, "kind": kind}
-
-# FIX: Removed /debug_bonsai endpoint to prevent exposure of API keys and internal logic
 
 @app.get("/health")
 def health():
