@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
+import LandingPage from "./pages/LandingPage.jsx";
 import ChatPage from "./pages/ChatPage.jsx";
 import AdminLayout from "./components/AdminLayout.jsx";
 import AdminDashboard from "./pages/AdminDashboard.jsx";
@@ -36,14 +37,17 @@ export default function App() {
         <Route path="/super-admin/login" element={<LoginPage />} />
         <Route path="/admin/login" element={<HRAdminLoginPage />} />
 
+        {/* Landing page */}
+        <Route path="/" element={<LandingPage />} />
+
         {/* Main chat interface (employee) */}
-        <Route path="/" element={<ChatPage />} />
+        <Route path="/chat" element={<ChatPage />} />
 
         {/* Employee-facing pages */}
         <Route path="/knowledge-base" element={
           <div className="employee-page-wrapper">
             <nav className="employee-nav">
-              <Link to="/" className="btn btnTiny">Chat</Link>
+              <Link to="/chat" className="btn btnTiny">Chat</Link>
               <Link to="/knowledge-base" className="btn btnTiny">Knowledge Base</Link>
               <Link to="/announcements" className="btn btnTiny">Announcements</Link>
               <Link to="/guided-paths" className="btn btnTiny">Guided Paths</Link>
@@ -56,7 +60,7 @@ export default function App() {
         <Route path="/announcements" element={
           <div className="employee-page-wrapper">
             <nav className="employee-nav">
-              <Link to="/" className="btn btnTiny">Chat</Link>
+              <Link to="/chat" className="btn btnTiny">Chat</Link>
               <Link to="/knowledge-base" className="btn btnTiny">Knowledge Base</Link>
               <Link to="/announcements" className="btn btnTiny">Announcements</Link>
               <Link to="/guided-paths" className="btn btnTiny">Guided Paths</Link>
@@ -71,7 +75,7 @@ export default function App() {
         <Route path="/guided-paths" element={
           <div className="employee-page-wrapper">
             <nav className="employee-nav">
-              <Link to="/" className="btn btnTiny">Chat</Link>
+              <Link to="/chat" className="btn btnTiny">Chat</Link>
               <Link to="/knowledge-base" className="btn btnTiny">Knowledge Base</Link>
               <Link to="/announcements" className="btn btnTiny">Announcements</Link>
               <Link to="/guided-paths" className="btn btnTiny">Guided Paths</Link>
@@ -84,7 +88,7 @@ export default function App() {
         <Route path="/guided-paths/:moduleId" element={
           <div className="employee-page-wrapper">
             <nav className="employee-nav">
-              <Link to="/" className="btn btnTiny">Chat</Link>
+              <Link to="/chat" className="btn btnTiny">Chat</Link>
               <Link to="/knowledge-base" className="btn btnTiny">Knowledge Base</Link>
               <Link to="/announcements" className="btn btnTiny">Announcements</Link>
               <Link to="/guided-paths" className="btn btnTiny">Guided Paths</Link>
