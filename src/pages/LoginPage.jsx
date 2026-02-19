@@ -24,12 +24,12 @@ export default function LoginPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Login failed");
 
-      localStorage.setItem("rafiki_token", data.token);
-      localStorage.setItem("rafiki_role", data.role);
+      localStorage.setItem("rafiki_token", data.access_token);
+      localStorage.setItem("rafiki_role", data.user.role);
       localStorage.setItem("rafiki_user", JSON.stringify(data.user));
 
-      if (data.role === "super_admin") navigate("/super-admin");
-      else if (data.role === "hr_admin") navigate("/admin");
+      if (data.user.role === "super_admin") navigate("/super-admin");
+      else if (data.user.role === "hr_admin") navigate("/admin");
       else navigate("/");
     } catch (err) {
       setError(err.message);
