@@ -116,3 +116,15 @@ def require_admin(
     if role not in ("hr_admin", "super_admin"):
         raise HTTPException(status_code=403, detail="Admin access required")
     return role
+
+
+def require_super_admin(
+    authorization: Optional[str] = Header(default=None),
+    x_user_role: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> str:
+    """Require super_admin role only."""
+    role = get_current_role(authorization, x_user_role, db)
+    if role != "super_admin":
+        raise HTTPException(status_code=403, detail="Super admin access required")
+    return role

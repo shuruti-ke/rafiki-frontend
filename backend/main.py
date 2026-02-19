@@ -37,6 +37,7 @@ from app.routers.org_profile import router as org_router
 from app.routers.manager import router as mgr_router
 # FIX: Only import 'router' - the other routers don't exist in auth.py
 from app.routers.auth import router as auth_router
+from app.routers.super_admin import router as sa_router
 
 app.include_router(auth_router)
 app.include_router(kb_router)
@@ -46,6 +47,7 @@ app.include_router(chat_router)
 app.include_router(gp_router)
 app.include_router(org_router)
 app.include_router(mgr_router)
+app.include_router(sa_router)
 
 # --- CORS middleware ---
 # FIX: Parse CORS_ORIGINS correctly, stripping whitespace from each origin
