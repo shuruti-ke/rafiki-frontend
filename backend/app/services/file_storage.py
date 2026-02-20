@@ -1,8 +1,39 @@
+import os
 import uuid
+import logging
 from pathlib import Path
 from fastapi import UploadFile, HTTPException
 
-UPLOAD_DIR = Path(__file__).parent.parent.parent / "static" / "uploads"
+import boto3
+from botocore.config import Config
+
+logger = logging.getLogger(__name__)
+
+# R2 configuration
+R2_ACCESS_KEY_ID = os.getenv("R2_ACCESS_KEY_ID", "").strip()
+R2_SECRET_ACCESS_KEY = os.getenv("R2_SECRET_ACCESS_KEY", "").strip()
+R2_ENDPOINT = os.getenv("R2_ENDPOINT", "").strip()
+R2_BUCKET = os.getenv("R2_BUCKET", "rafiki-uploads").strip()
+
+# Initialize S3 client for R2
+_s3_client = None
+
+
+def _get_s3():
+    global _s3_client
+    if _s3_client is None:
+        if not all([R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_ENDPOINT]):
+            raise RuntimeError("R2 storage not configured. Set R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_ENDPOINT.")
+        _s3_client = boto3.client(
+            "s3",
+            endpoint_url=R2_ENDPOINT,
+            aws_access_key_id=R2_ACCESS_KEY_ID,
+            aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+            config=Config(signature_version="s3v4"),
+            region_name="auto",
+        )
+    return _s3_client
+
 
 ALLOWED_MIME_TYPES = {
     "application/pdf",
@@ -18,7 +49,7 @@ MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 
 
 def save_upload(file: UploadFile, subfolder: str = "documents") -> tuple[str, str, int]:
-    """Save an uploaded file with UUID naming. Returns (path, original_name, size)."""
+    """Upload file to Cloudflare R2. Returns (r2_key, original_name, size)."""
     if file.content_type and file.content_type not in ALLOWED_MIME_TYPES:
         raise HTTPException(status_code=400, detail=f"File type not allowed: {file.content_type}")
 
@@ -27,19 +58,52 @@ def save_upload(file: UploadFile, subfolder: str = "documents") -> tuple[str, st
 
     if size > MAX_FILE_SIZE:
         raise HTTPException(status_code=413, detail="File too large (max 50MB)")
-
     if size == 0:
         raise HTTPException(status_code=400, detail="Empty file")
 
     original_name = Path(file.filename).name if file.filename else "unnamed"
     ext = Path(original_name).suffix
     unique_name = f"{uuid.uuid4().hex}{ext}"
+    r2_key = f"{subfolder}/{unique_name}"
 
-    dest_dir = UPLOAD_DIR / subfolder
-    dest_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        s3 = _get_s3()
+        s3.put_object(
+            Bucket=R2_BUCKET,
+            Key=r2_key,
+            Body=content,
+            ContentType=file.content_type or "application/octet-stream",
+        )
+        logger.info(f"Uploaded to R2: {r2_key} ({size} bytes)")
+    except Exception as e:
+        logger.error(f"R2 upload failed: {e}")
+        raise HTTPException(status_code=500, detail="File upload failed")
 
-    dest_path = dest_dir / unique_name
-    dest_path.write_bytes(content)
+    return r2_key, original_name, size
 
-    relative_path = f"static/uploads/{subfolder}/{unique_name}"
-    return relative_path, original_name, size
+
+def get_download_url(r2_key: str, expires_in: int = 3600) -> str:
+    """Generate a presigned URL for downloading a file from R2."""
+    try:
+        s3 = _get_s3()
+        url = s3.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": R2_BUCKET, "Key": r2_key},
+            ExpiresIn=expires_in,
+        )
+        return url
+    except Exception as e:
+        logger.error(f"Failed to generate presigned URL for {r2_key}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate download link")
+
+
+def delete_file(r2_key: str) -> bool:
+    """Delete a file from R2."""
+    try:
+        s3 = _get_s3()
+        s3.delete_object(Bucket=R2_BUCKET, Key=r2_key)
+        logger.info(f"Deleted from R2: {r2_key}")
+        return True
+    except Exception as e:
+        logger.error(f"R2 delete failed for {r2_key}: {e}")
+        return False
