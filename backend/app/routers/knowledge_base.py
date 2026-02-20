@@ -3,16 +3,16 @@ import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.document import Document, DocumentChunk
 from app.schemas.documents import DocumentResponse, DocumentUpdate
-from app.services.file_storage import save_upload
+from app.services.file_storage import save_upload, get_download_url
 from app.services.document_processor import index_document
 from app.services.audit import log_action
 
-# ✅ Use your existing auth deps (JWT or demo-header fallback)
 from app.dependencies import get_current_org_id, get_current_user_id
 
 logger = logging.getLogger(__name__)
@@ -41,7 +41,6 @@ def upload_document(
 ):
     file_path, original_name, size = save_upload(file, subfolder="documents")
 
-    # tags column is jsonb (per your schema). We'll store a JSON array of strings.
     tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
 
     doc = Document(
@@ -88,7 +87,6 @@ def list_documents(
     if category:
         q = q.filter(Document.category == category)
 
-    # tags is jsonb. If stored as JSON array, this works with Postgres @> operator.
     if tag:
         q = q.filter(Document.tags.contains([tag]))
 
@@ -112,6 +110,25 @@ def get_document(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
     return doc
+
+
+@router.get("/{doc_id}/download")
+def download_document(
+    doc_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+):
+    """Redirect to a presigned R2 URL for downloading the document."""
+    doc = (
+        db.query(Document)
+        .filter(Document.id == doc_id, Document.org_id == org_id)
+        .first()
+    )
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    presigned_url = get_download_url(doc.file_path)
+    return RedirectResponse(url=presigned_url)
 
 
 @router.put("/{doc_id}", response_model=DocumentResponse)
