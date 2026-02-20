@@ -1,16 +1,14 @@
+import uuid
 from pydantic import BaseModel, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 
 
 class DocumentResponse(BaseModel):
-    # ✅ enables returning SQLAlchemy objects directly
     model_config = ConfigDict(from_attributes=True)
 
-    # ✅ UUIDs come back as uuid.UUID objects, Pydantic will serialize to string
-    id: str
-    org_id: str
-
+    id: uuid.UUID
+    org_id: uuid.UUID
     title: str
     description: Optional[str] = None
     file_path: str
@@ -18,19 +16,12 @@ class DocumentResponse(BaseModel):
     mime_type: str
     file_size: int
     category: str
-
-    # ✅ tags is JSONB array in DB
     tags: List[str] = []
-
     version: int
-
-    parent_id: Optional[str] = None
-
+    parent_id: Optional[uuid.UUID] = None
     is_current: bool
     is_indexed: bool
-
-    uploaded_by: Optional[str] = None
-
+    uploaded_by: Optional[uuid.UUID] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
