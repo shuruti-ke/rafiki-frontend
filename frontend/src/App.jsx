@@ -41,7 +41,19 @@ export default function App() {
         <Route path="/" element={<LandingPage />} />
 
         {/* Main chat interface (employee) */}
-        <Route path="/chat" element={<ChatPage />} />
+        <Route path="/chat" element={
+          <div className="employee-page-wrapper" style={{ padding: 0 }}>
+            <nav className="employee-nav" style={{ padding: '24px 24px 0' }}>
+              <Link to="/chat" className="btn btnTiny">Chat</Link>
+              <Link to="/knowledge-base" className="btn btnTiny">Knowledge Base</Link>
+              <Link to="/announcements" className="btn btnTiny">Announcements</Link>
+              <Link to="/guided-paths" className="btn btnTiny">Guided Paths</Link>
+              <Link to="/manager" className="btn btnTiny btnGhost">Manager</Link>
+              <Link to="/admin" className="btn btnTiny btnGhost">HR Portal</Link>
+            </nav>
+            <ChatPage />
+          </div>
+        } />
 
         {/* Employee-facing pages */}
         <Route path="/knowledge-base" element={
