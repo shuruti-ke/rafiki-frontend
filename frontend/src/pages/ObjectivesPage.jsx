@@ -13,6 +13,14 @@ export default function ObjectivesPage() {
   const [form, setForm] = useState({ title: "", description: "", target_date: "" });
   const [krDrafts, setKrDrafts] = useState([{ title: "", target_value: 100, current_value: 0, unit: "%" }]);
 
+  // Share state
+  const [showShare, setShowShare] = useState(false);
+  const [colleagues, setColleagues] = useState([]);
+  const [shareRecipient, setShareRecipient] = useState("");
+  const [shareNote, setShareNote] = useState("");
+  const [shareSending, setShareSending] = useState(false);
+  const [shareSuccess, setShareSuccess] = useState(false);
+
   const load = async () => {
     const url = filter === "all" ? `${API}/api/v1/objectives/` : `${API}/api/v1/objectives/?status=${filter}`;
     const res = await authFetch(url);
@@ -73,6 +81,43 @@ export default function ObjectivesPage() {
     await authFetch(`${API}/api/v1/objectives/${objId}/key-results/${krId}`, { method: "DELETE" });
     const obj = await authFetch(`${API}/api/v1/objectives/${objId}`);
     if (obj.ok) { const data = await obj.json(); setSelected(data); load(); }
+  };
+
+  const openShare = async () => {
+    setShowShare(true);
+    setShareRecipient("");
+    setShareNote("");
+    setShareSuccess(false);
+    if (colleagues.length === 0) {
+      const res = await authFetch(`${API}/api/v1/messages/colleagues`);
+      if (res.ok) setColleagues(await res.json());
+    }
+  };
+
+  const handleShare = async () => {
+    if (!shareRecipient || !selected) return;
+    setShareSending(true);
+    const krs = (selected.key_results || []).map(kr =>
+      `  • ${kr.title}: ${kr.current_value}/${kr.target_value} ${kr.unit}`
+    ).join("\n");
+    const msg = [
+      `📋 Shared Objective: ${selected.title}`,
+      selected.description ? `\n${selected.description}` : "",
+      `\nStatus: ${selected.status.replace("_", " ")} · Progress: ${selected.progress}%`,
+      selected.target_date ? `Due: ${selected.target_date}` : "",
+      krs ? `\nKey Results:\n${krs}` : "",
+      shareNote ? `\nNote: ${shareNote}` : "",
+    ].filter(Boolean).join("\n");
+
+    const res = await authFetch(`${API}/api/v1/messages/conversations`, {
+      method: "POST",
+      body: JSON.stringify({ recipient_id: shareRecipient, content: msg }),
+    });
+    setShareSending(false);
+    if (res.ok) {
+      setShareSuccess(true);
+      setTimeout(() => { setShowShare(false); setShareSuccess(false); }, 1500);
+    }
   };
 
   return (
@@ -179,6 +224,7 @@ export default function ObjectivesPage() {
 
           <div className="obj-detail-actions">
             <button className="btn btnTiny" onClick={() => handleAddKR(selected.id)}>+ Key Result</button>
+            <button className="btn btnTiny" onClick={openShare}>Share</button>
             {(selected.status === "draft" || selected.status === "active") && (
               <button className="btn btnTiny btnPrimary" onClick={() => handleSubmitReview(selected.id)}>Submit for Review</button>
             )}
@@ -186,6 +232,36 @@ export default function ObjectivesPage() {
               <button className="btn btnTiny" style={{ color: "var(--danger)" }} onClick={() => handleDelete(selected.id)}>Delete</button>
             )}
           </div>
+
+          {showShare && (
+            <div className="obj-share">
+              {shareSuccess ? (
+                <div className="obj-share-success">Shared successfully!</div>
+              ) : (
+                <>
+                  <div className="obj-share-header">Share with a colleague</div>
+                  <select value={shareRecipient} onChange={e => setShareRecipient(e.target.value)}>
+                    <option value="">Select colleague...</option>
+                    {colleagues.map(c => (
+                      <option key={c.id} value={c.id}>{c.name || c.email}</option>
+                    ))}
+                  </select>
+                  <textarea
+                    value={shareNote}
+                    onChange={e => setShareNote(e.target.value)}
+                    placeholder="Add a note (optional)..."
+                    rows={2}
+                  />
+                  <div className="obj-share-actions">
+                    <button className="btn btnTiny btnPrimary" onClick={handleShare} disabled={!shareRecipient || shareSending}>
+                      {shareSending ? "Sending..." : "Send"}
+                    </button>
+                    <button className="btn btnTiny btnGhost" onClick={() => setShowShare(false)}>Cancel</button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
