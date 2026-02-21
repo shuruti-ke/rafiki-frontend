@@ -1,3 +1,4 @@
+import uuid
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from sqlalchemy.orm import Session
 from app.database import get_db
@@ -10,60 +11,70 @@ from app.schemas.employee_docs import (
 )
 from app.services.file_storage import save_upload
 from app.services.audit import log_action
+from app.dependencies import get_current_org_id, get_current_user_id
 
 router = APIRouter(prefix="/api/v1/employee-docs", tags=["Employee Documents"])
-
-DEMO_ORG_ID = 1
-DEMO_USER_ID = 1
 
 
 # --- Employee Documents ---
 
 @router.post("/{user_id}/upload", response_model=EmployeeDocumentResponse)
 def upload_employee_doc(
-    user_id: int,
+    user_id: uuid.UUID,
     file: UploadFile = File(...),
     doc_type: str = Query(default="other"),
     title: str = Query(...),
     db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
     file_path, original_name, size = save_upload(file, subfolder="employee_docs")
 
     doc = EmployeeDocument(
         user_id=user_id,
-        org_id=DEMO_ORG_ID,
+        org_id=org_id,
         doc_type=doc_type,
         title=title,
         file_path=file_path,
         original_filename=original_name,
         mime_type=file.content_type or "application/octet-stream",
         file_size=size,
-        uploaded_by=DEMO_USER_ID,
+        uploaded_by=current_user_id,
     )
     db.add(doc)
     db.commit()
     db.refresh(doc)
 
-    log_action(db, DEMO_ORG_ID, DEMO_USER_ID, "upload", "employee_document", doc.id, {"user_id": user_id, "title": title})
+    log_action(db, org_id, current_user_id, "upload", "employee_document", doc.id, {"user_id": str(user_id), "title": title})
     return doc
 
 
 @router.get("/{user_id}", response_model=list[EmployeeDocumentResponse])
-def list_employee_docs(user_id: int, db: Session = Depends(get_db)):
+def list_employee_docs(
+    user_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+):
     return (
         db.query(EmployeeDocument)
-        .filter(EmployeeDocument.user_id == user_id, EmployeeDocument.org_id == DEMO_ORG_ID)
+        .filter(EmployeeDocument.user_id == user_id, EmployeeDocument.org_id == org_id)
         .order_by(EmployeeDocument.created_at.desc())
         .all()
     )
 
 
 @router.delete("/{user_id}/{doc_id}")
-def delete_employee_doc(user_id: int, doc_id: int, db: Session = Depends(get_db)):
+def delete_employee_doc(
+    user_id: uuid.UUID,
+    doc_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
+):
     doc = db.query(EmployeeDocument).filter(
         EmployeeDocument.id == doc_id,
         EmployeeDocument.user_id == user_id,
-        EmployeeDocument.org_id == DEMO_ORG_ID,
+        EmployeeDocument.org_id == org_id,
     ).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -71,22 +82,28 @@ def delete_employee_doc(user_id: int, doc_id: int, db: Session = Depends(get_db)
     db.delete(doc)
     db.commit()
 
-    log_action(db, DEMO_ORG_ID, DEMO_USER_ID, "delete", "employee_document", doc_id, {"user_id": user_id})
+    log_action(db, org_id, current_user_id, "delete", "employee_document", doc_id, {"user_id": str(user_id)})
     return {"ok": True, "message": "Document deleted"}
 
 
 # --- Performance Evaluations ---
 
 @router.post("/{user_id}/evaluations", response_model=PerformanceEvaluationResponse)
-def create_evaluation(user_id: int, data: PerformanceEvaluationCreate, db: Session = Depends(get_db)):
+def create_evaluation(
+    user_id: uuid.UUID,
+    data: PerformanceEvaluationCreate,
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
+):
     if data.overall_rating < 1 or data.overall_rating > 5:
         raise HTTPException(status_code=400, detail="Rating must be between 1 and 5")
 
     ev = PerformanceEvaluation(
         user_id=user_id,
-        org_id=DEMO_ORG_ID,
+        org_id=org_id,
         evaluation_period=data.evaluation_period,
-        evaluator_id=data.evaluator_id,
+        evaluator_id=current_user_id,
         overall_rating=data.overall_rating,
         strengths=data.strengths,
         areas_for_improvement=data.areas_for_improvement,
@@ -98,26 +115,37 @@ def create_evaluation(user_id: int, data: PerformanceEvaluationCreate, db: Sessi
     db.commit()
     db.refresh(ev)
 
-    log_action(db, DEMO_ORG_ID, DEMO_USER_ID, "create", "evaluation", ev.id, {"user_id": user_id, "period": data.evaluation_period})
+    log_action(db, org_id, current_user_id, "create", "evaluation", ev.id, {"user_id": str(user_id), "period": data.evaluation_period})
     return ev
 
 
 @router.get("/{user_id}/evaluations", response_model=list[PerformanceEvaluationResponse])
-def list_evaluations(user_id: int, db: Session = Depends(get_db)):
+def list_evaluations(
+    user_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+):
     return (
         db.query(PerformanceEvaluation)
-        .filter(PerformanceEvaluation.user_id == user_id, PerformanceEvaluation.org_id == DEMO_ORG_ID)
+        .filter(PerformanceEvaluation.user_id == user_id, PerformanceEvaluation.org_id == org_id)
         .order_by(PerformanceEvaluation.created_at.desc())
         .all()
     )
 
 
 @router.put("/{user_id}/evaluations/{eval_id}", response_model=PerformanceEvaluationResponse)
-def update_evaluation(user_id: int, eval_id: int, update: PerformanceEvaluationUpdate, db: Session = Depends(get_db)):
+def update_evaluation(
+    user_id: uuid.UUID,
+    eval_id: uuid.UUID,
+    update: PerformanceEvaluationUpdate,
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
+):
     ev = db.query(PerformanceEvaluation).filter(
         PerformanceEvaluation.id == eval_id,
         PerformanceEvaluation.user_id == user_id,
-        PerformanceEvaluation.org_id == DEMO_ORG_ID,
+        PerformanceEvaluation.org_id == org_id,
     ).first()
     if not ev:
         raise HTTPException(status_code=404, detail="Evaluation not found")
@@ -130,21 +158,27 @@ def update_evaluation(user_id: int, eval_id: int, update: PerformanceEvaluationU
     db.commit()
     db.refresh(ev)
 
-    log_action(db, DEMO_ORG_ID, DEMO_USER_ID, "update", "evaluation", ev.id, update.model_dump(exclude_unset=True))
+    log_action(db, org_id, current_user_id, "update", "evaluation", ev.id, update.model_dump(exclude_unset=True))
     return ev
 
 
 # --- Disciplinary Records ---
 
 @router.post("/{user_id}/disciplinary", response_model=DisciplinaryRecordResponse)
-def create_disciplinary(user_id: int, data: DisciplinaryRecordCreate, db: Session = Depends(get_db)):
+def create_disciplinary(
+    user_id: uuid.UUID,
+    data: DisciplinaryRecordCreate,
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
+):
     record = DisciplinaryRecord(
         user_id=user_id,
-        org_id=DEMO_ORG_ID,
+        org_id=org_id,
         record_type=data.record_type,
         description=data.description,
         date_of_incident=data.date_of_incident,
-        recorded_by=DEMO_USER_ID,
+        recorded_by=current_user_id,
         witnesses=data.witnesses,
         outcome=data.outcome,
         attachments=data.attachments,
@@ -153,15 +187,19 @@ def create_disciplinary(user_id: int, data: DisciplinaryRecordCreate, db: Sessio
     db.commit()
     db.refresh(record)
 
-    log_action(db, DEMO_ORG_ID, DEMO_USER_ID, "create", "disciplinary_record", record.id, {"user_id": user_id, "type": data.record_type})
+    log_action(db, org_id, current_user_id, "create", "disciplinary_record", record.id, {"user_id": str(user_id), "type": data.record_type})
     return record
 
 
 @router.get("/{user_id}/disciplinary", response_model=list[DisciplinaryRecordResponse])
-def list_disciplinary(user_id: int, db: Session = Depends(get_db)):
+def list_disciplinary(
+    user_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+):
     return (
         db.query(DisciplinaryRecord)
-        .filter(DisciplinaryRecord.user_id == user_id, DisciplinaryRecord.org_id == DEMO_ORG_ID)
+        .filter(DisciplinaryRecord.user_id == user_id, DisciplinaryRecord.org_id == org_id)
         .order_by(DisciplinaryRecord.created_at.desc())
         .all()
     )
