@@ -340,3 +340,66 @@
   padding: 40px 0;
   font-size: 14px;
 }
+
+/* Share panel */
+.obj-share {
+  margin-top: 12px;
+  padding: 14px;
+  background: var(--panel2, #f9fafb);
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+.obj-share-header {
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.obj-share select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 13px;
+  outline: none;
+  background: #fff;
+  color: var(--text);
+  margin-bottom: 8px;
+  font-family: inherit;
+}
+
+.obj-share select:focus {
+  border-color: var(--accent);
+}
+
+.obj-share textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 13px;
+  outline: none;
+  resize: none;
+  font-family: inherit;
+  background: #fff;
+  color: var(--text);
+}
+
+.obj-share textarea:focus {
+  border-color: var(--accent);
+}
+
+.obj-share-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.obj-share-success {
+  text-align: center;
+  color: var(--success, #10b981);
+  font-weight: 700;
+  font-size: 13px;
+  padding: 8px 0;
+}
