@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { API } from "../api.js";
+import { API, authFetch } from "../api.js";
 import "./AdminManagerConfig.css";
 
 const LEVELS = ["L1", "L2", "L3", "L4"];
@@ -28,7 +28,7 @@ export default function AdminManagerConfig() {
 
   function loadConfigs() {
     setLoading(true);
-    fetch(`${API}/api/v1/manager/admin/configs`)
+    authFetch(`${API}/api/v1/manager/admin/configs`)
       .then((r) => r.json())
       .then((data) => setConfigs(Array.isArray(data) ? data : []))
       .catch(() => setConfigs([]))
@@ -36,7 +36,7 @@ export default function AdminManagerConfig() {
   }
 
   function loadAudit() {
-    fetch(`${API}/api/v1/manager/admin/audit`)
+    authFetch(`${API}/api/v1/manager/admin/audit`)
       .then((r) => r.json())
       .then((data) => setAudit(Array.isArray(data) ? data : []))
       .catch(() => setAudit([]));
@@ -55,11 +55,11 @@ export default function AdminManagerConfig() {
     }
 
     try {
-      const r = await fetch(`${API}/api/v1/manager/admin/configs`, {
+      const r = await authFetch(`${API}/api/v1/manager/admin/configs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user_id: Number(form.user_id),
+          user_id: form.user_id,
           manager_level: form.manager_level,
           allowed_data_types: form.allowed_data_types,
           allowed_features: form.allowed_features,
@@ -83,7 +83,7 @@ export default function AdminManagerConfig() {
     if (!confirm("Revoke this manager's access?")) return;
 
     try {
-      await fetch(`${API}/api/v1/manager/admin/configs/${configId}`, { method: "DELETE" });
+      await authFetch(`${API}/api/v1/manager/admin/configs/${configId}`, { method: "DELETE" });
       loadConfigs();
     } catch (e) {
       // silently fail
@@ -92,7 +92,7 @@ export default function AdminManagerConfig() {
 
   async function handleToggleActive(config) {
     try {
-      await fetch(`${API}/api/v1/manager/admin/configs/${config.id}`, {
+      await authFetch(`${API}/api/v1/manager/admin/configs/${config.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ is_active: !config.is_active }),
@@ -105,7 +105,7 @@ export default function AdminManagerConfig() {
 
   async function seedToolkit() {
     try {
-      const r = await fetch(`${API}/api/v1/manager/admin/seed-toolkit`, { method: "POST" });
+      const r = await authFetch(`${API}/api/v1/manager/admin/seed-toolkit`, { method: "POST" });
       const data = await r.json();
       alert(`Seeded ${data.modules_created} toolkit modules`);
     } catch (e) {

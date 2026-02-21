@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { API } from "../api.js";
+import { API, authFetch } from "../api.js";
 import "./AdminEmployeeDetail.css";
 
 export default function AdminEmployeeDetail() {
@@ -28,17 +28,17 @@ export default function AdminEmployeeDetail() {
   const [discOutcome, setDiscOutcome] = useState("");
 
   async function fetchDocuments() {
-    const res = await fetch(`${API}/api/v1/employee-docs/${userId}`);
+    const res = await authFetch(`${API}/api/v1/employee-docs/${userId}`);
     setDocuments(await res.json());
   }
 
   async function fetchEvaluations() {
-    const res = await fetch(`${API}/api/v1/employee-docs/${userId}/evaluations`);
+    const res = await authFetch(`${API}/api/v1/employee-docs/${userId}/evaluations`);
     setEvaluations(await res.json());
   }
 
   async function fetchDisciplinary() {
-    const res = await fetch(`${API}/api/v1/employee-docs/${userId}/disciplinary`);
+    const res = await authFetch(`${API}/api/v1/employee-docs/${userId}/disciplinary`);
     setDisciplinary(await res.json());
   }
 
@@ -61,7 +61,7 @@ export default function AdminEmployeeDetail() {
     const params = new URLSearchParams({ title, doc_type: docType });
 
     try {
-      await fetch(`${API}/api/v1/employee-docs/${userId}/upload?${params}`, { method: "POST", body: fd });
+      await authFetch(`${API}/api/v1/employee-docs/${userId}/upload?${params}`, { method: "POST", body: fd });
       fetchDocuments();
     } finally {
       setUploading(false);
@@ -71,18 +71,17 @@ export default function AdminEmployeeDetail() {
 
   async function handleDeleteDoc(docId) {
     if (!confirm("Delete this document?")) return;
-    await fetch(`${API}/api/v1/employee-docs/${userId}/${docId}`, { method: "DELETE" });
+    await authFetch(`${API}/api/v1/employee-docs/${userId}/${docId}`, { method: "DELETE" });
     fetchDocuments();
   }
 
   async function handleCreateEval(e) {
     e.preventDefault();
-    await fetch(`${API}/api/v1/employee-docs/${userId}/evaluations`, {
+    await authFetch(`${API}/api/v1/employee-docs/${userId}/evaluations`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         evaluation_period: evalPeriod,
-        evaluator_id: 1,
         overall_rating: evalRating,
         strengths: evalStrengths || null,
         areas_for_improvement: evalImprove || null,
@@ -97,7 +96,7 @@ export default function AdminEmployeeDetail() {
 
   async function handleCreateDisc(e) {
     e.preventDefault();
-    await fetch(`${API}/api/v1/employee-docs/${userId}/disciplinary`, {
+    await authFetch(`${API}/api/v1/employee-docs/${userId}/disciplinary`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
