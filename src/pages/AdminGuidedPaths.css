@@ -47,7 +47,7 @@
 }
 .agp-badge-custom { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
 .agp-badge-global { background: rgba(59, 130, 246, 0.1); color: #60a5fa; }
-.agp-badge-active { background: rgba(34, 197, 94, 0.1); color: var(--accent); }
+.agp-badge-active { background: rgba(139, 92, 246, 0.10); color: var(--accent); }
 .agp-badge-inactive { background: rgba(148, 163, 184, 0.1); color: var(--muted); }
 
 .agp-actions { display: flex; gap: 6px; }
@@ -93,7 +93,7 @@
 .agp-field textarea,
 .agp-field select {
   width: 100%;
-  background: rgba(255, 255, 255, 0.03);
+  background: #ffffff;
   border: 1px solid var(--border);
   color: var(--text);
   border-radius: 10px;
@@ -131,7 +131,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(34, 197, 94, 0.1);
+  background: rgba(139, 92, 246, 0.10);
   color: var(--accent);
   font-weight: 800;
   font-size: 13px;
@@ -146,7 +146,7 @@
   align-items: center;
 }
 .agp-step-row select {
-  background: rgba(255, 255, 255, 0.03);
+  background: #ffffff;
   border: 1px solid var(--border);
   color: var(--text);
   border-radius: 8px;
@@ -156,7 +156,7 @@
 .agp-step-fields textarea {
   width: 100%;
   min-height: 50px;
-  background: rgba(255, 255, 255, 0.03);
+  background: #ffffff;
   border: 1px solid var(--border);
   color: var(--text);
   border-radius: 8px;
@@ -168,7 +168,7 @@
 .agp-step-fields textarea:focus { border-color: var(--accent); }
 .agp-step-fields input[type="url"] {
   width: 100%;
-  background: rgba(255, 255, 255, 0.03);
+  background: #ffffff;
   border: 1px solid var(--border);
   color: var(--text);
   border-radius: 8px;
@@ -199,7 +199,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.03);
+  background: #ffffff;
   border: 1px solid var(--border);
   color: var(--muted);
   border-radius: 6px;

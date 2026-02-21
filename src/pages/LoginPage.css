@@ -4,15 +4,17 @@
   align-items: center;
   justify-content: center;
   padding: 24px;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.04) 0%, rgba(31, 191, 184, 0.04) 100%);
 }
 
 .login-card {
   width: 100%;
   max-width: 400px;
-  background: var(--panel);
+  background: #ffffff;
   border: 1px solid var(--border);
   border-radius: 20px;
   padding: 40px 32px;
+  box-shadow: var(--shadow);
 }
 
 .login-brand {
@@ -26,8 +28,8 @@
   width: 14px;
   height: 14px;
   border-radius: 999px;
-  background: var(--accent);
-  box-shadow: 0 0 24px rgba(34, 197, 94, 0.4);
+  background: var(--primary-gradient);
+  box-shadow: 0 0 24px rgba(139, 92, 246, 0.3);
 }
 
 .login-brand-title {
@@ -63,7 +65,7 @@
 
 .login-field input {
   width: 100%;
-  background: rgba(255, 255, 255, 0.03);
+  background: #ffffff;
   border: 1px solid var(--border);
   color: var(--text);
   border-radius: 12px;
@@ -73,24 +75,25 @@
 }
 
 .login-field input:focus {
-  border-color: rgba(34, 197, 94, 0.45);
+  border-color: rgba(139, 92, 246, 0.45);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.08);
 }
 
 .login-btn {
   margin-top: 4px;
-  border: 1px solid rgba(34, 197, 94, 0.55);
-  background: rgba(34, 197, 94, 0.20);
-  color: var(--text);
+  background: var(--primary-gradient);
+  color: #fff;
+  border: none;
   border-radius: 12px;
   padding: 12px;
   cursor: pointer;
   font-weight: 700;
   font-size: 14px;
-  transition: background 0.15s;
+  transition: opacity 0.15s;
 }
 
 .login-btn:hover {
-  background: rgba(34, 197, 94, 0.26);
+  opacity: 0.92;
 }
 
 .login-btn:disabled {
@@ -105,8 +108,8 @@
 }
 
 .login-org-badge {
-  background: rgba(34, 197, 94, 0.10);
-  border: 1px solid rgba(34, 197, 94, 0.25);
+  background: rgba(139, 92, 246, 0.06);
+  border: 1px solid rgba(139, 92, 246, 0.20);
   border-radius: 12px;
   padding: 10px 14px;
   display: flex;

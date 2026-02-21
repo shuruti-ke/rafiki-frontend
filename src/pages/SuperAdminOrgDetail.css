@@ -63,7 +63,7 @@
 }
 
 .sa-org-form textarea {
-  background: rgba(255, 255, 255, 0.03);
+  background: #ffffff;
   border: 1px solid var(--border);
   color: var(--text);
   border-radius: 10px;
@@ -75,7 +75,7 @@
 }
 
 .sa-org-form textarea:focus {
-  border-color: rgba(34, 197, 94, 0.45);
+  border-color: rgba(139, 92, 246, 0.45);
 }
 
 .sa-org-toggle {
@@ -99,7 +99,7 @@
 }
 
 .sa-hr-form {
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(0, 0, 0, 0.02);
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 20px;
@@ -121,8 +121,8 @@
 }
 
 .sa-msg-success {
-  background: rgba(34, 197, 94, 0.12);
-  color: #22c55e;
+  background: rgba(139, 92, 246, 0.12);
+  color: #8b5cf6;
 }
 
 .sa-role-badge {

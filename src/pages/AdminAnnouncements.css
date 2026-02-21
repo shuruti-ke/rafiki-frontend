@@ -21,7 +21,7 @@
 .ann-form textarea,
 .ann-form select {
   width: 100%;
-  background: rgba(255,255,255,.03);
+  background: #ffffff;
   border: 1px solid var(--border);
   color: var(--text);
   border-radius: 10px;
@@ -47,8 +47,8 @@
   cursor: pointer;
   transition: all 0.15s;
 }
-.ann-card:hover { border-color: rgba(34,197,94,.3); }
-.ann-card-active { border-color: var(--accent); background: rgba(34,197,94,.05); }
+.ann-card:hover { border-color: rgba(139, 92, 246, 0.3); }
+.ann-card-active { border-color: var(--accent); background: rgba(139, 92, 246, 0.05); }
 
 .ann-card-top { display: flex; justify-content: space-between; align-items: start; gap: 8px; }
 .ann-card-meta { display: flex; gap: 8px; margin-top: 6px; font-size: 12px; }

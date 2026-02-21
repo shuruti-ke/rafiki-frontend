@@ -21,11 +21,11 @@
   transition: all 0.15s;
 }
 
-.mgr-tab:hover { background: rgba(255, 255, 255, 0.04); color: var(--text); }
+.mgr-tab:hover { background: rgba(0, 0, 0, 0.03); color: var(--text); }
 .mgr-tab.active {
-  background: rgba(59, 130, 246, 0.12);
-  color: #3b82f6;
-  border-color: rgba(59, 130, 246, 0.3);
+  background: rgba(31, 191, 184, 0.12);
+  color: #1fbfb8;
+  border-color: rgba(31, 191, 184, 0.30);
 }
 
 /* Form */
@@ -48,7 +48,7 @@
 
 .mgr-form-select,
 .mgr-form-textarea {
-  background: rgba(255, 255, 255, 0.03);
+  background: #ffffff;
   border: 1px solid var(--border);
   color: var(--text);
   border-radius: 12px;
@@ -61,7 +61,7 @@
 
 .mgr-form-select:focus,
 .mgr-form-textarea:focus {
-  border-color: rgba(59, 130, 246, 0.45);
+  border-color: rgba(31, 191, 184, 0.45);
 }
 
 .mgr-form-hint {
@@ -72,10 +72,10 @@
 
 .mgr-generate-btn {
   align-self: flex-start;
-  border-color: rgba(59, 130, 246, 0.55);
-  background: rgba(59, 130, 246, 0.20);
+  border-color: rgba(31, 191, 184, 0.55);
+  background: rgba(31, 191, 184, 0.20);
 }
-.mgr-generate-btn:hover { background: rgba(59, 130, 246, 0.26); }
+.mgr-generate-btn:hover { background: rgba(31, 191, 184, 0.26); }
 
 .mgr-coaching-error {
   color: var(--danger);
@@ -98,7 +98,7 @@
   font-size: 18px;
   font-weight: 800;
   margin-bottom: 16px;
-  color: #3b82f6;
+  color: #1fbfb8;
 }
 
 .mgr-plan-section {
@@ -119,7 +119,7 @@
 }
 
 .mgr-plan-script {
-  background: rgba(0, 0, 0, 0.2);
+  background: #f3f4f6;
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 14px;
@@ -162,8 +162,8 @@
   font-weight: 600;
   font-size: 13px;
 }
-.mgr-outcome-btn.improved { border-color: rgba(34, 197, 94, 0.4); color: #22c55e; }
-.mgr-outcome-btn.improved:hover { background: rgba(34, 197, 94, 0.12); }
+.mgr-outcome-btn.improved { border-color: rgba(139, 92, 246, 0.4); color: #8b5cf6; }
+.mgr-outcome-btn.improved:hover { background: rgba(139, 92, 246, 0.12); }
 .mgr-outcome-btn.same { border-color: rgba(234, 179, 8, 0.4); color: #eab308; }
 .mgr-outcome-btn.same:hover { background: rgba(234, 179, 8, 0.12); }
 .mgr-outcome-btn.worse { border-color: rgba(239, 68, 68, 0.4); color: #ef4444; }

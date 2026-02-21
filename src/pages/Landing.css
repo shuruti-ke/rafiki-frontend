@@ -1,32 +1,8 @@
-/* ===== Scoped Light-Theme Variables for Landing Page ===== */
+/* ===== Landing Page ===== */
 .landing {
-  --primary-teal: #1fbfb8;
-  --primary-purple: #8b5cf6;
-  --primary-gradient: linear-gradient(135deg, #8b5cf6 0%, #1fbfb8 100%);
-  --white: #ffffff;
-  --off-white: #f8fafc;
-  --gray-50: #f9fafb;
-  --gray-100: #f3f4f6;
-  --gray-200: #e5e7eb;
-  --gray-300: #d1d5db;
-  --gray-400: #9ca3af;
-  --gray-500: #6b7280;
-  --gray-600: #4b5563;
-  --gray-700: #374151;
-  --gray-800: #1f2937;
-  --gray-900: #111827;
-  --accent-warm: #fbbf24;
-  --accent-coral: #f97316;
-  --success: #10b981;
-  --error: #ef4444;
-  --font-display: 'Playfair Display', serif;
-  --font-body: 'Source Sans 3', sans-serif;
-  --radius: 12px;
-  --shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-
   width: 100%;
-  background: var(--white);
-  color: var(--gray-800);
+  background: var(--bg);
+  color: var(--text);
   font-family: var(--font-body);
 }
 
