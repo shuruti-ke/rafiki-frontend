@@ -1,17 +1,18 @@
+from uuid import UUID
 from sqlalchemy.orm import Session
 from app.models.org_profile import OrgProfile, RoleProfile
 
 
 def build_context_pack(
     db: Session,
-    org_id: int,
+    org_id: UUID,
     role_key: str | None = None,
     session_vars: dict | None = None,
 ) -> dict:
-    """Assemble the 12-variable context pack for LLM module composition."""
+    """Assemble the context pack for LLM module composition (UUID org_id)."""
     session_vars = session_vars or {}
 
-    # Fetch org profile
+    # Fetch org profile (UUID org_id)
     org = db.query(OrgProfile).filter(OrgProfile.org_id == org_id).first()
     org_block = {
         "purpose": org.org_purpose if org else None,
@@ -20,7 +21,7 @@ def build_context_pack(
         "benefits_tags": org.benefits_tags if org else [],
     }
 
-    # Fetch role profile
+    # Fetch role profile (UUID org_id)
     role_block = {
         "family": None,
         "seniority_band": None,
@@ -28,10 +29,11 @@ def build_context_pack(
         "stressor_profile": [],
     }
     if role_key:
-        role = db.query(RoleProfile).filter(
-            RoleProfile.org_id == org_id,
-            RoleProfile.role_key == role_key,
-        ).first()
+        role = (
+            db.query(RoleProfile)
+            .filter(RoleProfile.org_id == org_id, RoleProfile.role_key == role_key)
+            .first()
+        )
         if role:
             role_block = {
                 "family": role.role_family,
@@ -40,7 +42,7 @@ def build_context_pack(
                 "stressor_profile": role.stressor_profile or [],
             }
 
-    # Session variables (from user input at session start)
+    # Session variables
     session_block = {
         "language": session_vars.get("language", "en"),
         "stress_band": session_vars.get("stress_band"),
