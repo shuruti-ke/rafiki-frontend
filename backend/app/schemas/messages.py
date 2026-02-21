@@ -25,8 +25,9 @@ class WallMessageResponse(BaseModel):
 # ── Conversations ──
 
 class StartConversationRequest(BaseModel):
-    recipient_id: UUID
+    recipient_ids: list[UUID]
     content: str
+    title: Optional[str] = None
 
 
 class DirectMessageCreate(BaseModel):
@@ -44,12 +45,18 @@ class DirectMessageResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ParticipantInfo(BaseModel):
+    id: UUID
+    name: Optional[str] = None
+
+
 class ConversationResponse(BaseModel):
     id: UUID
     org_id: UUID
-    participant_a: UUID
-    participant_b: UUID
-    other_user_name: Optional[str] = None
+    is_group: bool = False
+    title: Optional[str] = None
+    display_name: Optional[str] = None
+    participants: list[ParticipantInfo] = []
     last_message: Optional[str] = None
     last_message_at: Optional[datetime] = None
     unread_count: int = 0

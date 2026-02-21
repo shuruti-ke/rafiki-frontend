@@ -356,23 +356,6 @@
   margin-bottom: 10px;
 }
 
-.obj-share select {
-  width: 100%;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  font-size: 13px;
-  outline: none;
-  background: #fff;
-  color: var(--text);
-  margin-bottom: 8px;
-  font-family: inherit;
-}
-
-.obj-share select:focus {
-  border-color: var(--accent);
-}
-
 .obj-share textarea {
   width: 100%;
   padding: 8px 10px;
@@ -384,6 +367,7 @@
   font-family: inherit;
   background: #fff;
   color: var(--text);
+  box-sizing: border-box;
 }
 
 .obj-share textarea:focus {
@@ -402,4 +386,95 @@
   font-weight: 700;
   font-size: 13px;
   padding: 8px 0;
+}
+
+/* Share people picker */
+.obj-share-picker {
+  position: relative;
+  margin-bottom: 8px;
+}
+
+.obj-share-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.obj-share-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: rgba(139, 92, 246, 0.10);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(139, 92, 246, 0.25);
+}
+
+.obj-share-chip-x {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--muted);
+  padding: 0 1px;
+  font-weight: 700;
+}
+
+.obj-share-chip-x:hover {
+  color: var(--danger, #ef4444);
+}
+
+.obj-share-search {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 13px;
+  outline: none;
+  background: #fff;
+  color: var(--text);
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.obj-share-search:focus {
+  border-color: var(--accent);
+}
+
+.obj-share-dropdown {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  z-index: 50;
+  max-height: 150px;
+  overflow: auto;
+  background: var(--card, #fff);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-top: 2px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.obj-share-dropdown-item {
+  padding: 8px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.obj-share-dropdown-item:hover {
+  background: rgba(139, 92, 246, 0.08);
+}
+
+.obj-share-dropdown-empty {
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
 }

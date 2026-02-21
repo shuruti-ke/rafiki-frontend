@@ -22,15 +22,27 @@ class DmConversation(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
     org_id = Column(UUID(as_uuid=True), nullable=False)
-    participant_a = Column(UUID(as_uuid=True), nullable=False)
-    participant_b = Column(UUID(as_uuid=True), nullable=False)
+    title = Column(String(200), nullable=True)
+    is_group = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+    participants = relationship("ConversationParticipant", back_populates="conversation", cascade="all, delete-orphan")
+    messages = relationship("DmMessage", back_populates="conversation", cascade="all, delete-orphan")
+
+
+class ConversationParticipant(Base):
+    __tablename__ = "conversation_participants"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    conversation_id = Column(UUID(as_uuid=True), ForeignKey("dm_conversations.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), nullable=False)
+    joined_at = Column(DateTime(timezone=True), server_default=func.now())
+
     __table_args__ = (
-        UniqueConstraint("participant_a", "participant_b", name="uq_dm_conversation_pair"),
+        UniqueConstraint("conversation_id", "user_id", name="uq_convo_participant"),
     )
 
-    messages = relationship("DmMessage", back_populates="conversation", cascade="all, delete-orphan")
+    conversation = relationship("DmConversation", back_populates="participants")
 
 
 class DmMessage(Base):

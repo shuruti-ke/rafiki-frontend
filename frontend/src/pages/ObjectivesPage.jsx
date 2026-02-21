@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { API, authFetch } from "../api.js";
 import "./ObjectivesPage.css";
 
@@ -16,10 +16,13 @@ export default function ObjectivesPage() {
   // Share state
   const [showShare, setShowShare] = useState(false);
   const [colleagues, setColleagues] = useState([]);
-  const [shareRecipient, setShareRecipient] = useState("");
+  const [shareRecipients, setShareRecipients] = useState([]);
   const [shareNote, setShareNote] = useState("");
   const [shareSending, setShareSending] = useState(false);
   const [shareSuccess, setShareSuccess] = useState(false);
+  const [shareSearch, setShareSearch] = useState("");
+  const [shareDropdown, setShareDropdown] = useState(false);
+  const sharePickerRef = useRef(null);
 
   const load = async () => {
     const url = filter === "all" ? `${API}/api/v1/objectives/` : `${API}/api/v1/objectives/?status=${filter}`;
@@ -85,8 +88,9 @@ export default function ObjectivesPage() {
 
   const openShare = async () => {
     setShowShare(true);
-    setShareRecipient("");
+    setShareRecipients([]);
     setShareNote("");
+    setShareSearch("");
     setShareSuccess(false);
     if (colleagues.length === 0) {
       const res = await authFetch(`${API}/api/v1/messages/colleagues`);
@@ -94,8 +98,24 @@ export default function ObjectivesPage() {
     }
   };
 
+  // Close share dropdown on outside click
+  useEffect(() => {
+    const handleClick = (e) => {
+      if (sharePickerRef.current && !sharePickerRef.current.contains(e.target)) setShareDropdown(false);
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const shareFilteredColleagues = colleagues.filter(c => {
+    const selectedIds = new Set(shareRecipients.map(s => s.id));
+    return !selectedIds.has(c.id) &&
+      ((c.name || "").toLowerCase().includes(shareSearch.toLowerCase()) ||
+       (c.email || "").toLowerCase().includes(shareSearch.toLowerCase()));
+  });
+
   const handleShare = async () => {
-    if (!shareRecipient || !selected) return;
+    if (shareRecipients.length === 0 || !selected) return;
     setShareSending(true);
     const krs = (selected.key_results || []).map(kr =>
       `  • ${kr.title}: ${kr.current_value}/${kr.target_value} ${kr.unit}`
@@ -111,7 +131,7 @@ export default function ObjectivesPage() {
 
     const res = await authFetch(`${API}/api/v1/messages/conversations`, {
       method: "POST",
-      body: JSON.stringify({ recipient_id: shareRecipient, content: msg }),
+      body: JSON.stringify({ recipient_ids: shareRecipients.map(r => r.id), content: msg }),
     });
     setShareSending(false);
     if (res.ok) {
@@ -239,13 +259,39 @@ export default function ObjectivesPage() {
                 <div className="obj-share-success">Shared successfully!</div>
               ) : (
                 <>
-                  <div className="obj-share-header">Share with a colleague</div>
-                  <select value={shareRecipient} onChange={e => setShareRecipient(e.target.value)}>
-                    <option value="">Select colleague...</option>
-                    {colleagues.map(c => (
-                      <option key={c.id} value={c.id}>{c.name || c.email}</option>
-                    ))}
-                  </select>
+                  <div className="obj-share-header">Share with colleagues</div>
+                  <div className="obj-share-picker" ref={sharePickerRef}>
+                    {shareRecipients.length > 0 && (
+                      <div className="obj-share-chips">
+                        {shareRecipients.map(s => (
+                          <span key={s.id} className="obj-share-chip">
+                            {s.name}
+                            <button className="obj-share-chip-x" onClick={() => setShareRecipients(shareRecipients.filter(r => r.id !== s.id))}>&times;</button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <input
+                      className="obj-share-search"
+                      value={shareSearch}
+                      onChange={e => setShareSearch(e.target.value)}
+                      onFocus={() => setShareDropdown(true)}
+                      placeholder="Type name or email..."
+                    />
+                    {shareDropdown && shareSearch.length > 0 && (
+                      <div className="obj-share-dropdown">
+                        {shareFilteredColleagues.length === 0 && <div className="obj-share-dropdown-empty">No matches</div>}
+                        {shareFilteredColleagues.map(c => (
+                          <div key={c.id} className="obj-share-dropdown-item" onClick={() => {
+                            setShareRecipients([...shareRecipients, { id: c.id, name: c.name || c.email }]);
+                            setShareSearch("");
+                          }}>
+                            {c.name || c.email}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   <textarea
                     value={shareNote}
                     onChange={e => setShareNote(e.target.value)}
@@ -253,7 +299,7 @@ export default function ObjectivesPage() {
                     rows={2}
                   />
                   <div className="obj-share-actions">
-                    <button className="btn btnTiny btnPrimary" onClick={handleShare} disabled={!shareRecipient || shareSending}>
+                    <button className="btn btnTiny btnPrimary" onClick={handleShare} disabled={shareRecipients.length === 0 || shareSending}>
                       {shareSending ? "Sending..." : "Send"}
                     </button>
                     <button className="btn btnTiny btnGhost" onClick={() => setShowShare(false)}>Cancel</button>

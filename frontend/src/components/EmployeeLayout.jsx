@@ -110,6 +110,69 @@ function MiniCalendar() {
   );
 }
 
+/* ─── People Picker (shared component) ─── */
+function PeoplePicker({ colleagues, selected, onChange }) {
+  const [search, setSearch] = useState("");
+  const [showDropdown, setShowDropdown] = useState(false);
+  const wrapperRef = useRef(null);
+
+  const selectedIds = new Set(selected.map(s => s.id));
+  const filtered = colleagues.filter(c =>
+    !selectedIds.has(c.id) &&
+    ((c.name || "").toLowerCase().includes(search.toLowerCase()) ||
+     (c.email || "").toLowerCase().includes(search.toLowerCase()))
+  );
+
+  const addPerson = (c) => {
+    onChange([...selected, { id: c.id, name: c.name || c.email }]);
+    setSearch("");
+  };
+
+  const removePerson = (id) => {
+    onChange(selected.filter(s => s.id !== id));
+  };
+
+  useEffect(() => {
+    const handleClick = (e) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) setShowDropdown(false);
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  return (
+    <div className="people-picker" ref={wrapperRef}>
+      {selected.length > 0 && (
+        <div className="people-picker-chips">
+          {selected.map(s => (
+            <span key={s.id} className="people-picker-chip">
+              {s.name}
+              <button className="people-picker-chip-x" onClick={() => removePerson(s.id)}>&times;</button>
+            </span>
+          ))}
+        </div>
+      )}
+      <input
+        className="people-picker-input"
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+        onFocus={() => setShowDropdown(true)}
+        placeholder="Type name or email..."
+      />
+      {showDropdown && search.length > 0 && (
+        <div className="people-picker-dropdown">
+          {filtered.length === 0 && <div className="people-picker-empty">No matches</div>}
+          {filtered.map(c => (
+            <div key={c.id} className="people-picker-option" onClick={() => addPerson(c)}>
+              {c.name || c.email}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─── Sidebar Messages ─── */
 function SidebarMessages() {
   const currentUser = JSON.parse(localStorage.getItem("rafiki_user") || "{}");
@@ -121,8 +184,9 @@ function SidebarMessages() {
   const [dmInput, setDmInput] = useState("");
   const [showNewMsg, setShowNewMsg] = useState(false);
   const [colleagues, setColleagues] = useState([]);
-  const [newRecipient, setNewRecipient] = useState("");
+  const [newRecipients, setNewRecipients] = useState([]);
   const [newMsgContent, setNewMsgContent] = useState("");
+  const [newGroupTitle, setNewGroupTitle] = useState("");
 
   const threadEndRef = useRef(null);
 
@@ -172,15 +236,23 @@ function SidebarMessages() {
   };
 
   const startNewConvo = async () => {
-    if (!newRecipient || !newMsgContent.trim()) return;
+    if (newRecipients.length === 0 || !newMsgContent.trim()) return;
+    const body = {
+      recipient_ids: newRecipients.map(r => r.id),
+      content: newMsgContent,
+    };
+    if (newRecipients.length > 1 && newGroupTitle.trim()) {
+      body.title = newGroupTitle.trim();
+    }
     const res = await authFetch(`${API}/api/v1/messages/conversations`, {
-      method: "POST", body: JSON.stringify({ recipient_id: newRecipient, content: newMsgContent }),
+      method: "POST", body: JSON.stringify(body),
     });
     if (res.ok) {
       const convo = await res.json();
       setShowNewMsg(false);
-      setNewRecipient("");
+      setNewRecipients([]);
       setNewMsgContent("");
+      setNewGroupTitle("");
       loadConversations();
       setActiveConvo(convo);
     }
@@ -194,15 +266,24 @@ function SidebarMessages() {
       <div className="emp-msg">
         <div className="emp-msg-header">
           <button className="emp-msg-back" onClick={() => setActiveConvo(null)}>&lsaquo;</button>
-          <span className="emp-msg-header-name">{activeConvo.other_user_name}</span>
+          <span className="emp-msg-header-name">
+            {activeConvo.is_group && <span className="emp-msg-group-icon" title="Group">G</span>}
+            {activeConvo.display_name}
+          </span>
         </div>
         <div className="emp-msg-thread">
-          {thread.map(m => (
-            <div key={m.id} className={`emp-msg-bubble ${m.sender_id === myId ? "mine" : "theirs"}`}>
-              <div>{m.content}</div>
-              <div className="emp-msg-time">{fmtTime(m.created_at)}</div>
-            </div>
-          ))}
+          {thread.map(m => {
+            const sender = activeConvo.participants?.find(p => p.id === m.sender_id);
+            return (
+              <div key={m.id} className={`emp-msg-bubble ${m.sender_id === myId ? "mine" : "theirs"}`}>
+                {activeConvo.is_group && m.sender_id !== myId && (
+                  <div className="emp-msg-sender">{sender?.name || "Unknown"}</div>
+                )}
+                <div>{m.content}</div>
+                <div className="emp-msg-time">{fmtTime(m.created_at)}</div>
+              </div>
+            );
+          })}
           <div ref={threadEndRef} />
         </div>
         <div className="emp-msg-input">
@@ -227,12 +308,15 @@ function SidebarMessages() {
           <span className="emp-msg-header-name">New Message</span>
         </div>
         <div className="emp-msg-new">
-          <select value={newRecipient} onChange={e => setNewRecipient(e.target.value)}>
-            <option value="">Select colleague...</option>
-            {colleagues.map(c => (
-              <option key={c.id} value={c.id}>{c.name || c.email}</option>
-            ))}
-          </select>
+          <PeoplePicker colleagues={colleagues} selected={newRecipients} onChange={setNewRecipients} />
+          {newRecipients.length > 1 && (
+            <input
+              className="people-picker-input"
+              value={newGroupTitle}
+              onChange={e => setNewGroupTitle(e.target.value)}
+              placeholder="Group name (optional)..."
+            />
+          )}
           <textarea
             value={newMsgContent}
             onChange={e => setNewMsgContent(e.target.value)}
@@ -240,7 +324,7 @@ function SidebarMessages() {
             rows={3}
           />
           <div className="emp-msg-new-actions">
-            <button className="btn btnPrimary btnTiny" onClick={startNewConvo} disabled={!newRecipient || !newMsgContent.trim()}>Send</button>
+            <button className="btn btnPrimary btnTiny" onClick={startNewConvo} disabled={newRecipients.length === 0 || !newMsgContent.trim()}>Send</button>
             <button className="btn btnGhost btnTiny" onClick={() => setShowNewMsg(false)}>Cancel</button>
           </div>
         </div>
@@ -266,7 +350,10 @@ function SidebarMessages() {
             onClick={() => { setActiveConvo(c); setShowNewMsg(false); }}
           >
             <div className="emp-msg-item-top">
-              <span className="emp-msg-item-name">{c.other_user_name}</span>
+              <span className="emp-msg-item-name">
+                {c.is_group && <span className="emp-msg-group-icon" title="Group">G</span>}
+                {c.display_name}
+              </span>
               <span className="emp-msg-item-time">{timeAgo(c.last_message_at)}</span>
             </div>
             <div className="emp-msg-item-preview">
