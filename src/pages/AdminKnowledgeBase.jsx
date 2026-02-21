@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { API } from "../api.js";
+import { API, authFetch } from "../api.js";
 import "./AdminKnowledgeBase.css";
 const CATEGORIES = ["general", "policy", "handbook", "benefits", "training", "compliance", "procedure", "template"];
 
@@ -12,7 +12,6 @@ export default function AdminKnowledgeBase() {
   const [versions, setVersions] = useState(null);
   const [editing, setEditing] = useState(null);
 
-  // Upload form state
   const [uploadTitle, setUploadTitle] = useState("");
   const [uploadDesc, setUploadDesc] = useState("");
   const [uploadCategory, setUploadCategory] = useState("general");
@@ -23,7 +22,8 @@ export default function AdminKnowledgeBase() {
     const params = new URLSearchParams();
     if (categoryFilter) params.set("category", categoryFilter);
     if (search) params.set("search", search);
-    const res = await fetch(`${API}/api/v1/knowledge-base/?${params}`);
+    const res = await authFetch(`${API}/api/v1/knowledge-base/?${params}`);
+    if (!res.ok) return;
     const data = await res.json();
     setDocs(data);
   }
@@ -34,54 +34,41 @@ export default function AdminKnowledgeBase() {
     e.preventDefault();
     if (!uploadFile || !uploadTitle) return;
     setUploading(true);
-
     const params = new URLSearchParams({
-      title: uploadTitle,
-      description: uploadDesc,
-      category: uploadCategory,
-      tags: uploadTags,
+      title: uploadTitle, description: uploadDesc, category: uploadCategory, tags: uploadTags,
     });
-
     const fd = new FormData();
     fd.append("file", uploadFile);
-
     try {
-      const res = await fetch(`${API}/api/v1/knowledge-base/upload?${params}`, {
-        method: "POST",
-        body: fd,
+      const res = await authFetch(`${API}/api/v1/knowledge-base/upload?${params}`, {
+        method: "POST", body: fd,
       });
       if (res.ok) {
         setShowUpload(false);
         setUploadTitle(""); setUploadDesc(""); setUploadTags(""); setUploadFile(null);
         fetchDocs();
       }
-    } finally {
-      setUploading(false);
-    }
+    } finally { setUploading(false); }
   }
 
   async function handleDelete(id) {
     if (!confirm("Archive this document?")) return;
-    await fetch(`${API}/api/v1/knowledge-base/${id}`, { method: "DELETE" });
+    await authFetch(`${API}/api/v1/knowledge-base/${id}`, { method: "DELETE" });
     fetchDocs();
   }
 
   async function handleViewVersions(id) {
-    const res = await fetch(`${API}/api/v1/knowledge-base/${id}/versions`);
+    const res = await authFetch(`${API}/api/v1/knowledge-base/${id}/versions`);
+    if (!res.ok) return;
     const data = await res.json();
     setVersions({ docId: id, list: data });
   }
 
   async function handleUpdateMeta(id) {
-    const res = await fetch(`${API}/api/v1/knowledge-base/${id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(editing),
+    const res = await authFetch(`${API}/api/v1/knowledge-base/${id}`, {
+      method: "PUT", body: JSON.stringify(editing),
     });
-    if (res.ok) {
-      setEditing(null);
-      fetchDocs();
-    }
+    if (res.ok) { setEditing(null); fetchDocs(); }
   }
 
   function formatSize(bytes) {
@@ -101,66 +88,30 @@ export default function AdminKnowledgeBase() {
 
       {showUpload && (
         <form className="kb-upload-form" onSubmit={handleUpload}>
-          <input
-            type="text"
-            placeholder="Document title *"
-            value={uploadTitle}
-            onChange={(e) => setUploadTitle(e.target.value)}
-            required
-          />
-          <textarea
-            placeholder="Description (optional)"
-            value={uploadDesc}
-            onChange={(e) => setUploadDesc(e.target.value)}
-          />
+          <input type="text" placeholder="Document title *" value={uploadTitle} onChange={(e) => setUploadTitle(e.target.value)} required />
+          <textarea placeholder="Description (optional)" value={uploadDesc} onChange={(e) => setUploadDesc(e.target.value)} />
           <div className="kb-upload-row">
             <select value={uploadCategory} onChange={(e) => setUploadCategory(e.target.value)}>
-              {CATEGORIES.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
+              {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
-            <input
-              type="text"
-              placeholder="Tags (comma-separated)"
-              value={uploadTags}
-              onChange={(e) => setUploadTags(e.target.value)}
-            />
+            <input type="text" placeholder="Tags (comma-separated)" value={uploadTags} onChange={(e) => setUploadTags(e.target.value)} />
           </div>
-          <input
-            type="file"
-            accept=".pdf,.docx,.txt,.csv"
-            onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-            required
-          />
-          <button className="btn btnPrimary" type="submit" disabled={uploading}>
-            {uploading ? "Uploading..." : "Upload"}
-          </button>
+          <input type="file" accept=".pdf,.docx,.txt,.csv" onChange={(e) => setUploadFile(e.target.files?.[0] || null)} required />
+          <button className="btn btnPrimary" type="submit" disabled={uploading}>{uploading ? "Uploading..." : "Upload"}</button>
         </form>
       )}
 
       <div className="kb-filters">
-        <input
-          className="search"
-          placeholder="Search documents..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+        <input className="search" placeholder="Search documents..." value={search} onChange={(e) => setSearch(e.target.value)} />
         <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
           <option value="">All categories</option>
-          {CATEGORIES.map((c) => (
-            <option key={c} value={c}>{c}</option>
-          ))}
+          {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
       </div>
 
       <div className="kb-table">
         <div className="kb-table-head">
-          <span>Title</span>
-          <span>Category</span>
-          <span>Size</span>
-          <span>Version</span>
-          <span>Indexed</span>
-          <span>Actions</span>
+          <span>Title</span><span>Category</span><span>Size</span><span>Version</span><span>Indexed</span><span>Actions</span>
         </div>
         {docs.length === 0 ? (
           <div className="kb-empty">No documents found.</div>
@@ -168,24 +119,21 @@ export default function AdminKnowledgeBase() {
           docs.map((doc) => (
             <div key={doc.id} className="kb-table-row">
               <span className="kb-doc-title">
-                <strong>{doc.title}</strong>
+                <a href={`${API}/api/v1/knowledge-base/${doc.id}/download`} target="_blank" rel="noopener noreferrer" className="kb-doc-link">
+                  <strong>{doc.title}</strong>
+                </a>
                 {doc.description && <small>{doc.description}</small>}
                 {doc.tags?.length > 0 && (
-                  <div className="kb-tags">
-                    {doc.tags.map((t) => <span key={t} className="kb-tag">{t}</span>)}
-                  </div>
+                  <div className="kb-tags">{doc.tags.map((t) => <span key={t} className="kb-tag">{t}</span>)}</div>
                 )}
               </span>
               <span className="kb-badge">{doc.category}</span>
               <span>{formatSize(doc.file_size)}</span>
               <span>v{doc.version}</span>
-              <span className={doc.is_indexed ? "kb-indexed" : "kb-not-indexed"}>
-                {doc.is_indexed ? "Yes" : "No"}
-              </span>
+              <span className={doc.is_indexed ? "kb-indexed" : "kb-not-indexed"}>{doc.is_indexed ? "Yes" : "No"}</span>
               <span className="kb-actions">
-                <button className="btn btnTiny" onClick={() => setEditing({
-                  id: doc.id, title: doc.title, description: doc.description || "", category: doc.category, tags: doc.tags
-                })}>Edit</button>
+                <a className="btn btnTiny" href={`${API}/api/v1/knowledge-base/${doc.id}/download`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>Download</a>
+                <button className="btn btnTiny" onClick={() => setEditing({ id: doc.id, title: doc.title, description: doc.description || "", category: doc.category, tags: doc.tags })}>Edit</button>
                 <button className="btn btnTiny" onClick={() => handleViewVersions(doc.id)}>Versions</button>
                 <button className="btn btnTiny miniBtnDanger" onClick={() => handleDelete(doc.id)}>Archive</button>
               </span>
@@ -198,16 +146,8 @@ export default function AdminKnowledgeBase() {
         <div className="kb-modal-overlay" onClick={() => setEditing(null)}>
           <div className="kb-modal" onClick={(e) => e.stopPropagation()}>
             <h2>Edit Document</h2>
-            <input
-              type="text" value={editing.title}
-              onChange={(e) => setEditing({ ...editing, title: e.target.value })}
-              placeholder="Title"
-            />
-            <textarea
-              value={editing.description}
-              onChange={(e) => setEditing({ ...editing, description: e.target.value })}
-              placeholder="Description"
-            />
+            <input type="text" value={editing.title} onChange={(e) => setEditing({ ...editing, title: e.target.value })} placeholder="Title" />
+            <textarea value={editing.description} onChange={(e) => setEditing({ ...editing, description: e.target.value })} placeholder="Description" />
             <select value={editing.category} onChange={(e) => setEditing({ ...editing, category: e.target.value })}>
               {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
