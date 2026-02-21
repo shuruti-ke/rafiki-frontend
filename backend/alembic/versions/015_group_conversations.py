@@ -37,18 +37,25 @@ def upgrade() -> None:
         )
     """)
 
-    # Migrate existing data: insert 2 rows per existing conversation
+    # Migrate existing data (only if old columns still exist)
     op.execute("""
-        INSERT INTO conversation_participants (conversation_id, user_id)
-        SELECT id, participant_a FROM dm_conversations
-        WHERE participant_a IS NOT NULL
-        ON CONFLICT DO NOTHING
-    """)
-    op.execute("""
-        INSERT INTO conversation_participants (conversation_id, user_id)
-        SELECT id, participant_b FROM dm_conversations
-        WHERE participant_b IS NOT NULL
-        ON CONFLICT DO NOTHING
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'dm_conversations' AND column_name = 'participant_a'
+            ) THEN
+                INSERT INTO conversation_participants (conversation_id, user_id)
+                SELECT id, participant_a FROM dm_conversations
+                WHERE participant_a IS NOT NULL
+                ON CONFLICT DO NOTHING;
+
+                INSERT INTO conversation_participants (conversation_id, user_id)
+                SELECT id, participant_b FROM dm_conversations
+                WHERE participant_b IS NOT NULL
+                ON CONFLICT DO NOTHING;
+            END IF;
+        END $$
     """)
 
     # Drop old constraint and columns
