@@ -26,10 +26,10 @@
   text-transform: capitalize;
   transition: all 0.15s;
 }
-.ekb-cat-btn:hover { background: rgba(255,255,255,.04); color: var(--text); }
+.ekb-cat-btn:hover { background: rgba(0, 0, 0, 0.03); color: var(--text); }
 .ekb-cat-btn.active {
-  background: rgba(34,197,94,.12);
-  border-color: rgba(34,197,94,.4);
+  background: rgba(139, 92, 246, 0.12);
+  border-color: rgba(139, 92, 246, 0.4);
   color: var(--accent);
 }
 
@@ -46,7 +46,7 @@
   display: grid;
   gap: 8px;
 }
-.ekb-doc-card:hover { border-color: rgba(34,197,94,.2); }
+.ekb-doc-card:hover { border-color: rgba(139, 92, 246, 0.2); }
 
 .ekb-doc-card-top { display: flex; justify-content: space-between; align-items: start; gap: 8px; }
 .ekb-badge {
@@ -65,7 +65,7 @@
   font-size: 11px;
   padding: 2px 6px;
   border-radius: 6px;
-  background: rgba(34,197,94,.08);
+  background: rgba(139, 92, 246, 0.08);
   color: var(--accent);
 }
 

@@ -24,14 +24,14 @@
 }
 
 .mgr-filter-chip:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(0, 0, 0, 0.03);
   color: var(--text);
 }
 
 .mgr-filter-chip.active {
-  background: rgba(59, 130, 246, 0.12);
-  color: #3b82f6;
-  border-color: rgba(59, 130, 246, 0.3);
+  background: rgba(31, 191, 184, 0.12);
+  color: #1fbfb8;
+  border-color: rgba(31, 191, 184, 0.30);
 }
 
 /* Grid */
@@ -55,7 +55,7 @@
 }
 
 .mgr-toolkit-card:hover {
-  border-color: rgba(59, 130, 246, 0.45);
+  border-color: rgba(31, 191, 184, 0.45);
 }
 
 .mgr-toolkit-card-cat {
@@ -63,7 +63,7 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: #3b82f6;
+  color: #1fbfb8;
 }
 
 .mgr-toolkit-card-title {
@@ -96,10 +96,10 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: #3b82f6;
+  color: #1fbfb8;
   padding: 3px 10px;
   border-radius: 999px;
-  background: rgba(59, 130, 246, 0.1);
+  background: rgba(31, 191, 184, 0.10);
   margin-bottom: 20px;
 }
 
@@ -123,8 +123,8 @@
 .mgr-module-prompts {
   margin-top: 10px;
   padding: 12px;
-  background: rgba(59, 130, 246, 0.06);
-  border: 1px solid rgba(59, 130, 246, 0.15);
+  background: rgba(31, 191, 184, 0.06);
+  border: 1px solid rgba(31, 191, 184, 0.15);
   border-radius: 10px;
 }
 
@@ -132,7 +132,7 @@
   font-size: 12px;
   font-weight: 700;
   margin-bottom: 6px;
-  color: #3b82f6;
+  color: #1fbfb8;
 }
 
 .mgr-module-prompts ul {

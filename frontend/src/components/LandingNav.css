@@ -1,17 +1,5 @@
 /* ===== Landing Navigation ===== */
 .landing-nav {
-  --primary-teal: #1fbfb8;
-  --primary-purple: #8b5cf6;
-  --primary-gradient: linear-gradient(135deg, #8b5cf6 0%, #1fbfb8 100%);
-  --white: #ffffff;
-  --gray-300: #d1d5db;
-  --gray-400: #9ca3af;
-  --gray-600: #4b5563;
-  --gray-700: #374151;
-  --gray-900: #111827;
-  --font-display: 'Playfair Display', serif;
-  --radius: 12px;
-
   position: fixed;
   top: 0;
   left: 0;

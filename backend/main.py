@@ -31,7 +31,7 @@ def _normalize_origin(o: str) -> str:
 
 CORS_ORIGINS_ENV = os.getenv(
     "CORS_ORIGINS",
-    "https://rafiki-frontend-five.vercel.app,http://localhost:5173,http://localhost:3000",
+    "https://rafiki-frontend-five.vercel.app,http://localhost:5173,http://localhost:5174,http://localhost:3000",
 )
 
 ALLOWED_ORIGINS = [_normalize_origin(o) for o in CORS_ORIGINS_ENV.split(",") if o.strip()]
@@ -67,6 +67,9 @@ from app.routers.org_profile import router as org_router
 from app.routers.manager import router as mgr_router
 from app.routers.auth import router as auth_router
 from app.routers.super_admin import router as sa_router
+from app.routers.objectives import router as obj_router
+from app.routers.calendar import router as cal_router
+from app.routers.messages import router as msg_router
 
 app.include_router(auth_router)
 app.include_router(kb_router)
@@ -77,6 +80,9 @@ app.include_router(gp_router)
 app.include_router(org_router)
 app.include_router(mgr_router)
 app.include_router(sa_router)
+app.include_router(obj_router)
+app.include_router(cal_router)
+app.include_router(msg_router)
 
 @app.get("/__routes")
 def __routes():

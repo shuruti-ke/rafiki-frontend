@@ -5,7 +5,7 @@
 }
 
 .mgr-sidebar {
-  background: linear-gradient(180deg, var(--panel) 0%, var(--panel2) 100%);
+  background: var(--panel);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -24,8 +24,8 @@
   width: 12px;
   height: 12px;
   border-radius: 999px;
-  background: #3b82f6;
-  box-shadow: 0 0 24px rgba(59, 130, 246, 0.4);
+  background: var(--accent-teal, #1fbfb8);
+  box-shadow: 0 0 24px rgba(31, 191, 184, 0.3);
 }
 
 .mgr-brand-title {
@@ -59,13 +59,13 @@
 }
 
 .mgr-nav-link:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(0, 0, 0, 0.03);
   color: var(--text);
 }
 
 .mgr-nav-link.active {
-  background: rgba(59, 130, 246, 0.12);
-  color: #3b82f6;
+  background: rgba(31, 191, 184, 0.10);
+  color: #1fbfb8;
 }
 
 .mgr-nav-footer {

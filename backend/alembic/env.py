@@ -18,6 +18,7 @@ if config.config_file_name is not None:
 from app.database import engine, Base
 from app.models import document, announcement, employee_document, performance, audit_log
 from app.models import guided_path, org_profile, toolkit, user
+from app.models import objective, calendar_event, message
 
 target_metadata = Base.metadata
 

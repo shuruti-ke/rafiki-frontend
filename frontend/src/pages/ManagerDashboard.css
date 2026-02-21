@@ -27,7 +27,7 @@
 .mgr-metric-value {
   font-size: 28px;
   font-weight: 800;
-  color: #3b82f6;
+  color: #1fbfb8;
 }
 
 .mgr-metric-label {
@@ -56,7 +56,7 @@
 }
 
 .mgr-action-card:hover {
-  border-color: rgba(59, 130, 246, 0.45);
+  border-color: rgba(31, 191, 184, 0.45);
 }
 
 .mgr-action-card strong {
@@ -126,7 +126,7 @@
   text-transform: uppercase;
 }
 
-.mgr-outcome-improved { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
+.mgr-outcome-improved { background: rgba(139, 92, 246, 0.15); color: #8b5cf6; }
 .mgr-outcome-same { background: rgba(234, 179, 8, 0.15); color: #eab308; }
 .mgr-outcome-worse { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
 .mgr-outcome-pending { background: rgba(148, 163, 184, 0.1); color: var(--muted); }

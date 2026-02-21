@@ -1,6 +1,7 @@
-import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import LandingPage from "./pages/LandingPage.jsx";
 import ChatPage from "./pages/ChatPage.jsx";
+import EmployeeLayout from "./components/EmployeeLayout.jsx";
 import AdminLayout from "./components/AdminLayout.jsx";
 import AdminDashboard from "./pages/AdminDashboard.jsx";
 import AdminKnowledgeBase from "./pages/AdminKnowledgeBase.jsx";
@@ -14,6 +15,7 @@ import EmployeeKnowledgeBase from "./pages/EmployeeKnowledgeBase.jsx";
 import EmployeeAnnouncements from "./pages/EmployeeAnnouncements.jsx";
 import GuidedPathExplore from "./pages/GuidedPathExplore.jsx";
 import GuidedPathRunner from "./pages/GuidedPathRunner.jsx";
+import ObjectivesPage from "./pages/ObjectivesPage.jsx";
 import ManagerLayout from "./components/ManagerLayout.jsx";
 import ManagerDashboard from "./pages/ManagerDashboard.jsx";
 import ManagerTeam from "./pages/ManagerTeam.jsx";
@@ -40,76 +42,15 @@ export default function App() {
         {/* Landing page */}
         <Route path="/" element={<LandingPage />} />
 
-        {/* Main chat interface (employee) */}
-        <Route path="/chat" element={
-          <div className="employee-page-wrapper" style={{ padding: 0 }}>
-            <nav className="employee-nav" style={{ padding: '24px 24px 0' }}>
-              <Link to="/chat" className="btn btnTiny">Chat</Link>
-              <Link to="/knowledge-base" className="btn btnTiny">Knowledge Base</Link>
-              <Link to="/announcements" className="btn btnTiny">Announcements</Link>
-              <Link to="/guided-paths" className="btn btnTiny">Guided Paths</Link>
-              <Link to="/manager" className="btn btnTiny btnGhost">Manager</Link>
-              <Link to="/admin" className="btn btnTiny btnGhost">HR Portal</Link>
-            </nav>
-            <ChatPage />
-          </div>
-        } />
-
-        {/* Employee-facing pages */}
-        <Route path="/knowledge-base" element={
-          <div className="employee-page-wrapper">
-            <nav className="employee-nav">
-              <Link to="/chat" className="btn btnTiny">Chat</Link>
-              <Link to="/knowledge-base" className="btn btnTiny">Knowledge Base</Link>
-              <Link to="/announcements" className="btn btnTiny">Announcements</Link>
-              <Link to="/guided-paths" className="btn btnTiny">Guided Paths</Link>
-              <Link to="/manager" className="btn btnTiny btnGhost">Manager</Link>
-              <Link to="/admin" className="btn btnTiny btnGhost">HR Portal</Link>
-            </nav>
-            <EmployeeKnowledgeBase />
-          </div>
-        } />
-        <Route path="/announcements" element={
-          <div className="employee-page-wrapper">
-            <nav className="employee-nav">
-              <Link to="/chat" className="btn btnTiny">Chat</Link>
-              <Link to="/knowledge-base" className="btn btnTiny">Knowledge Base</Link>
-              <Link to="/announcements" className="btn btnTiny">Announcements</Link>
-              <Link to="/guided-paths" className="btn btnTiny">Guided Paths</Link>
-              <Link to="/manager" className="btn btnTiny btnGhost">Manager</Link>
-              <Link to="/admin" className="btn btnTiny btnGhost">HR Portal</Link>
-            </nav>
-            <EmployeeAnnouncements />
-          </div>
-        } />
-
-        {/* Guided Paths */}
-        <Route path="/guided-paths" element={
-          <div className="employee-page-wrapper">
-            <nav className="employee-nav">
-              <Link to="/chat" className="btn btnTiny">Chat</Link>
-              <Link to="/knowledge-base" className="btn btnTiny">Knowledge Base</Link>
-              <Link to="/announcements" className="btn btnTiny">Announcements</Link>
-              <Link to="/guided-paths" className="btn btnTiny">Guided Paths</Link>
-              <Link to="/manager" className="btn btnTiny btnGhost">Manager</Link>
-              <Link to="/admin" className="btn btnTiny btnGhost">HR Portal</Link>
-            </nav>
-            <GuidedPathExplore />
-          </div>
-        } />
-        <Route path="/guided-paths/:moduleId" element={
-          <div className="employee-page-wrapper">
-            <nav className="employee-nav">
-              <Link to="/chat" className="btn btnTiny">Chat</Link>
-              <Link to="/knowledge-base" className="btn btnTiny">Knowledge Base</Link>
-              <Link to="/announcements" className="btn btnTiny">Announcements</Link>
-              <Link to="/guided-paths" className="btn btnTiny">Guided Paths</Link>
-              <Link to="/manager" className="btn btnTiny btnGhost">Manager</Link>
-              <Link to="/admin" className="btn btnTiny btnGhost">HR Portal</Link>
-            </nav>
-            <GuidedPathRunner />
-          </div>
-        } />
+        {/* Employee pages — shared layout with nav */}
+        <Route element={<EmployeeLayout />}>
+          <Route path="/chat" element={<ChatPage />} />
+          <Route path="/knowledge-base" element={<EmployeeKnowledgeBase />} />
+          <Route path="/announcements" element={<EmployeeAnnouncements />} />
+          <Route path="/guided-paths" element={<GuidedPathExplore />} />
+          <Route path="/guided-paths/:moduleId" element={<GuidedPathRunner />} />
+          <Route path="/objectives" element={<ObjectivesPage />} />
+        </Route>
 
         {/* Super Admin Portal */}
         <Route path="/super-admin" element={

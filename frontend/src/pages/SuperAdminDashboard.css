@@ -75,11 +75,11 @@
 }
 
 .sa-table-row-link:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(0, 0, 0, 0.03);
 }
 
 .sa-code {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.04);
   padding: 2px 8px;
   border-radius: 6px;
   font-size: 12px;
@@ -96,8 +96,8 @@
 }
 
 .sa-badge-active {
-  background: rgba(34, 197, 94, 0.15);
-  color: #22c55e;
+  background: rgba(139, 92, 246, 0.15);
+  color: #8b5cf6;
 }
 
 .sa-badge-inactive {
@@ -151,7 +151,7 @@
 
 .sa-modal-field input,
 .sa-modal-field select {
-  background: rgba(255, 255, 255, 0.03);
+  background: #ffffff;
   border: 1px solid var(--border);
   color: var(--text);
   border-radius: 10px;
@@ -162,7 +162,7 @@
 
 .sa-modal-field input:focus,
 .sa-modal-field select:focus {
-  border-color: rgba(34, 197, 94, 0.45);
+  border-color: rgba(139, 92, 246, 0.45);
 }
 
 .sa-modal-btns {
