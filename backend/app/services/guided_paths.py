@@ -2,7 +2,8 @@ import logging
 import uuid
 import zlib
 from datetime import datetime, timezone
-from typing import Any, Optional, Union
+from typing import Any, Union
+from uuid import UUID
 
 from sqlalchemy.orm import Session
 
@@ -13,23 +14,12 @@ from app.services.module_composer import compose_module
 logger = logging.getLogger(__name__)
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Legacy bridge: UUID -> stable INT (for legacy tables still using INTEGER org_id/user_id)
-# ─────────────────────────────────────────────────────────────────────
-
 def _uuidish_to_int(value: Any, *, fallback: int = 0) -> int:
-    """
-    Convert UUID/UUID-string to a stable non-negative 32-bit int for legacy INTEGER columns.
-    - int -> int
-    - uuid.UUID / uuid-string -> stable 32-bit int
-    - None/unknown -> fallback
-    """
+    """Stable UUID/string -> 32-bit int for legacy INTEGER columns."""
     if value is None:
         return fallback
-
     if isinstance(value, int):
         return value
-
     try:
         u = value if isinstance(value, uuid.UUID) else uuid.UUID(str(value))
         return zlib.crc32(u.bytes) & 0x7FFFFFFF
@@ -41,13 +31,18 @@ def _uuidish_to_int(value: Any, *, fallback: int = 0) -> int:
             return fallback
 
 
+def _as_uuid(value: Any) -> UUID:
+    if isinstance(value, UUID):
+        return value
+    return UUID(str(value))
+
+
 # ─────────────────────────────────────────────────────────────────────
-# Modules
+# Modules (LEGACY org_id is INTEGER in guided_modules)
 # ─────────────────────────────────────────────────────────────────────
 
-def list_modules(db: Session, org_id: Union[int, uuid.UUID, str], active_only: bool = True):
+def list_modules(db: Session, org_id: Union[int, UUID, str], active_only: bool = True):
     legacy_org_id = _uuidish_to_int(org_id, fallback=0)
-
     q = db.query(GuidedModule).filter(
         (GuidedModule.org_id == legacy_org_id) | (GuidedModule.org_id.is_(None))
     )
@@ -60,12 +55,7 @@ def get_module(db: Session, module_id: int):
     return db.query(GuidedModule).filter(GuidedModule.id == module_id).first()
 
 
-def create_module(
-    db: Session,
-    org_id: Union[int, uuid.UUID, str],
-    created_by: Union[int, uuid.UUID, str],
-    data: dict,
-):
+def create_module(db: Session, org_id: Union[int, UUID, str], created_by: Any, data: dict):
     legacy_org_id = _uuidish_to_int(org_id, fallback=0)
     legacy_created_by = _uuidish_to_int(created_by, fallback=0)
 
@@ -104,13 +94,14 @@ def deactivate_module(db: Session, module: GuidedModule):
 
 
 # ─────────────────────────────────────────────────────────────────────
-# Sessions
+# Sessions (LEGACY org_id/user_id are INTEGER in guided_path_sessions)
+# Context pack uses UUID org_id (org_profiles / role_profiles are UUID)
 # ─────────────────────────────────────────────────────────────────────
 
 def start_session(
     db: Session,
-    user_id: Union[int, uuid.UUID, str],
-    org_id: Union[int, uuid.UUID, str],
+    user_id: Union[int, UUID, str],
+    org_id: Union[int, UUID, str],
     module_id: int,
     module: GuidedModule,
     role_key: str | None = None,
@@ -120,14 +111,10 @@ def start_session(
     available_time: int | None = None,
     pre_rating: int | None = None,
 ):
-    """
-    Start a session with adaptive composition.
+    # UUID org_id for UUID tables
+    org_uuid = _as_uuid(org_id)
 
-    NOTE (bridge):
-    - guided_path_sessions.user_id/org_id are still INTEGER in DB
-    - org_profiles and other context tables may also still be INTEGER keyed
-    So we convert UUID-ish IDs to stable legacy ints here.
-    """
+    # Legacy ints for legacy session table
     legacy_org_id = _uuidish_to_int(org_id, fallback=0)
     legacy_user_id = _uuidish_to_int(user_id, fallback=0)
 
@@ -138,8 +125,8 @@ def start_session(
         "available_time": available_time,
     }
 
-    # Build context pack using legacy org_id (matches legacy tables)
-    context_pack = build_context_pack(db, legacy_org_id, role_key=role_key, session_vars=session_vars)
+    # ✅ Query org_profiles/role_profiles with UUID
+    context_pack = build_context_pack(db, org_uuid, role_key=role_key, session_vars=session_vars)
 
     blueprint_steps = module.steps or []
     composed_steps = compose_module(blueprint_steps, context_pack, module.name)
@@ -168,12 +155,10 @@ def get_session(db: Session, session_id: int):
 
 
 def _get_session_steps(session: GuidedPathSession, module: GuidedModule) -> list[dict]:
-    """Get the effective steps for a session, composed if available, else raw blueprint."""
     return session.composed_steps or module.steps or []
 
 
 def get_module_step(session: GuidedPathSession, module: GuidedModule, step_index: int):
-    """Get a step from the session's composed steps (or raw blueprint fallback)."""
     steps = _get_session_steps(session, module)
     if step_index < 0 or step_index >= len(steps):
         return None
@@ -230,7 +215,6 @@ def advance_step(db: Session, session: GuidedPathSession, module: GuidedModule, 
 
 
 def record_outcome(db: Session, session: GuidedPathSession, pre_rating: int | None, post_rating: int | None):
-    """Record pre/post outcome ratings on a session."""
     if pre_rating is not None:
         session.pre_rating = pre_rating
     if post_rating is not None:
