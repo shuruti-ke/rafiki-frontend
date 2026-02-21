@@ -15,9 +15,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Chat"])
 
-BONSAI_API_KEY = os.getenv("BONSAI_API_KEY", "").strip()
-BONSAI_BASE_URL = os.getenv("BONSAI_BASE_URL", "https://go.trybons.ai").strip().rstrip("/")
-BONSAI_DEFAULT_MODEL = os.getenv("BONSAI_DEFAULT_MODEL", "anthropic/claude-sonnet-4.5").strip()
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()
+ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929").strip()
 
 BACKEND_DIR = Path(__file__).parent.parent.parent
 TEXT_DIR = BACKEND_DIR / "uploads" / "text"
@@ -93,13 +92,10 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)):
         content = req.message
         final_user_message = content if not context_blob else f"{content}\n\n{context_blob}"
 
-        if not BONSAI_API_KEY:
-            raise HTTPException(status_code=503, detail="Bonsai not configured. Set BONSAI_API_KEY in backend/.env")
+        if not ANTHROPIC_API_KEY:
+            raise HTTPException(status_code=503, detail="Anthropic API not configured. Set ANTHROPIC_API_KEY in environment.")
 
-        chosen = (req.model or "stealth").strip()
-        is_stealth = chosen == "stealth"
-        if is_stealth:
-            chosen = BONSAI_DEFAULT_MODEL
+        chosen = ANTHROPIC_MODEL
 
         MAX_USER_CHARS_HARD = 10_000
         if len(final_user_message) > MAX_USER_CHARS_HARD:
@@ -112,12 +108,11 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)):
             user_message=content,
         )
 
-        logger.info("model=%s %s  chars=%d", chosen, "(stealth)" if is_stealth else "", len(final_user_message))
+        logger.info("model=%s  chars=%d", chosen, len(final_user_message))
 
-        bonsai_url = BONSAI_BASE_URL + "/v1/messages"
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {BONSAI_API_KEY}",
+            "x-api-key": ANTHROPIC_API_KEY,
             "anthropic-version": "2023-06-01",
         }
         payload = {
@@ -129,10 +124,11 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)):
             ],
         }
 
-        r = httpx.post(bonsai_url, headers=headers, json=payload, timeout=60)
+        r = httpx.post("https://api.anthropic.com/v1/messages", headers=headers, json=payload, timeout=60)
 
         if r.status_code >= 400:
-            return ChatResponse(reply=f"Bonsai error ({r.status_code}): {r.text[:500]}")
+            logger.error("Anthropic API error (%d): %s", r.status_code, r.text[:500])
+            return ChatResponse(reply=f"AI service error ({r.status_code}). Please try again.")
 
         data = r.json()
         reply_text = ""
