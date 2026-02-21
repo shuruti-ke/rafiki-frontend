@@ -5,6 +5,7 @@ from fastapi.responses import Response
 from pathlib import Path
 from PIL import Image
 from openai import OpenAI
+
 import json
 import os
 import base64
@@ -36,7 +37,6 @@ CORS_ORIGINS_ENV = os.getenv(
 
 ALLOWED_ORIGINS = [_normalize_origin(o) for o in CORS_ORIGINS_ENV.split(",") if o.strip()]
 
-# Helpful log to confirm what Render actually loaded
 logger.info(f"CORS allowed origins: {ALLOWED_ORIGINS}")
 
 app.add_middleware(
@@ -44,13 +44,11 @@ app.add_middleware(
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["*"],  # includes Authorization
+    allow_headers=["*"],
     expose_headers=["*"],
     max_age=86400,
 )
 
-# Some platforms/proxies can behave oddly with preflight.
-# This ensures OPTIONS always returns a valid response (middleware will attach headers).
 @app.options("/{path:path}")
 def preflight_handler(path: str, request: Request):
     return Response(status_code=204)
@@ -70,6 +68,7 @@ from app.routers.super_admin import router as sa_router
 from app.routers.objectives import router as obj_router
 from app.routers.calendar import router as cal_router
 from app.routers.messages import router as msg_router
+from app.routers.org_members import router as org_members_router
 
 app.include_router(auth_router)
 app.include_router(kb_router)
@@ -83,6 +82,7 @@ app.include_router(sa_router)
 app.include_router(obj_router)
 app.include_router(cal_router)
 app.include_router(msg_router)
+app.include_router(org_members_router)
 
 @app.get("/__routes")
 def __routes():
