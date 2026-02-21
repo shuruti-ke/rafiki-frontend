@@ -1,3 +1,7 @@
+import uuid
+import zlib
+from typing import Any, Union
+
 from sqlalchemy.orm import Session
 from app.models.guided_path import GuidedModule
 
@@ -18,25 +22,53 @@ for theme, categories in ROUTING_RULES.items():
         CATEGORY_TO_THEMES.setdefault(cat, []).append(theme)
 
 
+def _uuidish_to_int(value: Any, *, fallback: int = 0) -> int:
+    """
+    Convert UUID/UUID-string to a stable non-negative 32-bit int
+    for legacy INTEGER org_id columns (guided_modules.org_id).
+    """
+    if value is None:
+        return fallback
+
+    if isinstance(value, int):
+        return value
+
+    try:
+        u = value if isinstance(value, uuid.UUID) else uuid.UUID(str(value))
+        return zlib.crc32(u.bytes) & 0x7FFFFFFF
+    except Exception:
+        try:
+            s = str(value).encode("utf-8", errors="ignore")
+            return zlib.crc32(s) & 0x7FFFFFFF
+        except Exception:
+            return fallback
+
+
 def suggest_modules(
     db: Session,
-    org_id: int,
+    org_id: Union[int, uuid.UUID, str],
     theme: str | None = None,
     stress_band: str | None = None,
     available_time: int | None = None,
 ) -> list[dict]:
     """Rules-based module suggestion. Returns ranked list of modules."""
+    legacy_org_id = _uuidish_to_int(org_id, fallback=0)
+
     # Get all active modules for this org (including globals)
-    modules = db.query(GuidedModule).filter(
-        (GuidedModule.org_id == org_id) | (GuidedModule.org_id.is_(None)),
-        GuidedModule.is_active == True,
-    ).all()
+    modules = (
+        db.query(GuidedModule)
+        .filter(
+            (GuidedModule.org_id == legacy_org_id) | (GuidedModule.org_id.is_(None)),
+            GuidedModule.is_active == True,
+        )
+        .all()
+    )
 
     if not modules:
         return []
 
     # Score each module
-    scored = []
+    scored: list[dict] = []
     for mod in modules:
         score = 0
         reason = ""
@@ -70,11 +102,13 @@ def suggest_modules(
         # Default base score for active modules
         score += 1
 
-        scored.append({
-            "module": mod,
-            "score": score,
-            "reason": reason or "Available module",
-        })
+        scored.append(
+            {
+                "module": mod,
+                "score": score,
+                "reason": reason or "Available module",
+            }
+        )
 
     # Sort by score descending, take top 3
     scored.sort(key=lambda x: x["score"], reverse=True)
