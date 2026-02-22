@@ -12,32 +12,31 @@ from app.models.employee_document import EmployeeDocument, DocumentShare
 from app.models.performance import PerformanceEvaluation, DisciplinaryRecord
 from app.schemas.employee_docs import (
     EmployeeDocumentResponse,
-    PerformanceEvaluationCreate, PerformanceEvaluationResponse, PerformanceEvaluationUpdate,
-    DisciplinaryRecordCreate, DisciplinaryRecordResponse,
+    PerformanceEvaluationCreate,
+    PerformanceEvaluationResponse,
+    PerformanceEvaluationUpdate,
+    DisciplinaryRecordCreate,
+    DisciplinaryRecordResponse,
 )
 from app.services.file_storage import save_upload
 from app.services.audit import log_action
 
 router = APIRouter(prefix="/api/v1/employee-docs", tags=["Employee Documents"])
 
-
-# Roles that can access other users' employee docs (Path B DB remains unchanged)
+# Path B (DB as-is)
 _PRIVILEGED_ROLES = {"hr_admin", "super_admin"}
-
-
-def _can_access_user_docs(current_user_id: uuid.UUID, target_user_id: uuid.UUID, role: str) -> bool:
-    """
-    Path B, DB-as-is:
-    - User can access their own docs.
-    - HR Admin / Super Admin can access any user's docs.
-    """
-    if role in _PRIVILEGED_ROLES:
-        return True
-    return current_user_id == target_user_id
 
 
 def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _can_access_user_docs(current_user_id: uuid.UUID, target_user_id: uuid.UUID, role: str) -> bool:
+    """
+    - User can access their own docs
+    - HR Admin / Super Admin can access any user's docs
+    """
+    return role in _PRIVILEGED_ROLES or current_user_id == target_user_id
 
 
 # --- Employee Documents ---
@@ -59,7 +58,7 @@ def upload_employee_doc(
 
     file_path, original_name, size = save_upload(file, subfolder="employee_docs")
 
-    # NOTE: Path B keeps DB as-is, so no "domain" column here.
+    # DB has no "domain" column (Path B)
     doc = EmployeeDocument(
         user_id=user_id,
         org_id=org_id,
@@ -111,7 +110,7 @@ def list_employee_docs(
     q = db.query(EmployeeDocument).filter(EmployeeDocument.org_id == org_id)
 
     if role in _PRIVILEGED_ROLES:
-        # HR/Super can see all docs for the target user, plus any docs shared to them (optional)
+        # HR/Super sees all docs for that user
         q = q.filter(EmployeeDocument.user_id == user_id)
     elif is_owner_or_privileged:
         # Owner sees own docs OR docs shared to them
@@ -122,7 +121,7 @@ def list_employee_docs(
             )
         )
     else:
-        # Non-owner/non-privileged can only see docs shared directly to them
+        # Non-owner/non-privileged sees only docs shared to them
         q = q.filter(EmployeeDocument.id.in_(shared_doc_ids))
 
     return q.order_by(EmployeeDocument.created_at.desc()).all()
@@ -139,7 +138,7 @@ def share_employee_doc(
     current_user_id: uuid.UUID = Depends(get_current_user_id),
     role: str = Depends(get_current_role),
 ):
-    # Owner can share, HR/Super can share
+    # Owner or HR/Super can share
     if not _can_access_user_docs(current_user_id, user_id, role):
         raise HTTPException(status_code=403, detail="Not authorized to share for this user")
 
@@ -155,7 +154,6 @@ def share_employee_doc(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # Create a new active share (DB already allows multiple rows; revoke uses latest active)
     share = DocumentShare(
         org_id=org_id,
         document_id=doc_id,
@@ -189,7 +187,7 @@ def revoke_employee_doc_share(
     current_user_id: uuid.UUID = Depends(get_current_user_id),
     role: str = Depends(get_current_role),
 ):
-    # Owner can revoke, HR/Super can revoke
+    # Owner or HR/Super can revoke
     if not _can_access_user_docs(current_user_id, user_id, role):
         raise HTTPException(status_code=403, detail="Not authorized to revoke for this user")
 
@@ -231,7 +229,7 @@ def delete_employee_doc(
     current_user_id: uuid.UUID = Depends(get_current_user_id),
     role: str = Depends(get_current_role),
 ):
-    # Hard delete to match current DB behavior
+    # Hard delete (matches current DB behavior)
     if not _can_access_user_docs(current_user_id, user_id, role):
         raise HTTPException(status_code=403, detail="Not authorized to delete for this user")
 
@@ -366,8 +364,7 @@ def create_disciplinary(
     current_user_id: uuid.UUID = Depends(get_current_user_id),
     role: str = Depends(get_current_role),
 ):
-    # Highly sensitive: Path B keeps it strict.
-    # HR/Super OR the user themselves (if you want HR-only, remove the self condition)
+    # Highly sensitive: HR/Super OR the user themselves
     if role not in _PRIVILEGED_ROLES and current_user_id != user_id:
         raise HTTPException(status_code=403, detail="Access denied to disciplinary records")
 
@@ -406,7 +403,6 @@ def list_disciplinary(
     current_user_id: uuid.UUID = Depends(get_current_user_id),
     role: str = Depends(get_current_role),
 ):
-    # Highly sensitive: Path B keeps it strict.
     if role not in _PRIVILEGED_ROLES and current_user_id != user_id:
         raise HTTPException(status_code=403, detail="Access denied to disciplinary records")
 
