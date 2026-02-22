@@ -1,5 +1,7 @@
 # backend/app/models/employee_document.py
+
 import enum
+import uuid
 
 from sqlalchemy import Column, String, DateTime, Integer, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
@@ -7,6 +9,10 @@ from sqlalchemy.sql import func
 
 from app.database import Base
 
+
+# ---------------------------------------------------------
+# Enums (kept as string values to match Path B DB design)
+# ---------------------------------------------------------
 
 class EmployeeDocType(str, enum.Enum):
     contract = "contract"
@@ -23,32 +29,31 @@ class SharePermission(str, enum.Enum):
     comment = "comment"
 
 
+# ---------------------------------------------------------
+# Employee Documents
+# ---------------------------------------------------------
+
 class EmployeeDocument(Base):
     """
-    Matches current DB structure:
+    Matches current DB structure (Path B).
 
-    employee_documents:
-      - id UUID (PK)
-      - user_id UUID
-      - org_id UUID
-      - doc_type VARCHAR
-      - title VARCHAR
-      - file_path VARCHAR
-      - original_filename VARCHAR
-      - mime_type VARCHAR
-      - file_size INT4
-      - uploaded_by UUID
-      - created_at TIMESTAMPTZ
-      - updated_at TIMESTAMPTZ
+    IMPORTANT FIX:
+    - id now auto-generates UUID in application layer
     """
+
     __tablename__ = "employee_documents"
 
-    id = Column(UUID(as_uuid=True), primary_key=True)  # UUID PK in DB
+    # 🔥 CRITICAL FIX — generate UUID in app
+    id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,  # ✅ FIXES your IntegrityError
+    )
 
     user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     org_id = Column(UUID(as_uuid=True), nullable=False, index=True)
 
-    # Keep as VARCHAR to match DB
+    # Keep VARCHAR (no DB enum)
     doc_type = Column(String(50), nullable=False)
     title = Column(String(500), nullable=False)
 
@@ -60,26 +65,33 @@ class EmployeeDocument(Base):
     uploaded_by = Column(UUID(as_uuid=True), nullable=False)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
 
+
+# ---------------------------------------------------------
+# Document Shares
+# ---------------------------------------------------------
 
 class DocumentShare(Base):
     """
-    New table (must be created in DB):
+    document_shares table
 
-    document_shares:
-      - id UUID PK
-      - org_id UUID
-      - document_id UUID FK -> employee_documents.id
-      - granted_by UUID
-      - granted_to UUID
-      - permission VARCHAR
-      - revoked_at TIMESTAMPTZ NULL
-      - created_at TIMESTAMPTZ
+    NOTE:
+    - This table MUST exist in DB
+    - Uses server_default gen_random_uuid() (DB side)
     """
+
     __tablename__ = "document_shares"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        server_default=func.gen_random_uuid(),
+    )
 
     org_id = Column(UUID(as_uuid=True), nullable=False, index=True)
 
@@ -93,8 +105,12 @@ class DocumentShare(Base):
     granted_by = Column(UUID(as_uuid=True), nullable=False)
     granted_to = Column(UUID(as_uuid=True), nullable=False, index=True)
 
-    # Keep as VARCHAR to match Path B (no DB enums)
-    permission = Column(String(20), nullable=False, default=SharePermission.read.value)
+    # Keep VARCHAR (Path B)
+    permission = Column(
+        String(20),
+        nullable=False,
+        default=SharePermission.read.value,
+    )
 
     revoked_at = Column(DateTime(timezone=True), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
