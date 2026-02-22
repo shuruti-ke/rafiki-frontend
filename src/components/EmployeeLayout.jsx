@@ -174,7 +174,8 @@ function SidebarMessages() {
   const startNewConvo = async () => {
     if (!newRecipient || !newMsgContent.trim()) return;
     const res = await authFetch(`${API}/api/v1/messages/conversations`, {
-      method: "POST", body: JSON.stringify({ recipient_id: newRecipient, content: newMsgContent }),
+      method: "POST",
+      body: JSON.stringify({ recipient_ids: [newRecipient].filter(Boolean), content: newMsgContent }),
     });
     if (res.ok) {
       const convo = await res.json();
