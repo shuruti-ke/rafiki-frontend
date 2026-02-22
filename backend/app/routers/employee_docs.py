@@ -3,6 +3,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
@@ -18,7 +19,7 @@ from app.schemas.employee_docs import (
     DisciplinaryRecordCreate,
     DisciplinaryRecordResponse,
 )
-from app.services.file_storage import save_upload
+from app.services.file_storage import save_upload, get_download_url
 from app.services.audit import log_action
 
 router = APIRouter(prefix="/api/v1/employee-docs", tags=["Employee Documents"])
@@ -39,7 +40,105 @@ def _can_access_user_docs(current_user_id: uuid.UUID, target_user_id: uuid.UUID,
     return role in _PRIVILEGED_ROLES or current_user_id == target_user_id
 
 
-# --- Employee Documents ---
+# ---------------------------------------------------------------------
+# IMPORTANT: define /me routes BEFORE /{user_id} routes to avoid 422
+# ---------------------------------------------------------------------
+
+@router.get("/me", response_model=list[EmployeeDocumentResponse])
+def list_my_documents(
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    """
+    Employee sees all documents that belong to them:
+    - HR uploaded (contract, job description, etc.)
+    - Employee uploaded (personal docs)
+    """
+    return (
+        db.query(EmployeeDocument)
+        .filter(
+            EmployeeDocument.org_id == org_id,
+            EmployeeDocument.user_id == current_user_id,
+        )
+        .order_by(EmployeeDocument.created_at.desc())
+        .all()
+    )
+
+
+@router.post("/me/upload", response_model=EmployeeDocumentResponse)
+def upload_my_document(
+    file: UploadFile = File(...),
+    doc_type: str = Query(default="other"),
+    title: str = Query(...),
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    """
+    Employee uploads a personal document for themselves.
+    HR/Super will still have access because privileged roles can access any user's docs.
+    """
+    file_path, original_name, size = save_upload(file, subfolder="employee_docs")
+
+    doc = EmployeeDocument(
+        user_id=current_user_id,
+        org_id=org_id,
+        doc_type=doc_type,
+        title=title,
+        file_path=file_path,
+        original_filename=original_name,
+        mime_type=file.content_type or "application/octet-stream",
+        file_size=size,
+        uploaded_by=current_user_id,
+    )
+    db.add(doc)
+    db.commit()
+    db.refresh(doc)
+
+    log_action(
+        db,
+        org_id,
+        current_user_id,
+        "upload",
+        "employee_document",
+        doc.id,
+        {"user_id": str(current_user_id), "title": title, "doc_type": doc_type},
+    )
+    return doc
+
+
+@router.get("/{doc_id}/download")
+def download_employee_doc(
+    doc_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
+    role: str = Depends(get_current_role),
+):
+    """
+    Redirect to a presigned URL (R2) for downloading an employee document.
+
+    Access:
+      - Employee can download their own docs
+      - HR/Super can download any doc in org
+    """
+    doc = (
+        db.query(EmployeeDocument)
+        .filter(EmployeeDocument.id == doc_id, EmployeeDocument.org_id == org_id)
+        .first()
+    )
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if role not in _PRIVILEGED_ROLES and doc.user_id != current_user_id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    presigned_url = get_download_url(doc.file_path)
+    return RedirectResponse(url=presigned_url)
+
+
+# --- Employee Documents (HR uploads for a user OR user uploads for self via {user_id}) ---
 
 @router.post("/{user_id}/upload", response_model=EmployeeDocumentResponse)
 def upload_employee_doc(
@@ -86,48 +185,6 @@ def upload_employee_doc(
     return doc
 
 
-@router.post("/me/upload", response_model=EmployeeDocumentResponse)
-def upload_my_document(
-    file: UploadFile = File(...),
-    doc_type: str = Query(default="other"),
-    title: str = Query(...),
-    db: Session = Depends(get_db),
-    org_id: uuid.UUID = Depends(get_current_org_id),
-    current_user_id: uuid.UUID = Depends(get_current_user_id),
-):
-    """
-    Employee uploads a personal document for themselves.
-    HR/Super will still have access because privileged roles can access any user's docs.
-    """
-    file_path, original_name, size = save_upload(file, subfolder="employee_docs")
-
-    doc = EmployeeDocument(
-        user_id=current_user_id,
-        org_id=org_id,
-        doc_type=doc_type,
-        title=title,
-        file_path=file_path,
-        original_filename=original_name,
-        mime_type=file.content_type or "application/octet-stream",
-        file_size=size,
-        uploaded_by=current_user_id,
-    )
-    db.add(doc)
-    db.commit()
-    db.refresh(doc)
-
-    log_action(
-        db,
-        org_id,
-        current_user_id,
-        "upload",
-        "employee_document",
-        doc.id,
-        {"user_id": str(current_user_id), "title": title, "doc_type": doc_type},
-    )
-    return doc
-
-
 @router.get("/{user_id}", response_model=list[EmployeeDocumentResponse])
 def list_employee_docs(
     user_id: uuid.UUID,
@@ -167,28 +224,6 @@ def list_employee_docs(
         q = q.filter(EmployeeDocument.id.in_(shared_doc_ids))
 
     return q.order_by(EmployeeDocument.created_at.desc()).all()
-
-
-@router.get("/me", response_model=list[EmployeeDocumentResponse])
-def list_my_documents(
-    db: Session = Depends(get_db),
-    org_id: uuid.UUID = Depends(get_current_org_id),
-    current_user_id: uuid.UUID = Depends(get_current_user_id),
-):
-    """
-    Employee sees all documents that belong to them:
-    - HR uploaded (contract, job description, etc.)
-    - Employee uploaded (personal docs)
-    """
-    return (
-        db.query(EmployeeDocument)
-        .filter(
-            EmployeeDocument.org_id == org_id,
-            EmployeeDocument.user_id == current_user_id,
-        )
-        .order_by(EmployeeDocument.created_at.desc())
-        .all()
-    )
 
 
 @router.post("/{user_id}/{doc_id}/share")
