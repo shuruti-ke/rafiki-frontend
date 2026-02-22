@@ -1,13 +1,13 @@
 # backend/app/routers/employee_docs.py
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
 from app.database import get_db
-from app.dependencies import get_current_org_id, get_current_user_id
+from app.dependencies import get_current_org_id, get_current_user_id, get_current_role
 from app.models.employee_document import EmployeeDocument, DocumentShare
 from app.models.performance import PerformanceEvaluation, DisciplinaryRecord
 from app.schemas.employee_docs import (
@@ -21,13 +21,23 @@ from app.services.audit import log_action
 router = APIRouter(prefix="/api/v1/employee-docs", tags=["Employee Documents"])
 
 
-def _can_access_user_docs(current_user_id: uuid.UUID, target_user_id: uuid.UUID) -> bool:
+# Roles that can access other users' employee docs (Path B DB remains unchanged)
+_PRIVILEGED_ROLES = {"hr_admin", "super_admin"}
+
+
+def _can_access_user_docs(current_user_id: uuid.UUID, target_user_id: uuid.UUID, role: str) -> bool:
     """
-    Path B: keep it minimal and consistent with your existing dependencies.
+    Path B, DB-as-is:
     - User can access their own docs.
-    - Otherwise denied (until you add HR role / manager logic into dependencies).
+    - HR Admin / Super Admin can access any user's docs.
     """
+    if role in _PRIVILEGED_ROLES:
+        return True
     return current_user_id == target_user_id
+
+
+def _now_utc() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 # --- Employee Documents ---
@@ -41,13 +51,15 @@ def upload_employee_doc(
     db: Session = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org_id),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
+    role: str = Depends(get_current_role),
 ):
-    # Prevent IDOR: employees can only upload to their own record in Path B
-    if not _can_access_user_docs(current_user_id, user_id):
+    # Prevent IDOR
+    if not _can_access_user_docs(current_user_id, user_id, role):
         raise HTTPException(status_code=403, detail="Not authorized to upload for this user")
 
     file_path, original_name, size = save_upload(file, subfolder="employee_docs")
 
+    # NOTE: Path B keeps DB as-is, so no "domain" column here.
     doc = EmployeeDocument(
         user_id=user_id,
         org_id=org_id,
@@ -81,31 +93,11 @@ def list_employee_docs(
     db: Session = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org_id),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
+    role: str = Depends(get_current_role),
 ):
-    # Prevent IDOR
-    if not _can_access_user_docs(current_user_id, user_id):
-        # If not owner, only show docs shared directly to the current user
-        shared_doc_ids = (
-            db.query(DocumentShare.document_id)
-            .filter(
-                DocumentShare.org_id == org_id,
-                DocumentShare.granted_to == current_user_id,
-                DocumentShare.revoked_at.is_(None),
-            )
-            .subquery()
-        )
+    is_owner_or_privileged = _can_access_user_docs(current_user_id, user_id, role)
 
-        return (
-            db.query(EmployeeDocument)
-            .filter(
-                EmployeeDocument.org_id == org_id,
-                EmployeeDocument.id.in_(shared_doc_ids),
-            )
-            .order_by(EmployeeDocument.created_at.desc())
-            .all()
-        )
-
-    # Owner view: own docs OR docs shared to them
+    # Docs shared to current user (active shares only)
     shared_doc_ids = (
         db.query(DocumentShare.document_id)
         .filter(
@@ -116,18 +108,24 @@ def list_employee_docs(
         .subquery()
     )
 
-    return (
-        db.query(EmployeeDocument)
-        .filter(
-            EmployeeDocument.org_id == org_id,
+    q = db.query(EmployeeDocument).filter(EmployeeDocument.org_id == org_id)
+
+    if role in _PRIVILEGED_ROLES:
+        # HR/Super can see all docs for the target user, plus any docs shared to them (optional)
+        q = q.filter(EmployeeDocument.user_id == user_id)
+    elif is_owner_or_privileged:
+        # Owner sees own docs OR docs shared to them
+        q = q.filter(
             or_(
                 EmployeeDocument.user_id == user_id,
                 EmployeeDocument.id.in_(shared_doc_ids),
-            ),
+            )
         )
-        .order_by(EmployeeDocument.created_at.desc())
-        .all()
-    )
+    else:
+        # Non-owner/non-privileged can only see docs shared directly to them
+        q = q.filter(EmployeeDocument.id.in_(shared_doc_ids))
+
+    return q.order_by(EmployeeDocument.created_at.desc()).all()
 
 
 @router.post("/{user_id}/{doc_id}/share")
@@ -139,9 +137,10 @@ def share_employee_doc(
     db: Session = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org_id),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
+    role: str = Depends(get_current_role),
 ):
-    # Only owner can share in Path B
-    if not _can_access_user_docs(current_user_id, user_id):
+    # Owner can share, HR/Super can share
+    if not _can_access_user_docs(current_user_id, user_id, role):
         raise HTTPException(status_code=403, detail="Not authorized to share for this user")
 
     doc = (
@@ -156,6 +155,7 @@ def share_employee_doc(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
+    # Create a new active share (DB already allows multiple rows; revoke uses latest active)
     share = DocumentShare(
         org_id=org_id,
         document_id=doc_id,
@@ -187,9 +187,10 @@ def revoke_employee_doc_share(
     db: Session = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org_id),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
+    role: str = Depends(get_current_role),
 ):
-    # Only owner can revoke in Path B
-    if not _can_access_user_docs(current_user_id, user_id):
+    # Owner can revoke, HR/Super can revoke
+    if not _can_access_user_docs(current_user_id, user_id, role):
         raise HTTPException(status_code=403, detail="Not authorized to revoke for this user")
 
     share = (
@@ -206,7 +207,7 @@ def revoke_employee_doc_share(
     if not share:
         raise HTTPException(status_code=404, detail="Active share not found")
 
-    share.revoked_at = datetime.utcnow()
+    share.revoked_at = _now_utc()
     db.commit()
 
     log_action(
@@ -228,9 +229,10 @@ def delete_employee_doc(
     db: Session = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org_id),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
+    role: str = Depends(get_current_role),
 ):
-    # Hard delete to match your existing DB behavior
-    if not _can_access_user_docs(current_user_id, user_id):
+    # Hard delete to match current DB behavior
+    if not _can_access_user_docs(current_user_id, user_id, role):
         raise HTTPException(status_code=403, detail="Not authorized to delete for this user")
 
     doc = (
@@ -261,8 +263,9 @@ def create_evaluation(
     db: Session = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org_id),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
+    role: str = Depends(get_current_role),
 ):
-    if not _can_access_user_docs(current_user_id, user_id):
+    if not _can_access_user_docs(current_user_id, user_id, role):
         raise HTTPException(status_code=403, detail="Not authorized to create evaluation for this user")
 
     if data.overall_rating < 1 or data.overall_rating > 5:
@@ -284,7 +287,15 @@ def create_evaluation(
     db.commit()
     db.refresh(ev)
 
-    log_action(db, org_id, current_user_id, "create", "evaluation", ev.id, {"user_id": str(user_id), "period": data.evaluation_period})
+    log_action(
+        db,
+        org_id,
+        current_user_id,
+        "create",
+        "evaluation",
+        ev.id,
+        {"user_id": str(user_id), "period": data.evaluation_period},
+    )
     return ev
 
 
@@ -294,8 +305,9 @@ def list_evaluations(
     db: Session = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org_id),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
+    role: str = Depends(get_current_role),
 ):
-    if not _can_access_user_docs(current_user_id, user_id):
+    if not _can_access_user_docs(current_user_id, user_id, role):
         raise HTTPException(status_code=403, detail="Not authorized to view evaluations for this user")
 
     return (
@@ -314,15 +326,20 @@ def update_evaluation(
     db: Session = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org_id),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
+    role: str = Depends(get_current_role),
 ):
-    if not _can_access_user_docs(current_user_id, user_id):
+    if not _can_access_user_docs(current_user_id, user_id, role):
         raise HTTPException(status_code=403, detail="Not authorized to update evaluations for this user")
 
-    ev = db.query(PerformanceEvaluation).filter(
-        PerformanceEvaluation.id == eval_id,
-        PerformanceEvaluation.user_id == user_id,
-        PerformanceEvaluation.org_id == org_id,
-    ).first()
+    ev = (
+        db.query(PerformanceEvaluation)
+        .filter(
+            PerformanceEvaluation.id == eval_id,
+            PerformanceEvaluation.user_id == user_id,
+            PerformanceEvaluation.org_id == org_id,
+        )
+        .first()
+    )
     if not ev:
         raise HTTPException(status_code=404, detail="Evaluation not found")
 
@@ -347,9 +364,12 @@ def create_disciplinary(
     db: Session = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org_id),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
+    role: str = Depends(get_current_role),
 ):
-    if not _can_access_user_docs(current_user_id, user_id):
-        raise HTTPException(status_code=403, detail="Not authorized to create disciplinary record for this user")
+    # Highly sensitive: Path B keeps it strict.
+    # HR/Super OR the user themselves (if you want HR-only, remove the self condition)
+    if role not in _PRIVILEGED_ROLES and current_user_id != user_id:
+        raise HTTPException(status_code=403, detail="Access denied to disciplinary records")
 
     record = DisciplinaryRecord(
         user_id=user_id,
@@ -366,7 +386,15 @@ def create_disciplinary(
     db.commit()
     db.refresh(record)
 
-    log_action(db, org_id, current_user_id, "create", "disciplinary_record", record.id, {"user_id": str(user_id), "type": data.record_type})
+    log_action(
+        db,
+        org_id,
+        current_user_id,
+        "create",
+        "disciplinary_record",
+        record.id,
+        {"user_id": str(user_id), "type": data.record_type},
+    )
     return record
 
 
@@ -376,9 +404,11 @@ def list_disciplinary(
     db: Session = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org_id),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
+    role: str = Depends(get_current_role),
 ):
-    if not _can_access_user_docs(current_user_id, user_id):
-        raise HTTPException(status_code=403, detail="Not authorized to view disciplinary records for this user")
+    # Highly sensitive: Path B keeps it strict.
+    if role not in _PRIVILEGED_ROLES and current_user_id != user_id:
+        raise HTTPException(status_code=403, detail="Access denied to disciplinary records")
 
     return (
         db.query(DisciplinaryRecord)
