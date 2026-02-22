@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { API } from "../api.js";
+import { API, authFetch } from "../api.js";
 import "./EmployeeAnnouncements.css";
 
 export default function EmployeeAnnouncements() {
@@ -9,40 +9,39 @@ export default function EmployeeAnnouncements() {
   const [trainingAssignments, setTrainingAssignments] = useState([]);
 
   async function fetchAnnouncements() {
-    const res = await fetch(`${API}/api/v1/announcements/`);
+    const res = await authFetch(`${API}/api/v1/announcements/`);
+    if (!res.ok) return;
     const data = await res.json();
-    // Only show published announcements
     setAnnouncements(data.filter((a) => a.published_at));
   }
 
   useEffect(() => { fetchAnnouncements(); }, []);
 
   async function handleSelect(ann) {
-    // Auto-mark as read via GET detail endpoint
-    const res = await fetch(`${API}/api/v1/announcements/${ann.id}`);
+    const res = await authFetch(`${API}/api/v1/announcements/${ann.id}`);
+    if (!res.ok) return;
     const data = await res.json();
     setSelected(data);
     setReadIds((prev) => new Set([...prev, ann.id]));
 
-    // Fetch training status for this user
     if (ann.is_training) {
-      const tRes = await fetch(`${API}/api/v1/announcements/${ann.id}/training-status`);
-      const tData = await tRes.json();
-      setTrainingAssignments(tData);
+      const tRes = await authFetch(`${API}/api/v1/announcements/${ann.id}/training-status`);
+      if (tRes.ok) setTrainingAssignments(await tRes.json());
     } else {
       setTrainingAssignments([]);
     }
   }
 
   async function handleCompleteTraining(annId) {
-    await fetch(`${API}/api/v1/announcements/${annId}/complete-training`, { method: "POST" });
-    // Refresh
+    await authFetch(`${API}/api/v1/announcements/${annId}/complete-training`, { method: "POST" });
     if (selected) handleSelect(selected);
   }
 
-  // Check if current user (demo user 1) has a pending training assignment
+  const currentUser = JSON.parse(localStorage.getItem("rafiki_user") || "{}");
+  const myUserId = currentUser.id || currentUser.user_id;
+
   function getMyAssignment(annId) {
-    return trainingAssignments.find((t) => t.announcement_id === annId && t.user_id === 1);
+    return trainingAssignments.find((t) => t.announcement_id === annId && t.user_id === myUserId);
   }
 
   return (
