@@ -111,7 +111,7 @@ export default function ObjectivesPage() {
 
     const res = await authFetch(`${API}/api/v1/messages/conversations`, {
       method: "POST",
-      body: JSON.stringify({ recipient_id: shareRecipient, content: msg }),
+      body: JSON.stringify({ recipient_ids: [shareRecipient].filter(Boolean), content: msg }),
     });
     setShareSending(false);
     if (res.ok) {
