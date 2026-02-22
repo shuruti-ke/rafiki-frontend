@@ -1,7 +1,6 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File, Request
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import Response
 from pathlib import Path
 from PIL import Image
 from openai import OpenAI
@@ -30,6 +29,7 @@ app = FastAPI(title="Rafiki API")
 def _normalize_origin(o: str) -> str:
     return o.strip().rstrip("/")
 
+
 CORS_ORIGINS_ENV = os.getenv(
     "CORS_ORIGINS",
     "https://rafiki-frontend-five.vercel.app,http://localhost:5173,http://localhost:5174,http://localhost:3000",
@@ -39,19 +39,18 @@ ALLOWED_ORIGINS = [_normalize_origin(o) for o in CORS_ORIGINS_ENV.split(",") if 
 
 logger.info(f"CORS allowed origins: {ALLOWED_ORIGINS}")
 
+# IMPORTANT:
+# Do NOT add a custom @app.options handler.
+# CORSMiddleware must handle OPTIONS preflight requests or the browser will block uploads.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
     max_age=86400,
 )
-
-@app.options("/{path:path}")
-def preflight_handler(path: str, request: Request):
-    return Response(status_code=204)
 
 # --------------------
 # Routers
@@ -84,9 +83,11 @@ app.include_router(cal_router)
 app.include_router(msg_router)
 app.include_router(org_members_router)
 
+
 @app.get("/__routes")
 def __routes():
     return sorted([r.path for r in app.routes])
+
 
 # --------------------
 # Static + uploads
@@ -104,6 +105,7 @@ MAX_PROJECT_FILES = 25
 TEXT_DIR.mkdir(parents=True, exist_ok=True)
 IMG_DIR.mkdir(parents=True, exist_ok=True)
 
+
 def _read_project_manifest():
     if not PROJECT_MANIFEST.exists():
         return []
@@ -115,9 +117,11 @@ def _read_project_manifest():
         pass
     return []
 
+
 def _write_project_manifest(files):
     files = [Path(x).name for x in files]
     PROJECT_MANIFEST.write_text(json.dumps(files, indent=2), encoding="utf-8")
+
 
 ALLOWED_TEXT_EXTS = {".txt", ".md", ".py", ".js", ".ts", ".json", ".csv", ".html", ".css", ".yml", ".yaml"}
 ALLOWED_IMG_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
@@ -144,20 +148,24 @@ SUPPORTED_MODELS = [
     "anthropic/claude-opus-4",
 ]
 
+
 @app.get("/models")
 def models():
     return {"models": ["stealth", *SUPPORTED_MODELS], "default": "stealth"}
+
 
 @app.get("/files")
 def list_files():
     def info(p: Path):
         return {"name": p.name, "size": p.stat().st_size}
+
     text_files = [info(p) for p in TEXT_DIR.glob("*") if p.is_file()]
     img_files = [info(p) for p in IMG_DIR.glob("*") if p.is_file()]
     return {
         "text": sorted(text_files, key=lambda x: x["name"].lower()),
         "images": sorted(img_files, key=lambda x: x["name"].lower()),
     }
+
 
 @app.post("/upload_text")
 async def upload_text(file: UploadFile = File(...)):
@@ -171,6 +179,7 @@ async def upload_text(file: UploadFile = File(...)):
     (TEXT_DIR / safe_name).write_bytes(content)
     return {"ok": True, "filename": safe_name, "bytes": len(content)}
 
+
 @app.get("/file")
 def get_text_file(name: str):
     safe_name = Path(name).name
@@ -181,6 +190,7 @@ def get_text_file(name: str):
         raise HTTPException(status_code=400, detail="File type not allowed")
     text = path.read_text(encoding="utf-8", errors="replace")
     return {"ok": True, "name": safe_name, "content": text[:200000]}
+
 
 @app.post("/upload_image")
 async def upload_image(file: UploadFile = File(...)):
@@ -200,7 +210,9 @@ async def upload_image(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="Invalid image")
     return {"ok": True, "filename": safe_name, "bytes": len(content)}
 
+
 MAX_DESCRIBE_PROMPT_LEN = 2000
+
 
 @app.post("/image/describe")
 def describe_image(name: str, prompt: str = "Describe this image briefly and extract any visible text."):
@@ -238,12 +250,14 @@ def describe_image(name: str, prompt: str = "Describe this image briefly and ext
 
     return {"ok": True, "name": safe_name, "description": description}
 
+
 @app.get("/project_files")
 def get_project_files():
     files = _read_project_manifest()
     files = [f for f in files if (TEXT_DIR / f).exists()]
     _write_project_manifest(files)
     return {"files": files}
+
 
 @app.post("/project_files")
 def set_project_files(payload: dict):
@@ -259,6 +273,7 @@ def set_project_files(payload: dict):
     clean = list(dict.fromkeys(clean))[:MAX_PROJECT_FILES]
     _write_project_manifest(clean)
     return {"ok": True, "files": clean}
+
 
 @app.delete("/delete")
 def delete_file(kind: str, name: str):
@@ -278,9 +293,11 @@ def delete_file(kind: str, name: str):
         _write_project_manifest(pf)
     return {"ok": True, "deleted": safe, "kind": kind}
 
+
 @app.get("/health")
 def health():
     return {"ok": True}
+
 
 if __name__ == "__main__":
     import uvicorn
