@@ -115,11 +115,12 @@ def get_document(
 def download_document(
     doc_id: uuid.UUID,
     db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
 ):
-    """Redirect to a presigned R2 URL for downloading the document."""
+    """Return a presigned R2 URL for downloading the document."""
     doc = (
         db.query(Document)
-        .filter(Document.id == doc_id)
+        .filter(Document.id == doc_id, Document.org_id == org_id)
         .first()
     )
     if not doc:
