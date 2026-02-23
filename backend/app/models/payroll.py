@@ -28,6 +28,10 @@ class PayrollBatch(Base):
     template_id = Column(UUID(as_uuid=True), ForeignKey("payroll_templates.template_id"), nullable=False)
     upload_storage_key = Column(Text, nullable=False)
     upload_mime_type = Column(Text, nullable=False)
+
+    # ✅ ADDED: preserve original filename for correct parser selection (csv/xls/xlsx/pdf/docx)
+    upload_original_filename = Column(Text, nullable=True)
+
     status = Column(Text, nullable=False, server_default=text("'uploaded'"))
     payroll_total = Column(Numeric, nullable=True)
     computed_total = Column(Numeric, nullable=True)
