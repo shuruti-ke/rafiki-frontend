@@ -21,6 +21,14 @@ router = APIRouter(prefix="/api/v1/employees", tags=["Employee Management"])
 
 # ---------- helpers ----------
 
+def _make_alias() -> str:
+    """
+    users_legacy.anonymous_alias is NOT NULL in DB.
+    Generate a short non-PII alias.
+    """
+    return "u_" + secrets.token_hex(6)
+
+
 def _parse_date(d: Optional[str]) -> Optional[date]:
     if not d:
         return None
@@ -272,6 +280,7 @@ def create_employee(
     u = User(
         user_id=uuid.uuid4(),
         org_id=org_id,
+        anonymous_alias=_make_alias(),  # ✅ FIX: DB NOT NULL
         email=email,
         password_hash=get_password_hash(temp_pw),
         role=body.role or "user",
