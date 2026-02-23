@@ -129,6 +129,7 @@ def upload_payroll(
         template_id=template_id,
         upload_storage_key=file_path,
         upload_mime_type=content_type,
+        upload_original_filename=original_name,  # ✅ added
         created_by_user_id=current_user_id,
     )
     db.add(batch)
