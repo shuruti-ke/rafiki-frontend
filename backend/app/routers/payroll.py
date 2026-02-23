@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -18,6 +17,7 @@ from app.dependencies import (
 from app.models.payroll import PayrollTemplate, PayrollBatch, Payslip
 from app.models.employee_document import EmployeeDocument
 from app.models.user import User  # users_legacy
+from app.models.message import DmConversation, DmMessage, ConversationParticipant  # ✅ use your real messaging tables
 from app.schemas.payroll import (
     PayrollTemplateResponse,
     PayrollBatchResponse,
@@ -28,19 +28,6 @@ from app.services.audit import log_action
 from app.services.payroll_parser import parse_payroll_file
 
 router = APIRouter(prefix="/api/v1/payroll", tags=["Payroll"])
-
-# ------------------------------------------------------------
-# OPTIONAL Message model support (depends on your repo schema)
-# If you have a Message model/table, wire it here.
-# This keeps this router from crashing if Message isn't present.
-# ------------------------------------------------------------
-try:
-    from app.models.message import Message  # type: ignore
-except Exception:
-    try:
-        from app.models.messages import Message  # type: ignore
-    except Exception:
-        Message = None  # noqa: N816
 
 
 # -------------------------
@@ -81,46 +68,6 @@ def _get_if_attr(obj, attr: str, default=None):
     return getattr(obj, attr, default)
 
 
-def _send_message(
-    db: Session,
-    *,
-    org_id: uuid.UUID,
-    sender_id: uuid.UUID,
-    recipient_id: uuid.UUID,
-    subject: str,
-    body: str,
-    message_type: str,
-    payload: dict,
-):
-    """
-    Sends an in-app message if your repo has a Message model.
-    If Message model doesn't exist, it becomes a no-op.
-    """
-    if Message is None:
-        return
-
-    msg = Message()
-    _set_if_attr(msg, "org_id", org_id)
-    _set_if_attr(msg, "sender_id", sender_id)
-    _set_if_attr(msg, "from_user_id", sender_id)
-    _set_if_attr(msg, "recipient_id", recipient_id)
-    _set_if_attr(msg, "to_user_id", recipient_id)
-
-    _set_if_attr(msg, "subject", subject)
-    _set_if_attr(msg, "title", subject)
-    _set_if_attr(msg, "body", body)
-    _set_if_attr(msg, "content", body)
-
-    _set_if_attr(msg, "message_type", message_type)
-    _set_if_attr(msg, "type", message_type)
-
-    _set_if_attr(msg, "payload", payload)
-    _set_if_attr(msg, "meta", payload)
-
-    _set_if_attr(msg, "created_at", _now_utc())
-    db.add(msg)
-
-
 def _require_pending_approval(batch: PayrollBatch):
     if getattr(batch, "status", None) != "uploaded_needs_approval":
         raise HTTPException(
@@ -132,6 +79,67 @@ def _require_pending_approval(batch: PayrollBatch):
 def _ensure_approved_for_parse_or_distribute(batch: PayrollBatch):
     if batch.status == "uploaded_needs_approval":
         raise HTTPException(status_code=409, detail="Payroll batch requires approval before proceeding.")
+
+
+def _get_or_create_dm_conversation(db: Session, org_id: uuid.UUID, user_a: uuid.UUID, user_b: uuid.UUID) -> DmConversation:
+    """
+    Create/find a 1:1 DM conversation between two users (uses your existing messaging schema).
+    """
+    # Find conversation IDs where A participates
+    a_convos = (
+        db.query(ConversationParticipant.conversation_id)
+        .filter(ConversationParticipant.user_id == user_a)
+        .subquery()
+    )
+
+    # Find conversation IDs where B participates
+    b_convos = (
+        db.query(ConversationParticipant.conversation_id)
+        .filter(ConversationParticipant.user_id == user_b)
+        .subquery()
+    )
+
+    convo = (
+        db.query(DmConversation)
+        .filter(
+            DmConversation.org_id == org_id,
+            DmConversation.is_group == False,  # noqa: E712
+            DmConversation.id.in_(a_convos),
+            DmConversation.id.in_(b_convos),
+        )
+        .first()
+    )
+    if convo:
+        return convo
+
+    convo = DmConversation(org_id=org_id, is_group=False, title=None)
+    db.add(convo)
+    db.flush()
+
+    db.add(ConversationParticipant(conversation_id=convo.id, user_id=user_a))
+    db.add(ConversationParticipant(conversation_id=convo.id, user_id=user_b))
+    db.flush()
+    return convo
+
+
+def _send_dm(
+    db: Session,
+    *,
+    org_id: uuid.UUID,
+    sender_id: uuid.UUID,
+    recipient_id: uuid.UUID,
+    content: str,
+):
+    """
+    Sends an in-app DM that WILL show in your current chat/messages UI.
+    """
+    convo = _get_or_create_dm_conversation(db, org_id, sender_id, recipient_id)
+    msg = DmMessage(conversation_id=convo.id, sender_id=sender_id, content=content)
+    db.add(msg)
+
+
+def _month_str(batch: PayrollBatch) -> str:
+    return f"{batch.period_year}-{batch.period_month:02d}"
 
 
 # ─────────────────────────────────────────────────────────────
@@ -249,7 +257,7 @@ def request_payroll_approval(
     HR Admin selects an approver, then:
     - status becomes uploaded_needs_approval (blocked for parse/distribute)
     - store routing fields (if columns exist on PayrollBatch)
-    - send message to approver with approve/reject actions
+    - send DM to approver (this WILL show in UI)
     """
     batch = (
         db.query(PayrollBatch)
@@ -291,28 +299,28 @@ def request_payroll_approval(
     except Exception:
         download_url = None
 
-    payload = {
-        "batch_id": str(batch.batch_id),
-        "period_year": getattr(batch, "period_year", None),
-        "period_month": getattr(batch, "period_month", None),
-        "filename": getattr(batch, "upload_original_filename", None),
-        "mime_type": getattr(batch, "upload_mime_type", None),
-        "download_url": download_url,
-        "actions": [
-            {"type": "approve_payroll", "label": "Approve", "endpoint": f"/api/v1/payroll/batches/{batch.batch_id}/approve"},
-            {"type": "reject_payroll", "label": "Reject", "endpoint": f"/api/v1/payroll/batches/{batch.batch_id}/reject"},
-        ],
-    }
+    fname = getattr(batch, "upload_original_filename", None) or "payroll file"
+    month = _month_str(batch)
 
-    _send_message(
+    # ✅ This is what your current UI will actually display
+    dm_text = (
+        "📌 Payroll approval requested\n"
+        f"Month: {month}\n"
+        f"File: {fname}\n"
+        f"Batch ID: {batch.batch_id}\n"
+        f"Download: {download_url or 'Unavailable'}\n\n"
+        "Approve:\n"
+        f"POST /api/v1/payroll/batches/{batch.batch_id}/approve\n"
+        "Reject:\n"
+        f"POST /api/v1/payroll/batches/{batch.batch_id}/reject?reason=...\n"
+    )
+
+    _send_dm(
         db,
         org_id=org_id,
         sender_id=current_user_id,
         recipient_id=approver_user_id,
-        subject="Payroll approval requested",
-        body="A payroll batch is ready for your review. Open the file, then approve or reject.",
-        message_type="payroll_approval_request",
-        payload=payload,
+        content=dm_text,
     )
 
     db.commit()
@@ -374,15 +382,13 @@ def approve_batch(
     # Notify the requester (if we have it)
     requested_by = _get_if_attr(batch, "approval_requested_by", None)
     if requested_by:
-        _send_message(
+        month = _month_str(batch)
+        _send_dm(
             db,
             org_id=org_id,
             sender_id=current_user_id,
             recipient_id=requested_by,
-            subject="Payroll approved",
-            body="Payroll has been approved. You can now parse the payroll.",
-            message_type="payroll_approved",
-            payload={"batch_id": str(batch.batch_id), "status": "uploaded"},
+            content=f"✅ Payroll approved for {month}. You can now parse batch {batch.batch_id}.",
         )
 
     db.commit()
@@ -426,17 +432,16 @@ def reject_batch(
 
     batch.status = "uploaded_needs_approval"
 
+    # Notify the requester (if we have it)
     requested_by = _get_if_attr(batch, "approval_requested_by", None)
     if requested_by:
-        _send_message(
+        month = _month_str(batch)
+        _send_dm(
             db,
             org_id=org_id,
             sender_id=current_user_id,
             recipient_id=requested_by,
-            subject="Payroll rejected",
-            body=f"Payroll was rejected. Reason: {reason or 'Not provided'}",
-            message_type="payroll_rejected",
-            payload={"batch_id": str(batch.batch_id), "status": "uploaded_needs_approval", "reason": reason},
+            content=f"❌ Payroll rejected for {month}. Batch {batch.batch_id}. Reason: {reason or 'Not provided'}",
         )
 
     db.commit()
@@ -483,7 +488,7 @@ def upload_payroll(
 
     year, mo = int(month[:4]), int(month[5:])
 
-    file_path, original_name, size = save_upload(file, subfolder="payroll_uploads")
+    file_path, original_name, _size = save_upload(file, subfolder="payroll_uploads")
 
     existing = (
         db.query(PayrollBatch)
@@ -661,7 +666,7 @@ def parse_payroll(
     db.commit()
     db.refresh(batch)
 
-    month_str = f"{batch.period_year}-{batch.period_month:02d}"
+    month_str = _month_str(batch)
     log_action(
         db,
         org_id,
@@ -725,7 +730,7 @@ def verify_payroll(
     if "error" in result:
         raise HTTPException(status_code=500, detail=result["error"])
 
-    month_str = f"{batch.period_year}-{batch.period_month:02d}"
+    month_str = _month_str(batch)
     return {
         "batch_id": str(batch.batch_id),
         "month": month_str,
@@ -782,7 +787,7 @@ def distribute_payslips(
         raise HTTPException(status_code=500, detail=result["error"])
 
     entries = result["entries"]
-    month_str = f"{batch.period_year}-{batch.period_month:02d}"
+    month_str = _month_str(batch)
     distributed_count = 0
 
     for entry in entries:
