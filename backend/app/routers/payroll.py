@@ -15,14 +15,16 @@ from app.schemas.payroll import (
 )
 from app.services.file_storage import save_upload, get_download_url, delete_file
 from app.services.audit import log_action
-from app.services.payroll_parser import parse_csv_payroll, parse_excel_payroll
+from app.services.payroll_parser import parse_payroll_file
 
 router = APIRouter(prefix="/api/v1/payroll", tags=["Payroll"])
 
 PAYROLL_MIME_TYPES = {
     "text/csv",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",  # xlsx
+    "application/vnd.ms-excel",  # xls (sometimes also xlsx depending on client)
+    "application/pdf",  # pdf
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",  # docx
 }
 
 
@@ -106,7 +108,7 @@ def upload_payroll(
 ):
     content_type = file.content_type or ""
     if content_type not in PAYROLL_MIME_TYPES:
-        raise HTTPException(status_code=400, detail=f"File type not allowed: {content_type}. Use CSV or Excel.")
+        raise HTTPException(status_code=400, detail=f"File type not allowed: {content_type}. Use CSV, Excel, PDF, or DOCX.")
 
     # Verify template exists
     tmpl = db.query(PayrollTemplate).filter(
@@ -193,11 +195,13 @@ def parse_payroll(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to read payroll file: {e}")
 
-    # Parse based on mime type
-    if batch.upload_mime_type == "text/csv":
-        result = parse_csv_payroll(content, db, org_id)
-    else:
-        result = parse_excel_payroll(content, db, org_id)
+    # Parse using filename extension (csv/xls/xlsx/pdf/docx)
+    filename = (
+        getattr(batch, "upload_original_filename", None)
+        or getattr(batch, "original_filename", None)
+        or batch.upload_storage_key
+    )
+    result = parse_payroll_file(filename, content, db, org_id)
 
     if "error" in result:
         raise HTTPException(status_code=500, detail=result["error"])
@@ -259,10 +263,12 @@ def verify_payroll(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to read payroll file: {e}")
 
-    if batch.upload_mime_type == "text/csv":
-        result = parse_csv_payroll(content, db, org_id)
-    else:
-        result = parse_excel_payroll(content, db, org_id)
+    filename = (
+        getattr(batch, "upload_original_filename", None)
+        or getattr(batch, "original_filename", None)
+        or batch.upload_storage_key
+    )
+    result = parse_payroll_file(filename, content, db, org_id)
 
     if "error" in result:
         raise HTTPException(status_code=500, detail=result["error"])
@@ -311,10 +317,12 @@ def distribute_payslips(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to read payroll file: {e}")
 
-    if batch.upload_mime_type == "text/csv":
-        result = parse_csv_payroll(content, db, org_id)
-    else:
-        result = parse_excel_payroll(content, db, org_id)
+    filename = (
+        getattr(batch, "upload_original_filename", None)
+        or getattr(batch, "original_filename", None)
+        or batch.upload_storage_key
+    )
+    result = parse_payroll_file(filename, content, db, org_id)
 
     if "error" in result:
         raise HTTPException(status_code=500, detail=result["error"])
