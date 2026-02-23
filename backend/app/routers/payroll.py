@@ -19,17 +19,19 @@ from app.services.payroll_parser import parse_payroll_file
 
 router = APIRouter(prefix="/api/v1/payroll", tags=["Payroll"])
 
+
 class PayrollBatchUploadResponse(PayrollBatchResponse):
     replaced: bool = False
     requires_approval: bool = False
     warning: Optional[str] = None
 
+
 PAYROLL_MIME_TYPES = {
     "text/csv",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",  # xlsx
-    "application/vnd.ms-excel",  # xls (sometimes also xlsx depending on client)
-    "application/pdf",  # pdf
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",  # docx
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-excel",
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 }
 
 # ── Payroll Templates ──
@@ -58,6 +60,7 @@ def upload_template(
     log_action(db, org_id, current_user_id, "upload", "payroll_template", template.template_id, {"title": title})
     return template
 
+
 @router.get("/templates", response_model=list[PayrollTemplateResponse])
 def list_templates(
     db: Session = Depends(get_db),
@@ -70,6 +73,7 @@ def list_templates(
         .order_by(PayrollTemplate.created_at.desc())
         .all()
     )
+
 
 @router.delete("/templates/{template_id}")
 def delete_template(
@@ -93,6 +97,7 @@ def delete_template(
     log_action(db, org_id, current_user_id, "delete", "payroll_template", template_id, {})
     return {"ok": True, "message": "Template deleted"}
 
+
 # ── Payroll Batches (uploads) ──
 
 @router.post("/upload", response_model=PayrollBatchUploadResponse)
@@ -113,20 +118,16 @@ def upload_payroll(
             detail=f"File type not allowed: {content_type}. Use CSV, Excel, PDF, or DOCX."
         )
 
-    # Verify template exists
     tmpl = db.query(PayrollTemplate).filter(
         PayrollTemplate.template_id == template_id, PayrollTemplate.org_id == org_id
     ).first()
     if not tmpl:
         raise HTTPException(status_code=404, detail="Template not found")
 
-    # Parse month string "YYYY-MM" into year and month ints
     year, mo = int(month[:4]), int(month[5:])
 
-    # Upload new file
     file_path, original_name, size = save_upload(file, subfolder="payroll_uploads")
 
-    # If a batch exists for this month, replace it
     existing = (
         db.query(PayrollBatch)
         .filter(
@@ -141,9 +142,6 @@ def upload_payroll(
         was_distributed = (existing.status == "distributed")
         warning = None
 
-        # If distributed:
-        # - if force=False, block
-        # - if force=True, allow replace BUT do NOT delete old file (payslips may reference it)
         if was_distributed and not force:
             raise HTTPException(
                 status_code=409,
@@ -152,26 +150,23 @@ def upload_payroll(
 
         if was_distributed and force:
             warning = (
-                f"⚠️ You replaced a distributed payroll for {month}. "
-                "Old payslips may still reference the previous file. "
+                f"⚠️ You replaced a distributed payroll for {month}.  "
+                "Old payslips may still reference the previous file.  "
                 "Re-distribute if you want employees to receive the updated version."
             )
 
         if not was_distributed:
-            # Best-effort cleanup of old upload file (safe only when not distributed)
             try:
                 if existing.upload_storage_key:
                     delete_file(existing.upload_storage_key)
             except Exception:
                 pass
 
-        # Replace upload pointers + reset processing fields
         existing.template_id = template_id
         existing.upload_storage_key = file_path
         existing.upload_mime_type = content_type
         existing.upload_original_filename = original_name
 
-        # ✅ After replacing, approval required before parsing/distribution
         existing.status = "uploaded_needs_approval"
         existing.payroll_total = None
         existing.computed_total = None
@@ -200,7 +195,6 @@ def upload_payroll(
             "warning": warning,
         }
 
-    # Otherwise create new batch
     batch = PayrollBatch(
         org_id=org_id,
         period_year=year,
@@ -222,6 +216,7 @@ def upload_payroll(
         "requires_approval": False,
         "warning": None,
     }
+
 
 @router.post("/batches/{batch_id}/approve", response_model=PayrollBatchResponse)
 def approve_batch(
@@ -250,6 +245,7 @@ def approve_batch(
     log_action(db, org_id, current_user_id, "approve", "payroll_batch", batch.batch_id, {})
     return batch
 
+
 @router.get("/batches", response_model=list[PayrollBatchResponse])
 def list_batches(
     db: Session = Depends(get_db),
@@ -262,6 +258,7 @@ def list_batches(
         .order_by(PayrollBatch.created_at.desc())
         .all()
     )
+
 
 @router.get("/batches/{batch_id}", response_model=PayrollBatchResponse)
 def get_batch(
@@ -278,6 +275,7 @@ def get_batch(
     if not batch:
         raise HTTPException(status_code=404, detail="Payroll batch not found")
     return batch
+
 
 @router.post("/batches/{batch_id}/parse")
 def parse_payroll(
@@ -297,7 +295,6 @@ def parse_payroll(
     if batch.status == "uploaded_needs_approval":
         raise HTTPException(status_code=409, detail="Payroll batch requires approval before parsing.")
 
-    # Download file content from R2
     from app.services.file_storage import _get_s3, R2_BUCKET
     try:
         s3 = _get_s3()
@@ -306,7 +303,6 @@ def parse_payroll(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to read payroll file: {e}")
 
-    # Parse using filename extension (csv/xls/xlsx/pdf/docx)
     filename = (
         getattr(batch, "upload_original_filename", None)
         or getattr(batch, "original_filename", None)
@@ -317,7 +313,6 @@ def parse_payroll(
     if "error" in result:
         raise HTTPException(status_code=500, detail=result["error"])
 
-    # Store totals on the batch record
     batch.payroll_total = result["total_gross"]
     batch.computed_total = result["total_net"]
     batch.discrepancy = round(
@@ -347,6 +342,7 @@ def parse_payroll(
         "entries": result["entries"],
     }
 
+
 @router.get("/batches/{batch_id}/verify")
 def verify_payroll(
     batch_id: uuid.UUID,
@@ -364,7 +360,6 @@ def verify_payroll(
     if batch.status in ("uploaded", "uploaded_needs_approval"):
         raise HTTPException(status_code=400, detail="Payroll not yet parsed. Call /parse first.")
 
-    # Re-download and re-parse to get entries for verification display
     from app.services.file_storage import _get_s3, R2_BUCKET
     try:
         s3 = _get_s3()
@@ -397,6 +392,7 @@ def verify_payroll(
         "entries": result["entries"],
     }
 
+
 @router.post("/batches/{batch_id}/distribute")
 def distribute_payslips(
     batch_id: uuid.UUID,
@@ -420,7 +416,6 @@ def distribute_payslips(
     if batch.status == "distributed":
         raise HTTPException(status_code=400, detail="Already distributed")
 
-    # Re-parse to get entries with matched users
     from app.services.file_storage import _get_s3, R2_BUCKET
     try:
         s3 = _get_s3()
@@ -450,7 +445,6 @@ def distribute_payslips(
 
         user_id = uuid.UUID(user_id_str)
 
-        # Create employee document (payslip) in their vault
         doc = EmployeeDocument(
             user_id=user_id,
             org_id=org_id,
@@ -465,7 +459,6 @@ def distribute_payslips(
         db.add(doc)
         db.flush()
 
-        # Create payslip record
         payslip = Payslip(
             org_id=org_id,
             batch_id=batch.batch_id,
@@ -493,6 +486,7 @@ def distribute_payslips(
         "distributed_count": distributed_count,
     }
 
+
 # ── Employee Payslip Views ──
 
 @router.get("/my-payslips", response_model=list[PayslipResponse])
@@ -507,6 +501,7 @@ def list_my_payslips(
         .order_by(Payslip.created_at.desc())
         .all()
     )
+
 
 @router.get("/my-payslips/{payslip_id}/download")
 def download_my_payslip(
@@ -526,8 +521,6 @@ def download_my_payslip(
     )
     if not payslip:
         raise HTTPException(status_code=404, detail="Payslip not found")
-
-    # Get the linked employee document for download
     if payslip.document_id:
         doc = db.query(EmployeeDocument).filter(EmployeeDocument.id == payslip.document_id).first()
         if doc:
