@@ -1,8 +1,10 @@
 import uuid
 from datetime import datetime, timezone
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
 
 from app.database import get_db
 from app.dependencies import get_current_org_id, get_current_user_id, require_admin
@@ -18,6 +20,13 @@ from app.services.audit import log_action
 from app.services.payroll_parser import parse_payroll_file
 
 router = APIRouter(prefix="/api/v1/payroll", tags=["Payroll"])
+
+
+class PayrollBatchUploadResponse(PayrollBatchResponse):
+    replaced: bool = False
+    requires_approval: bool = False
+    warning: Optional[str] = None
+
 
 PAYROLL_MIME_TYPES = {
     "text/csv",
@@ -96,11 +105,12 @@ def delete_template(
 
 # ── Payroll Batches (uploads) ──
 
-@router.post("/upload", response_model=PayrollBatchResponse)
+@router.post("/upload", response_model=PayrollBatchUploadResponse)
 def upload_payroll(
     file: UploadFile = File(...),
     month: str = Query(..., pattern=r"^\d{4}-\d{2}$"),
     template_id: uuid.UUID = Query(...),
+    force: bool = Query(default=False),  # ✅ allow replacing even if distributed
     db: Session = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org_id),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
@@ -108,7 +118,10 @@ def upload_payroll(
 ):
     content_type = file.content_type or ""
     if content_type not in PAYROLL_MIME_TYPES:
-        raise HTTPException(status_code=400, detail=f"File type not allowed: {content_type}. Use CSV, Excel, PDF, or DOCX.")
+        raise HTTPException(
+            status_code=400,
+            detail=f"File type not allowed: {content_type}. Use CSV, Excel, PDF, or DOCX."
+        )
 
     # Verify template exists
     tmpl = db.query(PayrollTemplate).filter(
@@ -117,11 +130,87 @@ def upload_payroll(
     if not tmpl:
         raise HTTPException(status_code=404, detail="Template not found")
 
-    file_path, original_name, size = save_upload(file, subfolder="payroll_uploads")
-
     # Parse month string "YYYY-MM" into year and month ints
     year, mo = int(month[:4]), int(month[5:])
 
+    # Upload new file
+    file_path, original_name, size = save_upload(file, subfolder="payroll_uploads")
+
+    # If a batch exists for this month, replace it
+    existing = (
+        db.query(PayrollBatch)
+        .filter(
+            PayrollBatch.org_id == org_id,
+            PayrollBatch.period_year == year,
+            PayrollBatch.period_month == mo,
+        )
+        .first()
+    )
+
+    if existing:
+        was_distributed = (existing.status == "distributed")
+        warning = None
+
+        # If distributed:
+        # - if force=False, block
+        # - if force=True, allow replace BUT do NOT delete old file (payslips may reference it)
+        if was_distributed and not force:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Payroll for {month} has already been distributed. Re-upload with force=true to override."
+            )
+
+        if was_distributed and force:
+            warning = (
+                f"⚠️ You replaced a distributed payroll for {month}. "
+                "Old payslips may still reference the previous file. "
+                "Re-distribute if you want employees to receive the updated version."
+            )
+
+        if not was_distributed:
+            # Best-effort cleanup of old upload file (safe only when not distributed)
+            try:
+                if existing.upload_storage_key:
+                    delete_file(existing.upload_storage_key)
+            except Exception:
+                pass
+
+        # Replace upload pointers + reset processing fields
+        existing.template_id = template_id
+        existing.upload_storage_key = file_path
+        existing.upload_mime_type = content_type
+        existing.upload_original_filename = original_name
+
+        # ✅ After replacing, approval required before parsing/distribution
+        existing.status = "uploaded_needs_approval"
+        existing.payroll_total = None
+        existing.computed_total = None
+        existing.discrepancy = None
+        existing.approved_by_user_id = None
+        existing.approved_at = None
+        existing.distributed_at = None
+
+        db.commit()
+        db.refresh(existing)
+
+        log_action(
+            db,
+            org_id,
+            current_user_id,
+            "replace_upload",
+            "payroll_batch",
+            existing.batch_id,
+            {"month": month, "filename": original_name, "force": force, "was_distributed": was_distributed},
+        )
+
+        return {
+            **PayrollBatchResponse.model_validate(existing).model_dump(),
+            "replaced": True,
+            "requires_approval": True,
+            "warning": warning,
+        }
+
+    # Otherwise create new batch
     batch = PayrollBatch(
         org_id=org_id,
         period_year=year,
@@ -129,7 +218,7 @@ def upload_payroll(
         template_id=template_id,
         upload_storage_key=file_path,
         upload_mime_type=content_type,
-        upload_original_filename=original_name,  # ✅ added
+        upload_original_filename=original_name,  # ✅ keep original filename
         created_by_user_id=current_user_id,
     )
     db.add(batch)
@@ -137,6 +226,40 @@ def upload_payroll(
     db.refresh(batch)
 
     log_action(db, org_id, current_user_id, "upload", "payroll_batch", batch.batch_id, {"month": month})
+    return {
+        **PayrollBatchResponse.model_validate(batch).model_dump(),
+        "replaced": False,
+        "requires_approval": False,
+        "warning": None,
+    }
+
+
+@router.post("/batches/{batch_id}/approve", response_model=PayrollBatchResponse)
+def approve_batch(
+    batch_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
+    _role: str = Depends(require_admin),
+):
+    batch = (
+        db.query(PayrollBatch)
+        .filter(PayrollBatch.batch_id == batch_id, PayrollBatch.org_id == org_id)
+        .first()
+    )
+    if not batch:
+        raise HTTPException(status_code=404, detail="Payroll batch not found")
+
+    batch.approved_by_user_id = current_user_id
+    batch.approved_at = datetime.now(timezone.utc)
+
+    if batch.status == "uploaded_needs_approval":
+        batch.status = "uploaded"
+
+    db.commit()
+    db.refresh(batch)
+
+    log_action(db, org_id, current_user_id, "approve", "payroll_batch", batch.batch_id, {})
     return batch
 
 
@@ -186,6 +309,9 @@ def parse_payroll(
     )
     if not batch:
         raise HTTPException(status_code=404, detail="Payroll batch not found")
+
+    if batch.status == "uploaded_needs_approval":
+        raise HTTPException(status_code=409, detail="Payroll batch requires approval before parsing.")
 
     # Download file content from R2
     from app.services.file_storage import _get_s3, R2_BUCKET
@@ -252,7 +378,7 @@ def verify_payroll(
     )
     if not batch:
         raise HTTPException(status_code=404, detail="Payroll batch not found")
-    if batch.status == "uploaded":
+    if batch.status in ("uploaded", "uploaded_needs_approval"):
         raise HTTPException(status_code=400, detail="Payroll not yet parsed. Call /parse first.")
 
     # Re-download and re-parse to get entries for verification display
@@ -304,6 +430,10 @@ def distribute_payslips(
     )
     if not batch:
         raise HTTPException(status_code=404, detail="Payroll batch not found")
+
+    if batch.status == "uploaded_needs_approval":
+        raise HTTPException(status_code=409, detail="Payroll batch requires approval before distribution.")
+
     if batch.status == "uploaded":
         raise HTTPException(status_code=400, detail="Payroll not yet parsed")
     if batch.status == "distributed":
