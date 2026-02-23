@@ -54,6 +54,7 @@ def _user_dict(u: User) -> dict:
         "email": u.email,
         "name": getattr(u, "name", None),
         "role": str(u.role) if u.role else "user",
+        "language_preference": getattr(u, "language_preference", None),  # ✅ include
         "department": getattr(u, "department", None),
         "job_title": getattr(u, "job_title", None),
         "manager_id": str(u.manager_id) if getattr(u, "manager_id", None) else None,
@@ -88,7 +89,6 @@ def _profile_dict(p: Optional[EmployeeProfile]) -> Optional[dict]:
         "avatar_url": p.avatar_url,
         "emergency_contact": p.emergency_contact,
 
-        # NEW fields
         "status": p.status,
         "start_date": p.start_date.isoformat() if p.start_date else None,
         "end_date": p.end_date.isoformat() if p.end_date else None,
@@ -98,7 +98,9 @@ def _profile_dict(p: Optional[EmployeeProfile]) -> Optional[dict]:
 
         "terms_of_service_title": p.terms_of_service_title,
         "terms_of_service_text": p.terms_of_service_text,
-        "terms_of_service_signed_at": p.terms_of_service_signed_at.isoformat() if p.terms_of_service_signed_at else None,
+        "terms_of_service_signed_at": p.terms_of_service_signed_at.isoformat()
+        if p.terms_of_service_signed_at
+        else None,
 
         "address_line1": p.address_line1,
         "address_line2": p.address_line2,
@@ -138,6 +140,7 @@ class EmployeeCreateRequest(BaseModel):
 
     # users_legacy fields
     role: Optional[str] = "user"
+    language_preference: Optional[str] = "en"  # ✅ NEW
     department: Optional[str] = None
     job_title: Optional[str] = None
     manager_id: Optional[str] = None
@@ -186,6 +189,7 @@ class EmployeeUpdateRequest(BaseModel):
     email: Optional[EmailStr] = None
     name: Optional[str] = None
     role: Optional[str] = None
+    language_preference: Optional[str] = None  # ✅ NEW
     department: Optional[str] = None
     job_title: Optional[str] = None
     manager_id: Optional[str] = None
@@ -280,10 +284,11 @@ def create_employee(
     u = User(
         user_id=uuid.uuid4(),
         org_id=org_id,
-        anonymous_alias=_make_alias(),  # ✅ FIX: DB NOT NULL
+        anonymous_alias=_make_alias(),  # ✅ DB NOT NULL
         email=email,
         password_hash=get_password_hash(temp_pw),
         role=body.role or "user",
+        language_preference=(body.language_preference or "en"),  # ✅ DB NOT NULL
         is_active=True,
         name=body.name,
         department=body.department,
@@ -383,6 +388,8 @@ def update_employee(
         u.name = body.name
     if body.role is not None:
         u.role = body.role
+    if body.language_preference is not None:
+        u.language_preference = body.language_preference or "en"  # ✅ DB NOT NULL
     if body.department is not None:
         u.department = body.department
     if body.job_title is not None:
