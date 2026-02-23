@@ -3,7 +3,6 @@ import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
-from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -127,7 +126,7 @@ def download_document(
         raise HTTPException(status_code=404, detail="Document not found")
 
     presigned_url = get_download_url(doc.file_path)
-    return RedirectResponse(url=presigned_url)
+    return {"url": presigned_url}
 
 
 @router.put("/{doc_id}", response_model=DocumentResponse)
