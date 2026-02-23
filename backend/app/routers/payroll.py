@@ -9,7 +9,12 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_current_org_id, get_current_user_id, require_admin, get_current_role
+from app.dependencies import (
+    get_current_org_id,
+    get_current_user_id,
+    require_admin,
+    get_current_role,
+)
 from app.models.payroll import PayrollTemplate, PayrollBatch, Payslip
 from app.models.employee_document import EmployeeDocument
 from app.models.user import User  # users_legacy
@@ -30,9 +35,6 @@ router = APIRouter(prefix="/api/v1/payroll", tags=["Payroll"])
 # This keeps this router from crashing if Message isn't present.
 # ------------------------------------------------------------
 try:
-    # Common possibilities in repos:
-    # - app.models.message import Message
-    # - app.models.messages import Message
     from app.models.message import Message  # type: ignore
 except Exception:
     try:
@@ -58,6 +60,7 @@ PAYROLL_MIME_TYPES = {
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 }
 
+# Roles who can approve payroll
 _PRIVILEGED_ROLES = {"hr_admin", "super_admin"}
 
 
@@ -91,38 +94,42 @@ def _send_message(
 ):
     """
     Sends an in-app message if your repo has a Message model.
-    If Message model doesn't exist, it becomes a no-op (but workflow still functions via API status).
+    If Message model doesn't exist, it becomes a no-op.
     """
     if Message is None:
         return
 
-    # Try a few common field names without crashing if your Message schema differs slightly.
     msg = Message()
     _set_if_attr(msg, "org_id", org_id)
     _set_if_attr(msg, "sender_id", sender_id)
     _set_if_attr(msg, "from_user_id", sender_id)
     _set_if_attr(msg, "recipient_id", recipient_id)
     _set_if_attr(msg, "to_user_id", recipient_id)
+
     _set_if_attr(msg, "subject", subject)
     _set_if_attr(msg, "title", subject)
     _set_if_attr(msg, "body", body)
     _set_if_attr(msg, "content", body)
+
     _set_if_attr(msg, "message_type", message_type)
     _set_if_attr(msg, "type", message_type)
+
     _set_if_attr(msg, "payload", payload)
     _set_if_attr(msg, "meta", payload)
-    _set_if_attr(msg, "created_at", _now_utc())
 
+    _set_if_attr(msg, "created_at", _now_utc())
     db.add(msg)
 
 
 def _require_pending_approval(batch: PayrollBatch):
     if getattr(batch, "status", None) != "uploaded_needs_approval":
-        raise HTTPException(status_code=400, detail=f"Batch is not pending approval (status={batch.status})")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Batch is not pending approval (status={getattr(batch,'status',None)})",
+        )
 
 
 def _ensure_approved_for_parse_or_distribute(batch: PayrollBatch):
-    # Your current flow uses "uploaded_needs_approval" to block parse/distribute.
     if batch.status == "uploaded_needs_approval":
         raise HTTPException(status_code=409, detail="Payroll batch requires approval before proceeding.")
 
@@ -184,6 +191,7 @@ def delete_template(
     )
     if not tmpl:
         raise HTTPException(status_code=404, detail="Template not found")
+
     delete_file(tmpl.storage_key)
     db.delete(tmpl)
     db.commit()
@@ -224,8 +232,7 @@ def list_payroll_approvers(
                 }
             )
 
-    # sort friendly
-    approvers.sort(key=lambda x: (x.get("name") or "", x.get("email") or ""))
+    approvers.sort(key=lambda x: ((x.get("name") or "") + (x.get("email") or "")).lower())
     return {"approvers": approvers}
 
 
@@ -239,10 +246,10 @@ def request_payroll_approval(
     _role: str = Depends(require_admin),
 ):
     """
-    HR Admin selects an approver (dropdown), we:
-    - set batch status = uploaded_needs_approval (pending)
-    - record approval routing (if columns exist)
-    - send message to approver with action payload
+    HR Admin selects an approver, then:
+    - status becomes uploaded_needs_approval (blocked for parse/distribute)
+    - store routing fields (if columns exist on PayrollBatch)
+    - send message to approver with approve/reject actions
     """
     batch = (
         db.query(PayrollBatch)
@@ -252,42 +259,64 @@ def request_payroll_approval(
     if not batch:
         raise HTTPException(status_code=404, detail="Payroll batch not found")
 
-    # Ensure it's in a requestable state
-    if batch.status in ("distributed",):
+    if batch.status == "distributed":
         raise HTTPException(status_code=409, detail="Cannot request approval for a distributed payroll batch")
 
-    # Mark pending approval (your system already uses this state)
+    # ensure approver exists in same org + active + privileged
+    approver = (
+        db.query(User)
+        .filter(User.user_id == approver_user_id, User.org_id == org_id, User.is_active == True)  # noqa: E712
+        .first()
+    )
+    if not approver:
+        raise HTTPException(status_code=404, detail="Approver not found in this organization")
+
+    approver_role = str(getattr(approver, "role", "") or "")
+    if approver_role not in _PRIVILEGED_ROLES:
+        raise HTTPException(status_code=400, detail="Selected user is not allowed to approve payroll")
+
+    # mark pending approval
     batch.status = "uploaded_needs_approval"
 
-    # Store routing fields if your DB has them
+    # Store routing fields if your DB has them (safe no-op if missing)
     _set_if_attr(batch, "approval_requested_to", approver_user_id)
     _set_if_attr(batch, "approval_requested_by", current_user_id)
     _set_if_attr(batch, "approval_requested_at", _now_utc())
 
-    # Message to approver (includes file info + action types)
+    # Prepare a download URL for approver to review (if possible)
+    download_url = None
+    try:
+        if getattr(batch, "upload_storage_key", None):
+            download_url = get_download_url(batch.upload_storage_key)
+    except Exception:
+        download_url = None
+
     payload = {
         "batch_id": str(batch.batch_id),
         "period_year": getattr(batch, "period_year", None),
         "period_month": getattr(batch, "period_month", None),
         "filename": getattr(batch, "upload_original_filename", None),
         "mime_type": getattr(batch, "upload_mime_type", None),
+        "download_url": download_url,
         "actions": [
-            {"type": "approve_payroll", "label": "Approve"},
-            {"type": "reject_payroll", "label": "Reject"},
+            {"type": "approve_payroll", "label": "Approve", "endpoint": f"/api/v1/payroll/batches/{batch.batch_id}/approve"},
+            {"type": "reject_payroll", "label": "Reject", "endpoint": f"/api/v1/payroll/batches/{batch.batch_id}/reject"},
         ],
     }
+
     _send_message(
         db,
         org_id=org_id,
         sender_id=current_user_id,
         recipient_id=approver_user_id,
         subject="Payroll approval requested",
-        body="A payroll batch is ready for your review. Approve or reject to continue processing.",
+        body="A payroll batch is ready for your review. Open the file, then approve or reject.",
         message_type="payroll_approval_request",
         payload=payload,
     )
 
     db.commit()
+
     log_action(
         db,
         org_id,
@@ -297,7 +326,13 @@ def request_payroll_approval(
         batch.batch_id,
         {"approver_user_id": str(approver_user_id)},
     )
-    return {"ok": True, "batch_id": str(batch.batch_id), "status": batch.status, "sent_to": str(approver_user_id)}
+    return {
+        "ok": True,
+        "batch_id": str(batch.batch_id),
+        "status": batch.status,
+        "sent_to": str(approver_user_id),
+        "download_url": download_url,
+    }
 
 
 @router.post("/batches/{batch_id}/approve", response_model=PayrollBatchResponse)
@@ -309,10 +344,10 @@ def approve_batch(
     role: str = Depends(get_current_role),
 ):
     """
-    Approver clicks Approve from message UI.
-    Rules:
-    - If approval_requested_to exists, only that user (or privileged HR/Super) can approve.
-    - Move status to 'uploaded' (ready for parse).
+    Approver approves.
+    - Only requested approver can approve if approval_requested_to exists,
+      otherwise any privileged role can approve.
+    - status becomes 'uploaded' so HR Admin can parse.
     """
     batch = (
         db.query(PayrollBatch)
@@ -331,13 +366,12 @@ def approve_batch(
     batch.approved_by_user_id = current_user_id
     batch.approved_at = _now_utc()
 
-    # Store richer fields if present
     _set_if_attr(batch, "approved_by", current_user_id)
-    _set_if_attr(batch, "approved_at", _now_utc())
+    _set_if_attr(batch, "approved_at", batch.approved_at)
 
-    batch.status = "uploaded"  # approved and ready for parse
+    batch.status = "uploaded"
 
-    # Notify requester (HR Admin) if tracked
+    # Notify the requester (if we have it)
     requested_by = _get_if_attr(batch, "approval_requested_by", None)
     if requested_by:
         _send_message(
@@ -368,8 +402,9 @@ def reject_batch(
     role: str = Depends(get_current_role),
 ):
     """
-    Approver clicks Reject from message UI.
-    We keep status as uploaded_needs_approval (still blocked), but record rejection metadata if columns exist.
+    Approver rejects.
+    - We keep it blocked (uploaded_needs_approval).
+    - Record rejection metadata if columns exist.
     """
     batch = (
         db.query(PayrollBatch)
@@ -385,12 +420,10 @@ def reject_batch(
     if requested_to and requested_to != current_user_id and str(role) not in _PRIVILEGED_ROLES:
         raise HTTPException(status_code=403, detail="Not authorized to reject this payroll batch")
 
-    # Record rejection metadata if your DB has the fields
     _set_if_attr(batch, "rejected_by", current_user_id)
     _set_if_attr(batch, "rejected_at", _now_utc())
     _set_if_attr(batch, "rejection_reason", reason or None)
 
-    # Keep it blocked. You can optionally add a dedicated "rejected" status if you prefer.
     batch.status = "uploaded_needs_approval"
 
     requested_by = _get_if_attr(batch, "approval_requested_by", None)
@@ -403,7 +436,7 @@ def reject_batch(
             subject="Payroll rejected",
             body=f"Payroll was rejected. Reason: {reason or 'Not provided'}",
             message_type="payroll_rejected",
-            payload={"batch_id": str(batch.batch_id), "status": "rejected", "reason": reason},
+            payload={"batch_id": str(batch.batch_id), "status": "uploaded_needs_approval", "reason": reason},
         )
 
     db.commit()
@@ -491,7 +524,7 @@ def upload_payroll(
         existing.upload_mime_type = content_type
         existing.upload_original_filename = original_name
 
-        # Always force fresh approval after replacing
+        # Always require fresh approval after replacing
         existing.status = "uploaded_needs_approval"
         existing.payroll_total = None
         existing.computed_total = None
@@ -500,7 +533,7 @@ def upload_payroll(
         existing.approved_at = None
         existing.distributed_at = None
 
-        # Clear approval routing metadata if your DB has it
+        # Clear approval routing metadata (safe no-op if missing)
         _set_if_attr(existing, "approval_requested_to", None)
         _set_if_attr(existing, "approval_requested_by", None)
         _set_if_attr(existing, "approval_requested_at", None)
@@ -539,7 +572,7 @@ def upload_payroll(
         upload_mime_type=content_type,
         upload_original_filename=original_name,
         created_by_user_id=current_user_id,
-        status="uploaded_needs_approval",  # require explicit approval before parse/distribute
+        status="uploaded_needs_approval",
     )
     db.add(batch)
     db.commit()
@@ -837,6 +870,7 @@ def download_my_payslip(
     )
     if not payslip:
         raise HTTPException(status_code=404, detail="Payslip not found")
+
     if payslip.document_id:
         doc = db.query(EmployeeDocument).filter(EmployeeDocument.id == payslip.document_id).first()
         if doc:
