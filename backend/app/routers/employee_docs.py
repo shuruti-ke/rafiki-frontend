@@ -107,6 +107,47 @@ def upload_my_document(
     return doc
 
 
+# -------------------------------
+# ADDED: DELETE /me/{doc_id}
+# -------------------------------
+@router.delete("/me/{doc_id}")
+def delete_my_document(
+    doc_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    """
+    Employee deletes their own document using /me route.
+    This avoids frontend needing user_id (prevents 'undefined' user id issues).
+    """
+    doc = (
+        db.query(EmployeeDocument)
+        .filter(
+            EmployeeDocument.id == doc_id,
+            EmployeeDocument.org_id == org_id,
+            EmployeeDocument.user_id == current_user_id,
+        )
+        .first()
+    )
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    db.delete(doc)
+    db.commit()
+
+    log_action(
+        db,
+        org_id,
+        current_user_id,
+        "delete",
+        "employee_document",
+        doc_id,
+        {"user_id": str(current_user_id)},
+    )
+    return {"ok": True, "message": "Document deleted"}
+
+
 @router.get("/{doc_id}/download")
 def download_employee_doc(
     doc_id: uuid.UUID,
