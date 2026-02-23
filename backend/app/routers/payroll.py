@@ -1,11 +1,9 @@
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
-
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-
 from app.database import get_db
 from app.dependencies import get_current_org_id, get_current_user_id, require_admin
 from app.models.payroll import PayrollTemplate, PayrollBatch, Payslip
@@ -21,12 +19,10 @@ from app.services.payroll_parser import parse_payroll_file
 
 router = APIRouter(prefix="/api/v1/payroll", tags=["Payroll"])
 
-
 class PayrollBatchUploadResponse(PayrollBatchResponse):
     replaced: bool = False
     requires_approval: bool = False
     warning: Optional[str] = None
-
 
 PAYROLL_MIME_TYPES = {
     "text/csv",
@@ -35,7 +31,6 @@ PAYROLL_MIME_TYPES = {
     "application/pdf",  # pdf
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",  # docx
 }
-
 
 # ── Payroll Templates ──
 
@@ -49,7 +44,6 @@ def upload_template(
     _role: str = Depends(require_admin),
 ):
     file_path, original_name, size = save_upload(file, subfolder="payroll_templates")
-
     template = PayrollTemplate(
         org_id=org_id,
         title=title,
@@ -64,7 +58,6 @@ def upload_template(
     log_action(db, org_id, current_user_id, "upload", "payroll_template", template.template_id, {"title": title})
     return template
 
-
 @router.get("/templates", response_model=list[PayrollTemplateResponse])
 def list_templates(
     db: Session = Depends(get_db),
@@ -77,7 +70,6 @@ def list_templates(
         .order_by(PayrollTemplate.created_at.desc())
         .all()
     )
-
 
 @router.delete("/templates/{template_id}")
 def delete_template(
@@ -94,14 +86,12 @@ def delete_template(
     )
     if not tmpl:
         raise HTTPException(status_code=404, detail="Template not found")
-
     delete_file(tmpl.storage_key)
     db.delete(tmpl)
     db.commit()
 
     log_action(db, org_id, current_user_id, "delete", "payroll_template", template_id, {})
     return {"ok": True, "message": "Template deleted"}
-
 
 # ── Payroll Batches (uploads) ──
 
@@ -110,7 +100,7 @@ def upload_payroll(
     file: UploadFile = File(...),
     month: str = Query(..., pattern=r"^\d{4}-\d{2}$"),
     template_id: uuid.UUID = Query(...),
-    force: bool = Query(default=False),  # ✅ allow replacing even if distributed
+    force: bool = Query(default=False),
     db: Session = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org_id),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
@@ -218,7 +208,7 @@ def upload_payroll(
         template_id=template_id,
         upload_storage_key=file_path,
         upload_mime_type=content_type,
-        upload_original_filename=original_name,  # ✅ keep original filename
+        upload_original_filename=original_name,
         created_by_user_id=current_user_id,
     )
     db.add(batch)
@@ -232,7 +222,6 @@ def upload_payroll(
         "requires_approval": False,
         "warning": None,
     }
-
 
 @router.post("/batches/{batch_id}/approve", response_model=PayrollBatchResponse)
 def approve_batch(
@@ -249,7 +238,6 @@ def approve_batch(
     )
     if not batch:
         raise HTTPException(status_code=404, detail="Payroll batch not found")
-
     batch.approved_by_user_id = current_user_id
     batch.approved_at = datetime.now(timezone.utc)
 
@@ -261,7 +249,6 @@ def approve_batch(
 
     log_action(db, org_id, current_user_id, "approve", "payroll_batch", batch.batch_id, {})
     return batch
-
 
 @router.get("/batches", response_model=list[PayrollBatchResponse])
 def list_batches(
@@ -275,7 +262,6 @@ def list_batches(
         .order_by(PayrollBatch.created_at.desc())
         .all()
     )
-
 
 @router.get("/batches/{batch_id}", response_model=PayrollBatchResponse)
 def get_batch(
@@ -293,7 +279,6 @@ def get_batch(
         raise HTTPException(status_code=404, detail="Payroll batch not found")
     return batch
 
-
 @router.post("/batches/{batch_id}/parse")
 def parse_payroll(
     batch_id: uuid.UUID,
@@ -309,7 +294,6 @@ def parse_payroll(
     )
     if not batch:
         raise HTTPException(status_code=404, detail="Payroll batch not found")
-
     if batch.status == "uploaded_needs_approval":
         raise HTTPException(status_code=409, detail="Payroll batch requires approval before parsing.")
 
@@ -363,7 +347,6 @@ def parse_payroll(
         "entries": result["entries"],
     }
 
-
 @router.get("/batches/{batch_id}/verify")
 def verify_payroll(
     batch_id: uuid.UUID,
@@ -414,7 +397,6 @@ def verify_payroll(
         "entries": result["entries"],
     }
 
-
 @router.post("/batches/{batch_id}/distribute")
 def distribute_payslips(
     batch_id: uuid.UUID,
@@ -430,7 +412,6 @@ def distribute_payslips(
     )
     if not batch:
         raise HTTPException(status_code=404, detail="Payroll batch not found")
-
     if batch.status == "uploaded_needs_approval":
         raise HTTPException(status_code=409, detail="Payroll batch requires approval before distribution.")
 
@@ -512,7 +493,6 @@ def distribute_payslips(
         "distributed_count": distributed_count,
     }
 
-
 # ── Employee Payslip Views ──
 
 @router.get("/my-payslips", response_model=list[PayslipResponse])
@@ -527,7 +507,6 @@ def list_my_payslips(
         .order_by(Payslip.created_at.desc())
         .all()
     )
-
 
 @router.get("/my-payslips/{payslip_id}/download")
 def download_my_payslip(
