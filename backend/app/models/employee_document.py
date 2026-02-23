@@ -1,5 +1,4 @@
 # backend/app/models/employee_document.py
-
 import enum
 import uuid
 
@@ -9,10 +8,6 @@ from sqlalchemy.sql import func
 
 from app.database import Base
 
-
-# ---------------------------------------------------------
-# Enums (kept as string values to match Path B DB design)
-# ---------------------------------------------------------
 
 class EmployeeDocType(str, enum.Enum):
     contract = "contract"
@@ -29,31 +24,18 @@ class SharePermission(str, enum.Enum):
     comment = "comment"
 
 
-# ---------------------------------------------------------
-# Employee Documents
-# ---------------------------------------------------------
-
 class EmployeeDocument(Base):
-    """
-    Matches current DB structure (Path B).
-
-    IMPORTANT FIX:
-    - id now auto-generates UUID in application layer
-    """
-
     __tablename__ = "employee_documents"
 
-    # 🔥 CRITICAL FIX — generate UUID in app
     id = Column(
         UUID(as_uuid=True),
         primary_key=True,
-        default=uuid.uuid4,  # ✅ FIXES your IntegrityError
+        default=uuid.uuid4,
     )
 
     user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     org_id = Column(UUID(as_uuid=True), nullable=False, index=True)
 
-    # Keep VARCHAR (no DB enum)
     doc_type = Column(String(50), nullable=False)
     title = Column(String(500), nullable=False)
 
@@ -72,19 +54,7 @@ class EmployeeDocument(Base):
     )
 
 
-# ---------------------------------------------------------
-# Document Shares
-# ---------------------------------------------------------
-
 class DocumentShare(Base):
-    """
-    document_shares table
-
-    NOTE:
-    - This table MUST exist in DB
-    - Uses server_default gen_random_uuid() (DB side)
-    """
-
     __tablename__ = "document_shares"
 
     id = Column(
@@ -105,7 +75,6 @@ class DocumentShare(Base):
     granted_by = Column(UUID(as_uuid=True), nullable=False)
     granted_to = Column(UUID(as_uuid=True), nullable=False, index=True)
 
-    # Keep VARCHAR (Path B)
     permission = Column(
         String(20),
         nullable=False,

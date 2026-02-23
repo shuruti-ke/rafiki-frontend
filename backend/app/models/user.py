@@ -47,5 +47,9 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     name = Column(String(200), nullable=True)
 
+    department = Column(String(100), nullable=True)
+    job_title = Column(String(200), nullable=True)
+    manager_id = Column(UUID(as_uuid=True), nullable=True)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

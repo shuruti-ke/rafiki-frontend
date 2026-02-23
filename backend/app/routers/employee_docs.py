@@ -3,7 +3,6 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
-from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
@@ -135,7 +134,7 @@ def download_employee_doc(
         raise HTTPException(status_code=403, detail="Not authorized")
 
     presigned_url = get_download_url(doc.file_path)
-    return RedirectResponse(url=presigned_url)
+    return {"url": presigned_url}
 
 
 # --- Employee Documents (HR uploads for a user OR user uploads for self via {user_id}) ---

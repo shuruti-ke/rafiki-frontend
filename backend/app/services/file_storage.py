@@ -47,6 +47,10 @@ ALLOWED_MIME_TYPES = {
     "text/plain",
     "text/csv",
 
+    # Spreadsheets (payroll)
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",  # .xlsx
+    "application/vnd.ms-excel",  # .xls
+
     # Images (common)
     "image/png",
     "image/jpeg",
@@ -65,7 +69,7 @@ ALLOWED_MIME_TYPES = {
 # Fallback allowlist by extension (helps when browsers send application/octet-stream)
 ALLOWED_EXTENSIONS = {
     # Docs
-    ".pdf", ".doc", ".docx", ".txt", ".csv",
+    ".pdf", ".doc", ".docx", ".txt", ".csv", ".xlsx", ".xls",
     # Images
     ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff",
     ".ico", ".svg", ".heic", ".heif", ".avif",

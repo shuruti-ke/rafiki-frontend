@@ -1,4 +1,3 @@
-# backend/app/schemas/employee_docs.py
 import uuid
 from datetime import datetime
 from typing import Optional, List
@@ -21,6 +20,19 @@ class EmployeeDocumentResponse(BaseModel):
     uploaded_by: uuid.UUID
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+
+
+class DocumentShareResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    org_id: uuid.UUID
+    document_id: uuid.UUID
+    granted_by: uuid.UUID
+    granted_to: uuid.UUID
+    permission: str
+    revoked_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
 
 
 # ---- Performance ----
