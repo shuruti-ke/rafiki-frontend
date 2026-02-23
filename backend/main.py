@@ -69,6 +69,7 @@ from app.routers.calendar import router as cal_router
 from app.routers.messages import router as msg_router
 from app.routers.org_members import router as org_members_router
 from app.routers.payroll import router as payroll_router
+from app.routers.employees import router as employees_router
 
 app.include_router(auth_router)
 app.include_router(kb_router)
@@ -84,6 +85,7 @@ app.include_router(cal_router)
 app.include_router(msg_router)
 app.include_router(org_members_router)
 app.include_router(payroll_router)
+app.include_router(employees_router)
 
 @app.get("/__routes")
 def __routes():
