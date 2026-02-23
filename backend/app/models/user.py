@@ -1,9 +1,28 @@
+import secrets
+
 from sqlalchemy import Column, String, Boolean, DateTime, Text
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import UUID, ENUM
 
 from app.database import Base
 
+
+# ---------------------------------------------------
+# Helpers
+# ---------------------------------------------------
+
+def _alias_default() -> str:
+    """
+    Generate a short non-PII anonymous alias.
+
+    Example: u_a3f91c2d77aa
+    """
+    return "u_" + secrets.token_hex(6)
+
+
+# ---------------------------------------------------
+# Enums
+# ---------------------------------------------------
 
 USER_ROLE_ENUM = ENUM(
     "user",
@@ -14,6 +33,10 @@ USER_ROLE_ENUM = ENUM(
     create_type=False,
 )
 
+
+# ---------------------------------------------------
+# Organization
+# ---------------------------------------------------
 
 class Organization(Base):
     __tablename__ = "orgs"
@@ -31,13 +54,24 @@ class Organization(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+# ---------------------------------------------------
+# User (users_legacy)
+# ---------------------------------------------------
+
 class User(Base):
     __tablename__ = "users_legacy"
 
     user_id = Column(UUID(as_uuid=True), primary_key=True)
     org_id = Column(UUID(as_uuid=True), nullable=True)
 
-    anonymous_alias = Column(String(255), nullable=True)
+    # 🔥 CRITICAL FIX: must be NOT NULL to match DB
+    anonymous_alias = Column(
+        String(255),
+        nullable=False,
+        default=_alias_default,
+        index=True,
+    )
+
     email = Column(String(255), nullable=True, index=True)
     password_hash = Column(String(255), nullable=False)
 
