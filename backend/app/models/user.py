@@ -77,7 +77,7 @@ class User(Base):
 
     role = Column(USER_ROLE_ENUM, nullable=False)
 
-    language_preference = Column(String(50), nullable=True)
+    language_preference = Column(String(50), nullable=False, default="en")
     is_active = Column(Boolean, default=True)
     name = Column(String(200), nullable=True)
 
