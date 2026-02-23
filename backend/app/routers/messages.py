@@ -422,6 +422,44 @@ def mark_read(
     db.commit()
     return {"ok": True}
 
+# ── Pending Payroll Approvals ──
+@router.get("/inbox/pending-approvals")
+def pending_approvals(
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    db: Session = Depends(get_db),
+):
+    # Find conversations where user participates
+    convo_ids = (
+        db.query(ConversationParticipant.conversation_id)
+        .filter(ConversationParticipant.user_id == user_id)
+        .subquery()
+    )
+
+    # Pull latest 50 messages and filter ones containing our marker
+    msgs = (
+        db.query(DmMessage)
+        .join(DmConversation, DmConversation.id == DmMessage.conversation_id)
+        .filter(
+            DmConversation.org_id == org_id,
+            DmMessage.conversation_id.in_(convo_ids),
+        )
+        .order_by(DmMessage.created_at.desc())
+        .limit(50)
+        .all()
+    )
+
+    pending = []
+    for m in msgs:
+        if m.content and "[[PAYROLL_APPROVAL]]" in m.content:
+            pending.append({
+                "id": str(m.id),
+                "conversation_id": str(m.conversation_id),
+                "created_at": m.created_at,
+                "content": m.content,
+            })
+
+    return {"pending": pending}
 
 # ─────────────────────────────────────────────────────────────
 # NEW: System Messages (used by Payroll approvals)
