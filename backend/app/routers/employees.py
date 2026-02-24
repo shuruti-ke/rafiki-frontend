@@ -45,10 +45,13 @@ def _make_alias() -> str:
 def _parse_date(d: Optional[str]) -> Optional[date]:
     if not d:
         return None
-    try:
-        return date.fromisoformat(d)
-    except Exception:
-        raise HTTPException(status_code=400, detail=f"Invalid date: {d}. Expected YYYY-MM-DD")
+    # Try multiple common formats
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y", "%Y/%m/%d"):
+        try:
+            return datetime.strptime(d.strip(), fmt).date()
+        except ValueError:
+            continue
+    raise HTTPException(status_code=400, detail=f"Invalid date: {d}. Expected YYYY-MM-DD, DD/MM/YYYY, or MM/DD/YYYY")
 
 
 def _parse_dt(d: Optional[str]) -> Optional[datetime]:
