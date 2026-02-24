@@ -10,6 +10,7 @@ and department/job_title/manager_id columns to users_legacy.
 """
 from typing import Sequence, Union
 from alembic import op
+import sqlalchemy as sa
 
 revision: str = "016"
 down_revision: Union[str, None] = "015"
@@ -18,8 +19,11 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # ── 1. Add 'manager' to user_role_enum ──
-    op.execute("ALTER TYPE user_role_enum ADD VALUE IF NOT EXISTS 'manager'")
+    # ALTER TYPE ... ADD VALUE cannot run inside a transaction in PostgreSQL.
+    # We commit the open transaction, run the ALTER TYPE, then Alembic continues.
+    conn = op.get_bind()
+    conn.execute(sa.text("COMMIT"))
+    conn.execute(sa.text("ALTER TYPE user_role_enum ADD VALUE IF NOT EXISTS 'manager'"))
 
     # ── 2. Add profile fields to users_legacy ──
     op.execute("ALTER TABLE users_legacy ADD COLUMN IF NOT EXISTS department VARCHAR(100)")
