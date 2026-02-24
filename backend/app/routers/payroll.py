@@ -1,5 +1,6 @@
 # backend/app/routers/payroll.py
 
+import json
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -303,33 +304,31 @@ def request_payroll_approval(
     month = _month_str(batch)
 
     # ✅ This is what your current UI will actually display
-   import json
+    month_str = f"{batch.period_year}-{batch.period_month:02d}"  # e.g. 2026-02
+    fname = (
+        getattr(batch, "upload_original_filename", None)
+        or getattr(batch, "original_filename", None)
+        or "payroll_file"
+    )
 
-month_str = f"{batch.period_year}-{batch.period_month:02d}"  # e.g. 2026-02
-fname = (
-    getattr(batch, "upload_original_filename", None)
-    or getattr(batch, "original_filename", None)
-    or "payroll_file"
-)
+    approval_payload = {
+        "kind": "payroll_approval_request",
+        "batch_id": str(batch.batch_id),
+        "month": month_str,
+        "filename": fname,
+        "download_url": download_url,
+        "approve_endpoint": f"/api/v1/payroll/batches/{batch.batch_id}/approve",
+        "reject_endpoint": f"/api/v1/payroll/batches/{batch.batch_id}/reject",
+    }
 
-approval_payload = {
-    "kind": "payroll_approval_request",
-    "batch_id": str(batch.batch_id),
-    "month": month_str,
-    "filename": fname,
-    "download_url": download_url,
-    "approve_endpoint": f"/api/v1/payroll/batches/{batch.batch_id}/approve",
-    "reject_endpoint": f"/api/v1/payroll/batches/{batch.batch_id}/reject",
-}
-
-dm_text = (
-    "📌 Payroll approval requested\n"
-    f"Month: {approval_payload['month']}\n"
-    f"File: {approval_payload['filename']}\n\n"
-    f"Download: {approval_payload['download_url'] or 'Unavailable'}\n\n"
-    "Please approve or reject below.\n\n"
-    f"[[PAYROLL_APPROVAL]]{json.dumps(approval_payload)}[[/PAYROLL_APPROVAL]]"
-)
+    dm_text = (
+        "📌 Payroll approval requested\n"
+        f"Month: {approval_payload['month']}\n"
+        f"File: {approval_payload['filename']}\n\n"
+        f"Download: {approval_payload['download_url'] or 'Unavailable'}\n\n"
+        "Please approve or reject below.\n\n"
+        f"[[PAYROLL_APPROVAL]]{json.dumps(approval_payload)}[[/PAYROLL_APPROVAL]]"
+    )
 
     _send_dm(
         db,
