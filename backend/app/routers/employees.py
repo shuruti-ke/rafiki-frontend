@@ -1,11 +1,16 @@
 # backend/app/routers/employees.py
 
+import csv
+import io
+import json
+import os
 import uuid
 import secrets
 from datetime import date, datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
@@ -17,6 +22,14 @@ from app.models.employee_profile import EmployeeProfile
 from app.services.auth import get_password_hash
 
 router = APIRouter(prefix="/api/v1/employees", tags=["Employee Management"])
+
+# ---------- known fields for AI mapping ----------
+KNOWN_FIELDS = [
+    "email", "name", "department", "job_title", "phone",
+    "employment_number", "national_id", "contract_type",
+    "start_date", "status", "notes", "role",
+    "duration_months", "evaluation_period_months",
+]
 
 
 # ---------- helpers ----------
@@ -469,3 +482,235 @@ def activate_employee(
     u.is_active = True
     db.commit()
     return {"ok": True, "user_id": str(user_id), "is_active": True}
+
+
+# ---------- batch upload helpers ----------
+
+def _map_headers_heuristic(headers: list[str]) -> dict[str, str]:
+    """Return {csv_header: known_field} using simple keyword matching."""
+    mapping = {}
+    lower_to_field = {
+        "email": "email", "e-mail": "email", "e mail": "email",
+        "name": "name", "full name": "name", "fullname": "name", "full_name": "name",
+        "department": "department", "dept": "department",
+        "job title": "job_title", "job_title": "job_title", "jobtitle": "job_title",
+        "position": "job_title", "title": "job_title",
+        "phone": "phone", "mobile": "phone", "telephone": "phone",
+        "employment number": "employment_number", "employment_number": "employment_number",
+        "emp no": "employment_number", "emp number": "employment_number",
+        "national id": "national_id", "national_id": "national_id", "id number": "national_id",
+        "contract type": "contract_type", "contract_type": "contract_type",
+        "start date": "start_date", "start_date": "start_date", "date joined": "start_date",
+        "status": "status",
+        "notes": "notes", "note": "notes", "remarks": "notes",
+        "role": "role",
+        "duration months": "duration_months", "duration_months": "duration_months",
+        "evaluation period": "evaluation_period_months", "evaluation_period_months": "evaluation_period_months",
+    }
+    for h in headers:
+        key = h.strip().lower()
+        if key in lower_to_field:
+            mapping[h] = lower_to_field[key]
+    return mapping
+
+
+def _map_headers_ai(headers: list[str]) -> dict[str, str]:
+    """Use OpenAI to map arbitrary headers to known fields."""
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").strip()
+    if not api_key:
+        return _map_headers_heuristic(headers)
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key, base_url=base_url)
+        prompt = (
+            f"You are mapping CSV column headers to known employee fields.\n"
+            f"Known fields: {json.dumps(KNOWN_FIELDS)}\n"
+            f"CSV headers: {json.dumps(headers)}\n"
+            f"Return ONLY a JSON object mapping each CSV header to the best known field, "
+            f"or null if no match. Example: {{\"Email Address\": \"email\", \"Dept\": \"department\", \"Age\": null}}"
+        )
+        resp = client.chat.completions.create(
+            model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0,
+            max_tokens=500,
+            response_format={"type": "json_object"},
+        )
+        raw = json.loads(resp.choices[0].message.content)
+        return {k: v for k, v in raw.items() if v in KNOWN_FIELDS}
+    except Exception:
+        return _map_headers_heuristic(headers)
+
+
+def _parse_csv_bytes(content: bytes) -> tuple[list[str], list[dict]]:
+    text = content.decode("utf-8-sig", errors="replace")
+    reader = csv.DictReader(io.StringIO(text))
+    headers = reader.fieldnames or []
+    rows = list(reader)
+    return list(headers), rows
+
+
+def _parse_xlsx_bytes(content: bytes) -> tuple[list[str], list[dict]]:
+    import openpyxl
+    wb = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+    ws = wb.active
+    rows_iter = ws.iter_rows(values_only=True)
+    headers = [str(h).strip() if h is not None else "" for h in next(rows_iter, [])]
+    rows = []
+    for row in rows_iter:
+        rows.append({headers[i]: (str(v).strip() if v is not None else "") for i, v in enumerate(row)})
+    return headers, rows
+
+
+def _create_one(db: Session, org_id: uuid.UUID, row_mapped: dict) -> dict:
+    """Create a single employee from a mapped row dict. Returns result info."""
+    email = (row_mapped.get("email") or "").strip().lower()
+    if not email:
+        return {"status": "error", "reason": "missing email"}
+
+    existing = db.query(User).filter(User.org_id == org_id, User.email == email).first()
+    if existing:
+        return {"status": "skipped", "email": email, "reason": "already exists"}
+
+    temp_pw = secrets.token_urlsafe(10)
+    u = User(
+        user_id=uuid.uuid4(),
+        org_id=org_id,
+        anonymous_alias=_make_alias(),
+        email=email,
+        password_hash=get_password_hash(temp_pw),
+        role=row_mapped.get("role") or "user",
+        language_preference="en",
+        is_active=True,
+        name=row_mapped.get("name") or None,
+        department=row_mapped.get("department") or None,
+        job_title=row_mapped.get("job_title") or None,
+    )
+    db.add(u)
+    db.flush()
+
+    p = EmployeeProfile(
+        id=uuid.uuid4(),
+        user_id=u.user_id,
+        org_id=org_id,
+        employment_number=row_mapped.get("employment_number") or None,
+        national_id=row_mapped.get("national_id") or None,
+        job_title=row_mapped.get("job_title") or None,
+        department=row_mapped.get("department") or None,
+        phone=row_mapped.get("phone") or None,
+        contract_type=row_mapped.get("contract_type") or None,
+        status=row_mapped.get("status") or "active",
+        start_date=_parse_date(row_mapped.get("start_date")),
+        notes=row_mapped.get("notes") or None,
+        duration_months=int(row_mapped["duration_months"]) if row_mapped.get("duration_months") else None,
+        evaluation_period_months=int(row_mapped["evaluation_period_months"]) if row_mapped.get("evaluation_period_months") else None,
+    )
+    db.add(p)
+
+    return {"status": "created", "email": email, "temporary_password": temp_pw}
+
+
+# ---------- batch endpoints ----------
+
+@router.get("/template.csv")
+def download_template(
+    _role: str = Depends(require_admin),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+):
+    """Download a CSV template for batch employee upload."""
+    headers = [
+        "email", "name", "department", "job_title", "phone",
+        "employment_number", "national_id", "contract_type",
+        "start_date", "status", "notes", "role",
+        "duration_months", "evaluation_period_months",
+    ]
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(headers)
+    writer.writerow([
+        "jane@company.com", "Jane Doe", "Engineering", "Software Engineer",
+        "+1234567890", "EMP001", "ID12345", "permanent",
+        "2024-01-15", "active", "", "user", "12", "3",
+    ])
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=employees_template.csv"},
+    )
+
+
+@router.post("/batch-upload")
+async def batch_upload_employees(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    _role: str = Depends(require_admin),
+):
+    """
+    Upload CSV or XLSX with employee data. AI maps column headers to known fields.
+    Returns summary of created, skipped, and errored rows.
+    """
+    content = await file.read()
+    filename = (file.filename or "").lower()
+
+    try:
+        if filename.endswith(".xlsx") or filename.endswith(".xls"):
+            headers, rows = _parse_xlsx_bytes(content)
+        else:
+            headers, rows = _parse_csv_bytes(content)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not parse file: {e}")
+
+    if not headers:
+        raise HTTPException(status_code=400, detail="File has no headers")
+
+    # Map headers to known fields (AI or heuristic)
+    col_map = _map_headers_ai(headers)
+
+    results = {"created": [], "skipped": [], "errors": []}
+
+    for i, row in enumerate(rows):
+        # Skip completely empty rows
+        if all(not v for v in row.values()):
+            continue
+
+        # Build mapped dict for this row
+        mapped = {}
+        for csv_col, field in col_map.items():
+            val = row.get(csv_col, "")
+            if val and val.strip():
+                mapped[field] = val.strip()
+
+        try:
+            result = _create_one(db, org_id, mapped)
+            if result["status"] == "created":
+                results["created"].append(result)
+            elif result["status"] == "skipped":
+                results["skipped"].append(result)
+            else:
+                results["errors"].append({**result, "row": i + 2})
+        except Exception as e:
+            db.rollback()
+            results["errors"].append({"row": i + 2, "email": mapped.get("email", ""), "reason": str(e)})
+            continue
+
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"DB commit failed: {e}")
+
+    return {
+        "summary": {
+            "total_rows": len(rows),
+            "created": len(results["created"]),
+            "skipped": len(results["skipped"]),
+            "errors": len(results["errors"]),
+        },
+        "column_mapping": col_map,
+        "created": results["created"],
+        "skipped": results["skipped"],
+        "errors": results["errors"],
+    }
