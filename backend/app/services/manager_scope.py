@@ -9,27 +9,22 @@ Scope levels:
 """
 
 import logging
+from uuid import UUID
 from sqlalchemy.orm import Session
+
 from app.models.toolkit import ManagerConfig
 
 logger = logging.getLogger(__name__)
 
-# Since OrgMember doesn't exist yet, we use a lightweight "team_members" approach
-# based on manager_config + employee user_ids stored in config or derived from org.
-# When OrgMember model is added later, this resolves through reports_to FK.
 
-# For now: manager sees employees whose user_id is in the same org_id.
-# Scope filtering is applied based on manager_level.
-
-
-def get_manager_config(db: Session, user_id: int, org_id: int) -> ManagerConfig | None:
+def get_manager_config(db: Session, user_id: UUID, org_id: UUID) -> ManagerConfig | None:
     """Get active manager configuration for a user."""
     return (
         db.query(ManagerConfig)
         .filter(
             ManagerConfig.user_id == user_id,
             ManagerConfig.org_id == org_id,
-            ManagerConfig.is_active == True,
+            ManagerConfig.is_active.is_(True),
         )
         .first()
     )
@@ -37,17 +32,11 @@ def get_manager_config(db: Session, user_id: int, org_id: int) -> ManagerConfig 
 
 def validate_employee_access(
     db: Session,
-    manager_user_id: int,
-    employee_user_id: int,
-    org_id: uuid,
+    manager_user_id: UUID,
+    employee_user_id: UUID,
+    org_id: UUID,
 ) -> bool:
-    """Check if a manager has access to view a specific employee's data.
-
-    L1: direct reports (for now, all employees in same org — refine when OrgMember exists)
-    L2: department-scoped
-    L3: multi-department scoped
-    L4: aggregate only — no individual access
-    """
+    """Check if a manager has access to view a specific employee's data."""
     config = get_manager_config(db, manager_user_id, org_id)
     if not config:
         return False
@@ -60,28 +49,19 @@ def validate_employee_access(
     if config.manager_level == "L4":
         return False
 
-    # For L1/L2/L3: allow access within org
-    # TODO: When OrgMember model exists, enforce reports_to hierarchy for L1
-    # and department filtering for L2/L3
+    # TODO: enforce hierarchy/department scoping when OrgMember exists
     return True
 
 
-def get_allowed_data_types(db: Session, user_id: int, org_id: int) -> list[str]:
-    """Get which data types a manager is allowed to access."""
+def get_allowed_data_types(db: Session, user_id: UUID, org_id: UUID) -> list[str]:
     config = get_manager_config(db, user_id, org_id)
-    if not config:
-        return []
-    return config.allowed_data_types or []
+    return config.allowed_data_types or [] if config else []
 
 
-def get_allowed_features(db: Session, user_id: int, org_id: int) -> list[str]:
-    """Get which features a manager is allowed to use."""
+def get_allowed_features(db: Session, user_id: UUID, org_id: UUID) -> list[str]:
     config = get_manager_config(db, user_id, org_id)
-    if not config:
-        return []
-    return config.allowed_features or []
+    return config.allowed_features or [] if config else []
 
 
-def can_use_feature(db: Session, user_id: int, org_id: int, feature: str) -> bool:
-    """Check if a manager can use a specific feature."""
+def can_use_feature(db: Session, user_id: UUID, org_id: UUID, feature: str) -> bool:
     return feature in get_allowed_features(db, user_id, org_id)
