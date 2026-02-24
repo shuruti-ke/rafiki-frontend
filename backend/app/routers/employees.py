@@ -368,6 +368,106 @@ def create_employee(
     }
 
 
+# ---------- batch endpoints (must be before /{user_id}) ----------
+
+@router.get("/template.csv")
+def download_template(
+    _role: str = Depends(require_admin),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+):
+    """Download a CSV template for batch employee upload."""
+    template_headers = [
+        "email", "name", "department", "job_title", "phone",
+        "employment_number", "national_id", "contract_type",
+        "start_date", "status", "notes", "role",
+        "duration_months", "evaluation_period_months",
+    ]
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(template_headers)
+    writer.writerow([
+        "jane@company.com", "Jane Doe", "Engineering", "Software Engineer",
+        "+1234567890", "EMP001", "ID12345", "permanent",
+        "2024-01-15", "active", "", "user", "12", "3",
+    ])
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=employees_template.csv"},
+    )
+
+
+@router.post("/batch-upload")
+async def batch_upload_employees(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    _role: str = Depends(require_admin),
+):
+    """
+    Upload CSV or XLSX with employee data. AI maps column headers to known fields.
+    Returns summary of created, skipped, and errored rows.
+    """
+    content = await file.read()
+    filename = (file.filename or "").lower()
+
+    try:
+        if filename.endswith(".xlsx") or filename.endswith(".xls"):
+            file_headers, rows = _parse_xlsx_bytes(content)
+        else:
+            file_headers, rows = _parse_csv_bytes(content)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not parse file: {e}")
+
+    if not file_headers:
+        raise HTTPException(status_code=400, detail="File has no headers")
+
+    col_map = _map_headers_ai(file_headers)
+
+    results = {"created": [], "skipped": [], "errors": []}
+
+    for i, row in enumerate(rows):
+        if all(not v for v in row.values()):
+            continue
+        mapped = {}
+        for csv_col, field in col_map.items():
+            val = row.get(csv_col, "")
+            if val and str(val).strip():
+                mapped[field] = str(val).strip()
+        try:
+            result = _create_one(db, org_id, mapped)
+            if result["status"] == "created":
+                results["created"].append(result)
+            elif result["status"] == "skipped":
+                results["skipped"].append(result)
+            else:
+                results["errors"].append({**result, "row": i + 2})
+        except Exception as e:
+            db.rollback()
+            results["errors"].append({"row": i + 2, "email": mapped.get("email", ""), "reason": str(e)})
+            continue
+
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"DB commit failed: {e}")
+
+    return {
+        "summary": {
+            "total_rows": len(rows),
+            "created": len(results["created"]),
+            "skipped": len(results["skipped"]),
+            "errors": len(results["errors"]),
+        },
+        "column_mapping": col_map,
+        "created": results["created"],
+        "skipped": results["skipped"],
+        "errors": results["errors"],
+    }
+
+
 @router.get("/{user_id}")
 def get_employee(
     user_id: uuid.UUID,
@@ -609,108 +709,3 @@ def _create_one(db: Session, org_id: uuid.UUID, row_mapped: dict) -> dict:
     db.add(p)
 
     return {"status": "created", "email": email, "temporary_password": temp_pw}
-
-
-# ---------- batch endpoints ----------
-
-@router.get("/template.csv")
-def download_template(
-    _role: str = Depends(require_admin),
-    org_id: uuid.UUID = Depends(get_current_org_id),
-):
-    """Download a CSV template for batch employee upload."""
-    headers = [
-        "email", "name", "department", "job_title", "phone",
-        "employment_number", "national_id", "contract_type",
-        "start_date", "status", "notes", "role",
-        "duration_months", "evaluation_period_months",
-    ]
-    buf = io.StringIO()
-    writer = csv.writer(buf)
-    writer.writerow(headers)
-    writer.writerow([
-        "jane@company.com", "Jane Doe", "Engineering", "Software Engineer",
-        "+1234567890", "EMP001", "ID12345", "permanent",
-        "2024-01-15", "active", "", "user", "12", "3",
-    ])
-    buf.seek(0)
-    return StreamingResponse(
-        iter([buf.getvalue()]),
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=employees_template.csv"},
-    )
-
-
-@router.post("/batch-upload")
-async def batch_upload_employees(
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    org_id: uuid.UUID = Depends(get_current_org_id),
-    _role: str = Depends(require_admin),
-):
-    """
-    Upload CSV or XLSX with employee data. AI maps column headers to known fields.
-    Returns summary of created, skipped, and errored rows.
-    """
-    content = await file.read()
-    filename = (file.filename or "").lower()
-
-    try:
-        if filename.endswith(".xlsx") or filename.endswith(".xls"):
-            headers, rows = _parse_xlsx_bytes(content)
-        else:
-            headers, rows = _parse_csv_bytes(content)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Could not parse file: {e}")
-
-    if not headers:
-        raise HTTPException(status_code=400, detail="File has no headers")
-
-    # Map headers to known fields (AI or heuristic)
-    col_map = _map_headers_ai(headers)
-
-    results = {"created": [], "skipped": [], "errors": []}
-
-    for i, row in enumerate(rows):
-        # Skip completely empty rows
-        if all(not v for v in row.values()):
-            continue
-
-        # Build mapped dict for this row
-        mapped = {}
-        for csv_col, field in col_map.items():
-            val = row.get(csv_col, "")
-            if val and val.strip():
-                mapped[field] = val.strip()
-
-        try:
-            result = _create_one(db, org_id, mapped)
-            if result["status"] == "created":
-                results["created"].append(result)
-            elif result["status"] == "skipped":
-                results["skipped"].append(result)
-            else:
-                results["errors"].append({**result, "row": i + 2})
-        except Exception as e:
-            db.rollback()
-            results["errors"].append({"row": i + 2, "email": mapped.get("email", ""), "reason": str(e)})
-            continue
-
-    try:
-        db.commit()
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"DB commit failed: {e}")
-
-    return {
-        "summary": {
-            "total_rows": len(rows),
-            "created": len(results["created"]),
-            "skipped": len(results["skipped"]),
-            "errors": len(results["errors"]),
-        },
-        "column_mapping": col_map,
-        "created": results["created"],
-        "skipped": results["skipped"],
-        "errors": results["errors"],
-    }
