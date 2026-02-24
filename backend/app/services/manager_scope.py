@@ -39,7 +39,7 @@ def validate_employee_access(
     db: Session,
     manager_user_id: int,
     employee_user_id: int,
-    org_id: int,
+    org_id: uuid,
 ) -> bool:
     """Check if a manager has access to view a specific employee's data.
 
