@@ -180,12 +180,33 @@ def parse_csv_payroll(content: bytes, db: Session, org_id) -> dict:
 # Excel .xlsx
 # ----------------------------
 
+def _build_combined_headers(rows: list, header_idx: int) -> list:
+    """
+    Build the final header list for header_idx.
+    For any blank cell in that row, look at the row above (if it exists) to fill in
+    the parent group label. This handles merged-header Excel sheets where the top row
+    has 'Name', 'Gross Pay' and the sub-header row has 'PAYE', 'NSSF', etc.
+    """
+    raw = list(rows[header_idx])
+    above = list(rows[header_idx - 1]) if header_idx > 0 else []
+
+    headers = []
+    for i, h in enumerate(raw):
+        normalized = _normalize_header(h)
+        if normalized:
+            headers.append(normalized)
+        elif i < len(above) and above[i] is not None and str(above[i]).strip():
+            # Fill from parent row
+            headers.append(_normalize_header(above[i]))
+        else:
+            headers.append(f"col_{i}")
+    return headers
+
+
 def _find_header_row(rows: list) -> int:
     """
     Find the best header row index in the first 15 rows.
-    Strategy: pick the row with the most non-empty string cells.
-    This skips leading empty rows, title rows, and merged group headers.
-    Also look for a row that contains keywords like 'name', 'gross', 'net'.
+    Prefer rows that contain payroll-specific keywords.
     """
     PAYROLL_KEYWORDS = {"name", "gross", "net", "salary", "pay", "employee"}
     best_idx = None
@@ -196,13 +217,27 @@ def _find_header_row(rows: list) -> int:
         keyword_hits = sum(
             1 for c in str_cells if any(kw in str(c).lower() for kw in PAYROLL_KEYWORDS)
         )
-        # Score: keyword matches are worth 3x more than plain string cells
         score = keyword_hits * 3 + len(str_cells)
         if score > best_score:
             best_score = score
             best_idx = i
 
     return best_idx if (best_idx is not None and best_score > 0) else 0
+
+
+def _is_data_row(row: tuple) -> bool:
+    """Return True if the row looks like an employee data row (first cell is a non-empty string name)."""
+    if not row:
+        return False
+    first = row[0]
+    if first is None or isinstance(first, (int, float)):
+        return False
+    name = str(first).strip()
+    # Skip totals/footer rows that start with known non-name text
+    skip_starts = {"total", "prepared", "approved", "date", "organization", "funder"}
+    if any(name.lower().startswith(s) for s in skip_starts):
+        return False
+    return bool(name)
 
 
 def parse_xlsx_payroll(content: bytes, db: Session, org_id) -> dict:
@@ -219,18 +254,11 @@ def parse_xlsx_payroll(content: bytes, db: Session, org_id) -> dict:
         return {"entries": [], "total_gross": 0, "total_deductions": 0, "total_net": 0, "unmatched_names": []}
 
     header_idx = _find_header_row(rows)
-    raw_headers = rows[header_idx]
-
-    # Build column name list: blank headers get a positional fallback name
-    headers = []
-    for i, h in enumerate(raw_headers):
-        normalized = _normalize_header(h)
-        headers.append(normalized if normalized else f"col_{i}")
+    headers = _build_combined_headers(rows, header_idx)
 
     entries = []
     for row in rows[header_idx + 1:]:
-        # Skip entirely empty rows (totals/footer rows are often not fully empty, but skip if all None)
-        if all(c is None for c in row):
+        if not _is_data_row(row):
             continue
         normed = {headers[i]: row[i] for i in range(len(headers)) if i < len(row)}
         entry = _row_to_entry(normed)
