@@ -191,3 +191,48 @@
 .btnDanger:hover {
   background: rgba(239, 68, 68, 0.1);
 }
+
+/* Logo upload */
+.aoc-logo-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: var(--bg, #0f1117);
+  margin-bottom: 8px;
+}
+
+.aoc-logo-preview {
+  max-height: 64px;
+  max-width: 200px;
+  object-fit: contain;
+  border-radius: 4px;
+  background: white;
+  padding: 4px;
+}
+
+.aoc-logo-upload-btn {
+  display: inline-block;
+  padding: 7px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  background: transparent;
+  width: fit-content;
+  transition: background 0.15s;
+}
+
+.aoc-logo-upload-btn:hover {
+  background: rgba(99, 102, 241, 0.08);
+}
+
+.aoc-hint {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0;
+}

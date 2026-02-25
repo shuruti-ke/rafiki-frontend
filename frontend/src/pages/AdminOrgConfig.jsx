@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { API } from "../api.js";
+import { useEffect, useState, useRef } from "react";
+import { API, authFetch } from "../api.js";
 import "./AdminOrgConfig.css";
 
 const INDUSTRIES = [
@@ -28,6 +28,11 @@ export default function AdminOrgConfig() {
   });
   const [benefitInput, setBenefitInput] = useState("");
 
+  // Logo state
+  const [logoUrl, setLogoUrl] = useState(null);
+  const [logoUploading, setLogoUploading] = useState(false);
+  const logoRef = useRef();
+
   // Role profiles state
   const [roles, setRoles] = useState([]);
   const [editingRole, setEditingRole] = useState(null);
@@ -44,7 +49,43 @@ export default function AdminOrgConfig() {
   useEffect(() => {
     fetchOrgProfile();
     fetchRoles();
+    fetchLogo();
   }, []);
+
+  async function fetchLogo() {
+    try {
+      const res = await authFetch(`${API}/api/v1/org-config/logo`);
+      if (res.ok) {
+        const data = await res.json();
+        setLogoUrl(data.logo_url || null);
+      }
+    } catch { /* silent */ }
+  }
+
+  async function handleLogoUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLogoUploading(true);
+    setMsg("");
+    const fd = new FormData();
+    fd.append("file", file);
+    try {
+      const res = await authFetch(`${API}/api/v1/org-config/logo`, { method: "POST", body: fd });
+      if (res.ok) {
+        const data = await res.json();
+        setLogoUrl(data.logo_url);
+        setMsg("Logo uploaded successfully");
+      } else {
+        const err = await res.json();
+        setMsg(err.detail || "Logo upload failed");
+      }
+    } catch {
+      setMsg("Logo upload failed");
+    } finally {
+      setLogoUploading(false);
+      if (logoRef.current) logoRef.current.value = "";
+    }
+  }
 
   async function fetchOrgProfile() {
     try {
@@ -202,6 +243,27 @@ export default function AdminOrgConfig() {
       {/* ─── Org Profile Tab ──────────────────────────────────────── */}
       {tab === "org" && (
         <div className="aoc-form">
+
+          {/* Logo Upload */}
+          <div className="aoc-logo-section">
+            <div className="aoc-label" style={{ marginBottom: 8 }}>Organisation Logo</div>
+            {logoUrl && (
+              <img src={logoUrl} alt="Org logo" className="aoc-logo-preview" />
+            )}
+            <label className="aoc-logo-upload-btn">
+              {logoUploading ? "Uploading…" : logoUrl ? "Replace Logo" : "Upload Logo"}
+              <input
+                ref={logoRef}
+                type="file"
+                hidden
+                accept="image/png,image/jpeg,image/jpg,image/webp,image/svg+xml"
+                onChange={handleLogoUpload}
+                disabled={logoUploading}
+              />
+            </label>
+            <p className="aoc-hint">PNG, JPG or SVG. Appears on employee payslips.</p>
+          </div>
+
           <label className="aoc-label">
             Organisation Purpose
             <input

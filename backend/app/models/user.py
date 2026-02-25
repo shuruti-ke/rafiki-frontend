@@ -37,6 +37,7 @@ class Organization(Base):
     org_id = Column(UUID(as_uuid=True), primary_key=True)
     name = Column(String(200), nullable=False)
     org_code = Column(String(50), nullable=False, unique=True, index=True)
+    logo_storage_key = Column(String(1000), nullable=True)
 
     description = Column(Text, nullable=True)
     industry = Column(String(255), nullable=True)

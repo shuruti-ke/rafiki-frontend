@@ -26,6 +26,7 @@ from app.schemas.payroll import (
 from app.services.file_storage import save_upload, get_download_url, delete_file
 from app.services.audit import log_action
 from app.services.payroll_parser import parse_payroll_file
+from app.services.payslip_generator import generate_payslip_pdf
 
 router = APIRouter(prefix="/api/v1/payroll", tags=["Payroll"])
 
@@ -826,6 +827,20 @@ def distribute_payslips(
     month_str = _month_str(batch)
     distributed_count = 0
 
+    # Fetch org name and logo for payslip PDF
+    from app.models.user import Organization
+    org = db.query(Organization).filter(Organization.org_id == org_id).first()
+    org_name = org.name if org else "Organisation"
+
+    logo_bytes = None
+    if org and getattr(org, "logo_storage_key", None):
+        try:
+            from app.services.file_storage import _get_s3, R2_BUCKET
+            s3 = _get_s3()
+            logo_bytes = s3.get_object(Bucket=R2_BUCKET, Key=org.logo_storage_key)["Body"].read()
+        except Exception:
+            logo_bytes = None
+
     # Delete any orphaned payslips from previous failed/partial distribute attempts
     db.query(Payslip).filter(Payslip.batch_id == batch.batch_id).delete()
     db.flush()
@@ -837,18 +852,48 @@ def distribute_payslips(
                 continue
 
             user_id = uuid.UUID(user_id_str)
-            doc_id = uuid.uuid4()
 
+            # Fetch employment number from profile
+            from app.models.employee_profile import EmployeeProfile
+            profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == user_id).first()
+            emp_number = profile.employment_number if profile else None
+
+            # Generate individual payslip PDF
+            pdf_bytes = generate_payslip_pdf(
+                org_name=org_name,
+                employee_name=entry.get("employee_name", ""),
+                employment_number=emp_number,
+                month=month_str,
+                gross_salary=float(entry.get("gross_salary") or 0),
+                total_deductions=float(entry.get("deductions") or 0),
+                net_salary=float(entry.get("net_salary") or 0),
+                logo_bytes=logo_bytes,
+                details=entry.get("details"),
+            )
+
+            # Upload PDF to R2
+            from app.services.file_storage import _get_s3, R2_BUCKET
+            import io as _io
+            pdf_key = f"payslips/{org_id}/{month_str}/{user_id}.pdf"
+            s3 = _get_s3()
+            s3.put_object(
+                Bucket=R2_BUCKET,
+                Key=pdf_key,
+                Body=pdf_bytes,
+                ContentType="application/pdf",
+            )
+
+            doc_id = uuid.uuid4()
             doc = EmployeeDocument(
                 id=doc_id,
                 user_id=user_id,
                 org_id=org_id,
                 doc_type="payslip",
                 title=f"Payslip - {month_str}",
-                file_path=batch.upload_storage_key,
-                original_filename=f"payslip_{month_str}.pdf",
-                mime_type=batch.upload_mime_type,
-                file_size=0,
+                file_path=pdf_key,
+                original_filename=f"payslip_{month_str}_{entry.get('employee_name','').replace(' ','_')}.pdf",
+                mime_type="application/pdf",
+                file_size=len(pdf_bytes),
                 uploaded_by=current_user_id,
             )
             db.add(doc)

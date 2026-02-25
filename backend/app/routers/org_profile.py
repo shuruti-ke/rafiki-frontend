@@ -1,11 +1,15 @@
-from fastapi import APIRouter, Depends, HTTPException
+import uuid
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from app.database import get_db
+from app.dependencies import get_current_org_id, get_current_user_id, require_admin
 from app.models.org_profile import OrgProfile, RoleProfile
+from app.models.user import Organization
 from app.schemas.org_profile import (
     OrgProfileCreate, OrgProfileUpdate, OrgProfileResponse,
     RoleProfileCreate, RoleProfileUpdate, RoleProfileResponse,
 )
+from app.services.file_storage import save_upload, get_download_url
 
 router = APIRouter(prefix="/api/v1/org-config", tags=["Org Config"])
 
@@ -101,6 +105,37 @@ def update_role(role_key: str, payload: RoleProfileUpdate, db: Session = Depends
     db.commit()
     db.refresh(role)
     return role
+
+
+@router.post("/logo")
+def upload_org_logo(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    _role: str = Depends(require_admin),
+):
+    """Upload or replace the organisation logo. Stored in R2, key saved on orgs table."""
+    storage_key, _, _ = save_upload(file, subfolder="org_logos")
+    org = db.query(Organization).filter(Organization.org_id == org_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organisation not found")
+    org.logo_storage_key = storage_key
+    db.commit()
+    url = get_download_url(storage_key)
+    return {"ok": True, "logo_url": url, "storage_key": storage_key}
+
+
+@router.get("/logo")
+def get_org_logo(
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+):
+    """Return a presigned URL for the org logo, or null if none uploaded."""
+    org = db.query(Organization).filter(Organization.org_id == org_id).first()
+    if not org or not getattr(org, "logo_storage_key", None):
+        return {"logo_url": None}
+    url = get_download_url(org.logo_storage_key)
+    return {"logo_url": url}
 
 
 @router.delete("/roles/{role_key}")
