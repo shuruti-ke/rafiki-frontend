@@ -202,16 +202,20 @@ def generate_payslip_pdf(
     # Build style commands
     n = len(rows)
     earnings_header_idx = 1
-    taxable_idx = next(i for i, r in enumerate(rows) if "Taxable" in r[0].text if hasattr(r[0], 'text') else False) if any(hasattr(r[0], 'text') and "Taxable" in r[0].text for r in rows) else None
-    deductions_header_idx = next(i for i, r in enumerate(rows) if hasattr(r[0], 'text') and "DEDUCTIONS" in r[0].text)
-    total_idx = next(i for i, r in enumerate(rows) if hasattr(r[0], 'text') and "Total Deductions" in r[0].text)
+    def _find_row_idx(rows, keyword):
+        for i, r in enumerate(rows):
+            if hasattr(r[0], 'text') and keyword in r[0].text:
+                return i
+        return None
+
+    taxable_idx = _find_row_idx(rows, "Taxable")
+    deductions_header_idx = _find_row_idx(rows, "DEDUCTIONS")
+    total_idx = _find_row_idx(rows, "Total Deductions")
     net_idx = n - 1
 
     style_cmds = [
         ("BACKGROUND", (0, 0), (1, 0), header_bg),
         ("BACKGROUND", (0, earnings_header_idx), (1, earnings_header_idx), section_bg),
-        ("BACKGROUND", (0, deductions_header_idx), (1, deductions_header_idx), section_bg),
-        ("BACKGROUND", (0, total_idx), (1, total_idx), colors.HexColor("#fce8b2")),
         ("BACKGROUND", (0, net_idx), (1, net_idx), net_bg),
         ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cccccc")),
         ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#dddddd")),
@@ -220,8 +224,14 @@ def generate_payslip_pdf(
         ("LEFTPADDING", (0, 0), (-1, -1), 8),
         ("RIGHTPADDING", (0, 0), (-1, -1), 8),
         ("SPAN", (0, earnings_header_idx), (1, earnings_header_idx)),
-        ("SPAN", (0, deductions_header_idx), (1, deductions_header_idx)),
     ]
+    if deductions_header_idx is not None:
+        style_cmds += [
+            ("BACKGROUND", (0, deductions_header_idx), (1, deductions_header_idx), section_bg),
+            ("SPAN", (0, deductions_header_idx), (1, deductions_header_idx)),
+        ]
+    if total_idx is not None:
+        style_cmds.append(("BACKGROUND", (0, total_idx), (1, total_idx), colors.HexColor("#fce8b2")))
 
     tbl.setStyle(TableStyle(style_cmds))
     story.append(tbl)
