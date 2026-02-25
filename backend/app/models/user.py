@@ -2,7 +2,7 @@ import secrets
 
 from sqlalchemy import Column, String, Boolean, DateTime, Text
 from sqlalchemy.sql import func
-from sqlalchemy.dialects.postgresql import UUID, ENUM
+from sqlalchemy.dialects.postgresql import UUID
 
 from app.database import Base
 
@@ -24,14 +24,7 @@ def _alias_default() -> str:
 # Enums
 # ---------------------------------------------------
 
-USER_ROLE_ENUM = ENUM(
-    "user",
-    "hr_admin",
-    "clinical_reviewer",
-    "super_admin",
-    name="user_role_enum",
-    create_type=False,
-)
+USER_ROLE_ENUM = String(50)  # was PostgreSQL ENUM; use String to avoid enum migration issues
 
 
 # ---------------------------------------------------
