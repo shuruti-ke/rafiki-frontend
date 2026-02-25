@@ -83,7 +83,9 @@ def _build_summary(entries: list[dict]) -> dict:
     unmatched = [e["employee_name"] for e in entries if not e.get("matched_user_id")]
 
     expected_net = total_gross - total_deductions
-    reconciled = abs(expected_net - total_net) < 0.01
+    # Tolerance: 1% of total gross or 1.0, whichever is larger — handles rounding & other additions
+    tolerance = max(1.0, total_gross * 0.01)
+    reconciled = abs(expected_net - total_net) < tolerance
 
     return {
         "entries": entries,
@@ -120,9 +122,22 @@ def _row_to_entry(normed: dict) -> Optional[dict]:
     if not name:
         return None
 
-    gross = _parse_number(normed.get("gross_salary") or normed.get("gross") or 0)
-    deductions = _parse_number(normed.get("deductions") or 0)
-    net = _parse_number(normed.get("net_salary") or normed.get("net") or 0)
+    gross = _parse_number(
+        normed.get("gross_salary") or normed.get("gross") or normed.get("gross_pay") or 0
+    )
+    # Sum individual deduction columns if a single "deductions" column isn't present
+    if normed.get("deductions"):
+        deductions = _parse_number(normed["deductions"])
+    else:
+        deduction_keys = {"paye", "nssf", "shif", "nhdf", "nhif", "levy", "loan", "deduction"}
+        deductions = sum(
+            abs(_parse_number(v))
+            for k, v in normed.items()
+            if any(dk in k for dk in deduction_keys) and v not in (None, "")
+        )
+    net = _parse_number(
+        normed.get("net_salary") or normed.get("net") or normed.get("net_pay") or 0
+    )
 
     known_keys = {"employee_name", "name", "gross_salary", "gross", "deductions", "net_salary", "net"}
     details = {k: (str(v).strip() if v is not None else "") for k, v in normed.items() if k not in known_keys}
@@ -165,6 +180,31 @@ def parse_csv_payroll(content: bytes, db: Session, org_id) -> dict:
 # Excel .xlsx
 # ----------------------------
 
+def _find_header_row(rows: list) -> int:
+    """
+    Find the best header row index in the first 15 rows.
+    Strategy: pick the row with the most non-empty string cells.
+    This skips leading empty rows, title rows, and merged group headers.
+    Also look for a row that contains keywords like 'name', 'gross', 'net'.
+    """
+    PAYROLL_KEYWORDS = {"name", "gross", "net", "salary", "pay", "employee"}
+    best_idx = None
+    best_score = -1
+
+    for i, row in enumerate(rows[:15]):
+        str_cells = [c for c in row if c is not None and not isinstance(c, (int, float)) and str(c).strip()]
+        keyword_hits = sum(
+            1 for c in str_cells if any(kw in str(c).lower() for kw in PAYROLL_KEYWORDS)
+        )
+        # Score: keyword matches are worth 3x more than plain string cells
+        score = keyword_hits * 3 + len(str_cells)
+        if score > best_score:
+            best_score = score
+            best_idx = i
+
+    return best_idx if (best_idx is not None and best_score > 0) else 0
+
+
 def parse_xlsx_payroll(content: bytes, db: Session, org_id) -> dict:
     if openpyxl is None:
         logger.error("openpyxl not installed — cannot parse .xlsx files")
@@ -178,9 +218,20 @@ def parse_xlsx_payroll(content: bytes, db: Session, org_id) -> dict:
     if not rows:
         return {"entries": [], "total_gross": 0, "total_deductions": 0, "total_net": 0, "unmatched_names": []}
 
-    headers = [_normalize_header(h) for h in rows[0]]
+    header_idx = _find_header_row(rows)
+    raw_headers = rows[header_idx]
+
+    # Build column name list: blank headers get a positional fallback name
+    headers = []
+    for i, h in enumerate(raw_headers):
+        normalized = _normalize_header(h)
+        headers.append(normalized if normalized else f"col_{i}")
+
     entries = []
-    for row in rows[1:]:
+    for row in rows[header_idx + 1:]:
+        # Skip entirely empty rows (totals/footer rows are often not fully empty, but skip if all None)
+        if all(c is None for c in row):
+            continue
         normed = {headers[i]: row[i] for i in range(len(headers)) if i < len(row)}
         entry = _row_to_entry(normed)
         if entry:

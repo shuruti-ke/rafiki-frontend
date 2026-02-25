@@ -11,6 +11,7 @@ import AdminEmployeeDetail from "./pages/AdminEmployeeDetail.jsx";
 import AdminGuidedPaths from "./pages/AdminGuidedPaths.jsx";
 import AdminOrgConfig from "./pages/AdminOrgConfig.jsx";
 import AdminManagerConfig from "./pages/AdminManagerConfig.jsx";
+import AdminPayroll from "./pages/AdminPayroll.jsx";
 import EmployeeKnowledgeBase from "./pages/EmployeeKnowledgeBase.jsx";
 import EmployeeAnnouncements from "./pages/EmployeeAnnouncements.jsx";
 import GuidedPathExplore from "./pages/GuidedPathExplore.jsx";
@@ -88,6 +89,7 @@ export default function App() {
           <Route path="guided-paths" element={<AdminGuidedPaths />} />
           <Route path="org-config" element={<AdminOrgConfig />} />
           <Route path="managers" element={<AdminManagerConfig />} />
+          <Route path="payroll" element={<AdminPayroll />} />
         </Route>
       </Routes>
     </BrowserRouter>
