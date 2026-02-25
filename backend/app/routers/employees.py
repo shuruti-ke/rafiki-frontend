@@ -599,6 +599,53 @@ def activate_employee(
     return {"ok": True, "user_id": str(user_id), "is_active": True}
 
 
+@router.get("/{user_id}/credentials")
+def get_credentials(
+    user_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    _role: str = Depends(require_admin),
+):
+    """Return the stored initial password for an employee (HR admin only)."""
+    u = db.query(User).filter(User.user_id == user_id, User.org_id == org_id).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == user_id).first()
+    return {
+        "user_id": str(user_id),
+        "email": u.email,
+        "initial_password": getattr(profile, "initial_password", None) if profile else None,
+    }
+
+
+@router.post("/{user_id}/reset-password")
+def reset_employee_password(
+    user_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    _role: str = Depends(require_admin),
+):
+    """Generate a new temporary password for an employee and store it on their profile."""
+    u = db.query(User).filter(User.user_id == user_id, User.org_id == org_id).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    new_pw = secrets.token_urlsafe(10)
+    u.password_hash = get_password_hash(new_pw)
+
+    profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == user_id).first()
+    if profile:
+        profile.initial_password = new_pw
+
+    db.commit()
+    return {
+        "ok": True,
+        "user_id": str(user_id),
+        "email": u.email,
+        "temporary_password": new_pw,
+    }
+
+
 # ---------- batch upload helpers ----------
 
 def _map_headers_heuristic(headers: list[str]) -> dict[str, str]:
@@ -738,6 +785,7 @@ def _create_one(db: Session, org_id: uuid.UUID, row_mapped: dict) -> dict:
         status=row_mapped.get("status") or "active",
         start_date=_parse_date(row_mapped.get("start_date")),
         notes=row_mapped.get("notes") or None,
+        initial_password=temp_pw,
         duration_months=int(row_mapped["duration_months"]) if row_mapped.get("duration_months") else None,
         evaluation_period_months=int(row_mapped["evaluation_period_months"]) if row_mapped.get("evaluation_period_months") else None,
     )

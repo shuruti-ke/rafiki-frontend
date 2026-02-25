@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { API } from "../api.js";
+import { API, authFetch } from "../api.js";
 import "./AdminEmployeeDetail.css";
 
 export default function AdminEmployeeDetail() {
@@ -19,6 +19,12 @@ export default function AdminEmployeeDetail() {
   const [evalImprove, setEvalImprove] = useState("");
   const [evalGoals, setEvalGoals] = useState("");
   const [evalComments, setEvalComments] = useState("");
+
+  // Credentials
+  const [credentials, setCredentials] = useState(null);
+  const [credLoading, setCredLoading] = useState(false);
+  const [credResetLoading, setCredResetLoading] = useState(false);
+  const [credCopied, setCredCopied] = useState(false);
 
   // Disciplinary form
   const [showDiscForm, setShowDiscForm] = useState(false);
@@ -40,6 +46,38 @@ export default function AdminEmployeeDetail() {
   async function fetchDisciplinary() {
     const res = await fetch(`${API}/api/v1/employee-docs/${userId}/disciplinary`);
     setDisciplinary(await res.json());
+  }
+
+  async function fetchCredentials() {
+    setCredLoading(true);
+    try {
+      const res = await authFetch(`${API}/api/v1/employees/${userId}/credentials`);
+      if (res.ok) setCredentials(await res.json());
+    } finally {
+      setCredLoading(false);
+    }
+  }
+
+  async function handleResetPassword() {
+    if (!confirm("Generate a new temporary password for this employee?")) return;
+    setCredResetLoading(true);
+    try {
+      const res = await authFetch(`${API}/api/v1/employees/${userId}/reset-password`, { method: "POST" });
+      if (res.ok) {
+        const data = await res.json();
+        setCredentials((prev) => ({ ...prev, initial_password: data.temporary_password }));
+      }
+    } finally {
+      setCredResetLoading(false);
+    }
+  }
+
+  function copyCredentials() {
+    if (!credentials) return;
+    const text = `Email: ${credentials.email}\nPassword: ${credentials.initial_password || "(not set)"}`;
+    navigator.clipboard.writeText(text);
+    setCredCopied(true);
+    setTimeout(() => setCredCopied(false), 2000);
   }
 
   useEffect(() => {
@@ -132,11 +170,14 @@ export default function AdminEmployeeDetail() {
       </div>
 
       <div className="aed-tabs">
-        {["documents", "evaluations", "disciplinary"].map((t) => (
+        {["documents", "evaluations", "disciplinary", "credentials"].map((t) => (
           <button
             key={t}
             className={`aed-tab ${tab === t ? "active" : ""}`}
-            onClick={() => setTab(t)}
+            onClick={() => {
+              setTab(t);
+              if (t === "credentials" && !credentials) fetchCredentials();
+            }}
           >{t.charAt(0).toUpperCase() + t.slice(1)}</button>
         ))}
       </div>
@@ -261,6 +302,45 @@ export default function AdminEmployeeDetail() {
                 {rec.outcome && <div><label>Outcome:</label> <p>{rec.outcome}</p></div>}
               </div>
             ))
+          )}
+        </div>
+      )}
+      {/* Credentials Tab */}
+      {tab === "credentials" && (
+        <div className="aed-section">
+          <div className="aed-section-head">
+            <h2>Login Credentials</h2>
+          </div>
+
+          {credLoading && <p className="aed-muted">Loading…</p>}
+
+          {!credLoading && credentials && (
+            <div className="aed-cred-card">
+              <div className="aed-cred-row">
+                <span className="aed-cred-label">Email</span>
+                <span className="aed-cred-value">{credentials.email || "—"}</span>
+              </div>
+              <div className="aed-cred-row">
+                <span className="aed-cred-label">Temporary Password</span>
+                <span className="aed-cred-value aed-cred-pw">
+                  {credentials.initial_password
+                    ? credentials.initial_password
+                    : <em className="aed-muted">Not set — employee may have changed it</em>}
+                </span>
+              </div>
+              <div className="aed-cred-actions">
+                <button className="btn btnPrimary" onClick={copyCredentials} disabled={!credentials.initial_password}>
+                  {credCopied ? "Copied!" : "Copy Credentials"}
+                </button>
+                <button className="btn" onClick={handleResetPassword} disabled={credResetLoading}>
+                  {credResetLoading ? "Resetting…" : "Reset Password"}
+                </button>
+              </div>
+              <p className="aed-muted" style={{ marginTop: 12, fontSize: 12 }}>
+                Share these credentials with the employee so they can log in. They should change their password after first login.
+                Resetting generates a new temporary password and saves it here.
+              </p>
+            </div>
           )}
         </div>
       )}

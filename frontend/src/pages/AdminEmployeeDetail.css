@@ -151,3 +151,50 @@
 .aed-disc-card label { font-size: 12px; color: var(--muted); text-transform: uppercase; font-weight: 700; }
 
 .aed-muted { color: var(--muted); font-size: 13px; }
+
+/* Credentials tab */
+.aed-cred-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px 24px;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.aed-cred-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.aed-cred-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.aed-cred-value {
+  font-size: 15px;
+  color: var(--text);
+}
+
+.aed-cred-pw {
+  font-family: monospace;
+  font-size: 16px;
+  letter-spacing: 0.05em;
+  background: rgba(255,255,255,0.05);
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.aed-cred-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}

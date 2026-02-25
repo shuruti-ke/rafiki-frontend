@@ -113,6 +113,9 @@ class EmployeeProfile(Base):
 
     notes = Column(Text, nullable=True)
 
+    # Temporary login credential — set at account creation, cleared after first password reset
+    initial_password = Column(String(255), nullable=True)
+
     # ------------------------------------------------------------------
     # Audit fields
     # ------------------------------------------------------------------
