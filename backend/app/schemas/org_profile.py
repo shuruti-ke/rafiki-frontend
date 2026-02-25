@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
+from uuid import UUID
 
 
 # ─── Org Profile ─────────────────────────────────────────────────────
@@ -20,8 +21,7 @@ class OrgProfileUpdate(BaseModel):
 
 
 class OrgProfileResponse(BaseModel):
-    id: int
-    org_id: int
+    org_id: UUID
     org_purpose: str | None = None
     industry: str | None = None
     work_environment: str | None = None
@@ -51,7 +51,7 @@ class RoleProfileUpdate(BaseModel):
 
 class RoleProfileResponse(BaseModel):
     id: int
-    org_id: int
+    org_id: UUID
     role_key: str
     role_family: str | None = None
     seniority_band: str | None = None
