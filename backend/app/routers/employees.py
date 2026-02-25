@@ -428,6 +428,18 @@ async def batch_upload_employees(
 
     col_map = _map_headers_ai(file_headers)
 
+    # Validate that the file has at least an email column — payroll files won't
+    if "email" not in col_map.values():
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"No email column detected in this file. "
+                f"Found headers: {', '.join(file_headers[:10])}. "
+                "The employee import file must contain an email column. "
+                "Download the template CSV for the expected format."
+            ),
+        )
+
     results = {"created": [], "skipped": [], "errors": []}
 
     for i, row in enumerate(rows):
@@ -658,11 +670,31 @@ def _parse_xlsx_bytes(content: bytes) -> tuple[list[str], list[dict]]:
     import openpyxl
     wb = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
     ws = wb.active
-    rows_iter = ws.iter_rows(values_only=True)
-    headers = [str(h).strip() if h is not None else "" for h in next(rows_iter, [])]
+
+    all_rows = list(ws.iter_rows(values_only=True))
+
+    # Find the best header row in the first 15 rows: the row with the most non-empty
+    # string-like cells. This skips leading empty rows and title/metadata rows.
+    header_idx = None
+    best_count = 0
+    for i, row in enumerate(all_rows[:15]):
+        non_empty = [c for c in row if c is not None and str(c).strip() != "" and not isinstance(c, (int, float))]
+        if len(non_empty) > best_count:
+            best_count = len(non_empty)
+            header_idx = i
+
+    if header_idx is None or best_count < 2:
+        return [], []
+
+    raw_headers = all_rows[header_idx]
+    headers = [str(h).strip() if h is not None else "" for h in raw_headers]
+
     rows = []
-    for row in rows_iter:
-        rows.append({headers[i]: (str(v).strip() if v is not None else "") for i, v in enumerate(row)})
+    for row in all_rows[header_idx + 1:]:
+        # Skip entirely empty rows
+        if all(c is None or str(c).strip() == "" for c in row):
+            continue
+        rows.append({headers[i]: (str(v).strip() if v is not None else "") for i, v in enumerate(row) if i < len(headers)})
     return headers, rows
 
 
