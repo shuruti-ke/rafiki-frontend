@@ -826,42 +826,48 @@ def distribute_payslips(
     month_str = _month_str(batch)
     distributed_count = 0
 
-    for entry in entries:
-        user_id_str = entry.get("matched_user_id")
-        if not user_id_str:
-            continue
+    try:
+        for entry in entries:
+            user_id_str = entry.get("matched_user_id")
+            if not user_id_str:
+                continue
 
-        user_id = uuid.UUID(user_id_str)
+            user_id = uuid.UUID(user_id_str)
+            doc_id = uuid.uuid4()
 
-        doc = EmployeeDocument(
-            user_id=user_id,
-            org_id=org_id,
-            doc_type="payslip",
-            title=f"Payslip - {month_str}",
-            file_path=batch.upload_storage_key,
-            original_filename=f"payslip_{month_str}.pdf",
-            mime_type=batch.upload_mime_type,
-            file_size=0,
-            uploaded_by=current_user_id,
-        )
-        db.add(doc)
-        db.flush()
+            doc = EmployeeDocument(
+                id=doc_id,
+                user_id=user_id,
+                org_id=org_id,
+                doc_type="payslip",
+                title=f"Payslip - {month_str}",
+                file_path=batch.upload_storage_key,
+                original_filename=f"payslip_{month_str}.pdf",
+                mime_type=batch.upload_mime_type,
+                file_size=0,
+                uploaded_by=current_user_id,
+            )
+            db.add(doc)
+            db.flush()
 
-        payslip = Payslip(
-            org_id=org_id,
-            batch_id=batch.batch_id,
-            employee_user_id=user_id,
-            gross_pay=entry.get("gross_salary"),
-            total_deductions=entry.get("deductions"),
-            net_pay=entry.get("net_salary"),
-            document_id=doc.id,
-        )
-        db.add(payslip)
-        distributed_count += 1
+            payslip = Payslip(
+                org_id=org_id,
+                batch_id=batch.batch_id,
+                employee_user_id=user_id,
+                gross_pay=entry.get("gross_salary"),
+                total_deductions=entry.get("deductions"),
+                net_pay=entry.get("net_salary"),
+                document_id=doc_id,
+            )
+            db.add(payslip)
+            distributed_count += 1
 
-    batch.status = "distributed"
-    batch.distributed_at = _now_utc()
-    db.commit()
+        batch.status = "distributed"
+        batch.distributed_at = _now_utc()
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Distribution failed: {e}")
 
     log_action(
         db,
