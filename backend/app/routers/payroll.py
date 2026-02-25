@@ -826,10 +826,19 @@ def distribute_payslips(
     month_str = _month_str(batch)
     distributed_count = 0
 
+    # Fetch already-distributed user IDs for this batch to avoid duplicate key errors
+    existing_payslip_users = {
+        str(row.employee_user_id)
+        for row in db.query(Payslip.employee_user_id).filter(Payslip.batch_id == batch.batch_id).all()
+    }
+
     try:
         for entry in entries:
             user_id_str = entry.get("matched_user_id")
             if not user_id_str:
+                continue
+            if user_id_str in existing_payslip_users:
+                distributed_count += 1  # count as already done
                 continue
 
             user_id = uuid.UUID(user_id_str)
