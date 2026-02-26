@@ -449,14 +449,34 @@ def pending_approvals(
         .all()
     )
 
+    import json, re
+    from app.models.payroll import PayrollBatch
+
     pending = []
     for m in msgs:
         if m.content and "[[PAYROLL_APPROVAL]]" in m.content:
+            # Extract batch_id from embedded payload to check current status
+            batch_status = None
+            match = re.search(r"\[\[PAYROLL_APPROVAL\]\](.*?)\[\[/PAYROLL_APPROVAL\]\]", m.content, re.DOTALL)
+            if match:
+                try:
+                    payload = json.loads(match.group(1))
+                    batch_id = payload.get("batch_id")
+                    if batch_id:
+                        batch = db.query(PayrollBatch).filter(
+                            PayrollBatch.batch_id == uuid.UUID(batch_id)
+                        ).first()
+                        batch_status = batch.status if batch else None
+                except Exception:
+                    pass
+
             pending.append({
                 "id": str(m.id),
                 "conversation_id": str(m.conversation_id),
                 "created_at": m.created_at,
                 "content": m.content,
+                "batch_status": batch_status,
+                "actionable": batch_status == "uploaded_needs_approval",
             })
 
     return {"pending": pending}

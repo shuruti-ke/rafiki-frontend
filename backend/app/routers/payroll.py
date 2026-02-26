@@ -73,11 +73,11 @@ def _month_str(batch: PayrollBatch) -> str:
 
 
 def _require_pending_approval(batch: PayrollBatch):
-    if getattr(batch, "status", None) != "uploaded_needs_approval":
-        raise HTTPException(
-            status_code=400,
-            detail=f"Batch is not pending approval (status={getattr(batch,'status',None)})",
-        )
+    status = getattr(batch, "status", None)
+    if status == "distributed":
+        raise HTTPException(status_code=409, detail="This payroll has already been distributed. No further approval actions are allowed.")
+    if status != "uploaded_needs_approval":
+        raise HTTPException(status_code=400, detail=f"Batch is not pending approval (status={status})")
 
 
 def _ensure_approved_for_parse_or_distribute(batch: PayrollBatch):
@@ -537,35 +537,46 @@ def upload_payroll(
     )
 
     if existing:
-        was_distributed = existing.status == "distributed"
-        warning = None
-
-        if was_distributed and not force:
-            raise HTTPException(
-                status_code=409,
-                detail=f"Payroll for {month} has already been distributed. Re-upload with force=true to override.",
-            )
-
-        if was_distributed and force:
+        if existing.status == "distributed":
+            # Distributed batches are immutable history — create a new batch for the re-upload
             warning = (
-                f"⚠️ You replaced a distributed payroll for {month}. "
-                "Old payslips may still reference the previous file. "
-                "Re-distribute if you want employees to receive the updated version."
+                f"⚠️ A distributed payroll for {month} already exists and has been preserved in history. "
+                "This new upload will go through a fresh approval process."
             )
+            batch = PayrollBatch(
+                org_id=org_id,
+                period_year=year,
+                period_month=mo,
+                template_id=template_id,
+                upload_storage_key=file_path,
+                upload_mime_type=content_type,
+                upload_original_filename=original_name,
+                created_by_user_id=current_user_id,
+                status="uploaded_needs_approval",
+            )
+            db.add(batch)
+            db.commit()
+            db.refresh(batch)
+            log_action(db, org_id, current_user_id, "re_upload", "payroll_batch", batch.batch_id,
+                       {"month": month, "filename": original_name, "previous_batch_id": str(existing.batch_id)})
+            return {
+                **PayrollBatchResponse.model_validate(batch).model_dump(),
+                "replaced": False,
+                "requires_approval": True,
+                "warning": warning,
+            }
 
-        if not was_distributed:
-            try:
-                if existing.upload_storage_key:
-                    delete_file(existing.upload_storage_key)
-            except Exception:
-                pass
+        # Non-distributed existing batch — replace in place (batch hasn't completed yet)
+        try:
+            if existing.upload_storage_key:
+                delete_file(existing.upload_storage_key)
+        except Exception:
+            pass
 
         existing.template_id = template_id
         existing.upload_storage_key = file_path
         existing.upload_mime_type = content_type
         existing.upload_original_filename = original_name
-
-        # Always require fresh approval after replacing
         existing.status = "uploaded_needs_approval"
         existing.payroll_total = None
         existing.computed_total = None
@@ -573,8 +584,6 @@ def upload_payroll(
         existing.approved_by_user_id = None
         existing.approved_at = None
         existing.distributed_at = None
-
-        # Clear approval routing metadata (safe no-op if missing)
         _set_if_attr(existing, "approval_requested_to", None)
         _set_if_attr(existing, "approval_requested_by", None)
         _set_if_attr(existing, "approval_requested_at", None)
@@ -586,22 +595,13 @@ def upload_payroll(
 
         db.commit()
         db.refresh(existing)
-
-        log_action(
-            db,
-            org_id,
-            current_user_id,
-            "replace_upload",
-            "payroll_batch",
-            existing.batch_id,
-            {"month": month, "filename": original_name, "force": force, "was_distributed": was_distributed},
-        )
-
+        log_action(db, org_id, current_user_id, "replace_upload", "payroll_batch", existing.batch_id,
+                   {"month": month, "filename": original_name})
         return {
             **PayrollBatchResponse.model_validate(existing).model_dump(),
             "replaced": True,
             "requires_approval": True,
-            "warning": warning,
+            "warning": None,
         }
 
     batch = PayrollBatch(
@@ -657,6 +657,27 @@ def get_batch(
     if not batch:
         raise HTTPException(status_code=404, detail="Payroll batch not found")
     return batch
+
+
+@router.get("/batches/{batch_id}/download")
+def download_batch_file(
+    batch_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    _role: str = Depends(require_admin),
+):
+    """Return a presigned download URL for the uploaded payroll file."""
+    batch = (
+        db.query(PayrollBatch)
+        .filter(PayrollBatch.batch_id == batch_id, PayrollBatch.org_id == org_id)
+        .first()
+    )
+    if not batch:
+        raise HTTPException(status_code=404, detail="Payroll batch not found")
+    if not batch.upload_storage_key:
+        raise HTTPException(status_code=404, detail="No file attached to this batch")
+    url = get_download_url(batch.upload_storage_key)
+    return {"url": url, "filename": batch.upload_original_filename}
 
 
 @router.post("/batches/{batch_id}/parse")

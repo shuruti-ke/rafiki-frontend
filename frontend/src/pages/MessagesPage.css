@@ -339,3 +339,59 @@
   padding: 40px 0;
   font-size: 14px;
 }
+
+/* ── Payroll approval block ─────────────────── */
+.ms-payroll-block {
+  background: var(--card, #1e2030);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ms-payroll-title {
+  font-weight: 700;
+  font-size: 14px;
+}
+.ms-payroll-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.ms-payroll-dl {
+  color: var(--accent);
+  font-size: 12px;
+  text-decoration: none;
+}
+.ms-payroll-dl:hover { text-decoration: underline; }
+.ms-payroll-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+.ms-payroll-reject {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ms-payroll-reason {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg, #0f1117);
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+}
+.ms-payroll-status {
+  font-size: 13px;
+  padding: 4px 0;
+}
+.ms-payroll-status.ok   { color: #22c55e; }
+.ms-payroll-status.warn { color: #f59e0b; }
+.ms-payroll-status.err  { color: #ef4444; }
+.ms-payroll-status.muted { color: var(--muted); }

@@ -2,6 +2,134 @@ import { useState, useEffect, useRef } from "react";
 import { API, authFetch } from "../api.js";
 import "./MessagesPage.css";
 
+// ── Payroll approval block renderer ──────────────────────────
+function PayrollApprovalBlock({ payload, onAction }) {
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [showReject, setShowReject] = useState(false);
+  const [batchStatus, setBatchStatus] = useState(null);
+
+  useEffect(() => {
+    if (!payload.batch_id) return;
+    authFetch(`${API}/api/v1/payroll/batches/${payload.batch_id}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data?.status) setBatchStatus(data.status); })
+      .catch(() => {});
+  }, [payload.batch_id]);
+
+  const status = batchStatus || payload.batch_status;
+  const isActionable = status === "uploaded_needs_approval";
+
+  async function handleApprove() {
+    setBusy(true);
+    try {
+      const r = await authFetch(`${API}${payload.approve_endpoint}`, { method: "POST" });
+      const data = await r.json();
+      if (r.ok) { setDone("approved"); onAction && onAction(); }
+      else setDone("error:" + (data.detail || "Failed"));
+    } catch { setDone("error:Network error"); }
+    finally { setBusy(false); }
+  }
+
+  async function handleReject() {
+    setBusy(true);
+    try {
+      const r = await authFetch(
+        `${API}${payload.reject_endpoint}?reason=${encodeURIComponent(rejectReason)}`,
+        { method: "POST" }
+      );
+      const data = await r.json();
+      if (r.ok) { setDone("rejected"); onAction && onAction(); }
+      else setDone("error:" + (data.detail || "Failed"));
+    } catch { setDone("error:Network error"); }
+    finally { setBusy(false); }
+  }
+
+  const statusLabel = {
+    distributed: "Already distributed — no action needed",
+    uploaded: "Already approved — HR admin can now parse",
+    rejected: "Already rejected",
+    uploaded_needs_approval: null,
+  }[status];
+
+  return (
+    <div className="ms-payroll-block">
+      <div className="ms-payroll-title">📌 Payroll Approval Request</div>
+      <div className="ms-payroll-meta">
+        <span>Month: <strong>{payload.month}</strong></span>
+        <span>File: {payload.filename}</span>
+        {payload.download_url && (
+          <a href={payload.download_url} target="_blank" rel="noreferrer" className="ms-payroll-dl">
+            Download file
+          </a>
+        )}
+      </div>
+
+      {done === "approved" && <div className="ms-payroll-status ok">✅ Approved</div>}
+      {done === "rejected" && <div className="ms-payroll-status warn">❌ Rejected</div>}
+      {done?.startsWith("error:") && <div className="ms-payroll-status err">{done.slice(6)}</div>}
+
+      {!done && !isActionable && (
+        <div className="ms-payroll-status muted">
+          {statusLabel || "This request is no longer actionable"}
+        </div>
+      )}
+
+      {!done && isActionable && !showReject && (
+        <div className="ms-payroll-actions">
+          <button className="btn btnPrimary" onClick={handleApprove} disabled={busy}>
+            {busy ? "…" : "Approve"}
+          </button>
+          <button className="btn btnDanger" onClick={() => setShowReject(true)} disabled={busy}>
+            Reject
+          </button>
+        </div>
+      )}
+
+      {!done && isActionable && showReject && (
+        <div className="ms-payroll-reject">
+          <input
+            className="ms-payroll-reason"
+            placeholder="Reason for rejection (optional)"
+            value={rejectReason}
+            onChange={e => setRejectReason(e.target.value)}
+          />
+          <div className="ms-payroll-actions">
+            <button className="btn btnDanger" onClick={handleReject} disabled={busy}>
+              {busy ? "…" : "Confirm Reject"}
+            </button>
+            <button className="btn btnGhost" onClick={() => setShowReject(false)} disabled={busy}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Parse [[PAYROLL_APPROVAL]]...[[/PAYROLL_APPROVAL]] out of message content
+function MessageContent({ content, onAction }) {
+  const marker = "[[PAYROLL_APPROVAL]]";
+  const endMarker = "[[/PAYROLL_APPROVAL]]";
+  const start = content.indexOf(marker);
+  if (start === -1) return <div style={{ whiteSpace: "pre-wrap" }}>{content}</div>;
+
+  const end = content.indexOf(endMarker, start);
+  const before = content.slice(0, start).trim();
+  const jsonStr = content.slice(start + marker.length, end === -1 ? undefined : end);
+  let payload = {};
+  try { payload = JSON.parse(jsonStr); } catch { /* fallback */ }
+
+  return (
+    <div>
+      {before && <div style={{ whiteSpace: "pre-wrap", marginBottom: 8 }}>{before}</div>}
+      <PayrollApprovalBlock payload={payload} onAction={onAction} />
+    </div>
+  );
+}
+
 function timeAgo(iso) {
   if (!iso) return "";
   const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
@@ -226,7 +354,7 @@ export default function MessagesPage() {
                 <div className="ms-dm-thread">
                   {thread.map(m => (
                     <div key={m.id} className={`ms-dm-msg ${m.sender_id === myId ? "mine" : "theirs"}`}>
-                      <div>{m.content}</div>
+                      <MessageContent content={m.content} onAction={() => loadThread(activeConvo.id)} />
                       <div className="ms-dm-msg-time">{fmtTime(m.created_at)}</div>
                     </div>
                   ))}

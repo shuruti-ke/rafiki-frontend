@@ -418,35 +418,46 @@ function BatchesTab() {
   const [batches, setBatches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
+  const [selectedBatch, setSelectedBatch] = useState(null);
   const [detail, setDetail] = useState(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     authFetch(`${API}/api/v1/payroll/batches`)
       .then((r) => r.json())
-      .then((data) => {
-        if (Array.isArray(data)) setBatches(data);
-      })
+      .then((data) => { if (Array.isArray(data)) setBatches(data); })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
-  async function loadDetail(batchId) {
-    setSelected(batchId);
+  async function loadDetail(batch) {
+    setSelected(batch.batch_id);
+    setSelectedBatch(batch);
     setLoadingDetail(true);
     setDetail(null);
-    try {
-      const r = await authFetch(`${API}/api/v1/payroll/batches/${batchId}/verify`);
-      if (r.ok) {
-        const data = await r.json();
-        setDetail(data);
-      }
-    } catch {}
+    if (batch.status === "distributed" || batch.status === "parsed") {
+      try {
+        const r = await authFetch(`${API}/api/v1/payroll/batches/${batch.batch_id}/verify`);
+        if (r.ok) setDetail(await r.json());
+      } catch {}
+    }
     setLoadingDetail(false);
   }
 
-  if (loading) return <div className="ap-loading">Loading…</div>;
+  async function handleDownload(batchId) {
+    setDownloading(true);
+    try {
+      const r = await authFetch(`${API}/api/v1/payroll/batches/${batchId}/download`);
+      if (r.ok) {
+        const data = await r.json();
+        window.open(data.url, "_blank");
+      }
+    } catch {}
+    setDownloading(false);
+  }
 
+  if (loading) return <div className="ap-loading">Loading…</div>;
   if (batches.length === 0) {
     return <div className="ap-empty">No payroll batches yet. Upload a payroll file to get started.</div>;
   }
@@ -458,7 +469,7 @@ function BatchesTab() {
           <div
             key={b.batch_id}
             className={`ap-batch-row ${selected === b.batch_id ? "selected" : ""}`}
-            onClick={() => loadDetail(b.batch_id)}
+            onClick={() => loadDetail(b)}
           >
             <div className="ap-batch-month">
               {b.period_year}-{String(b.period_month).padStart(2, "0")}
@@ -472,9 +483,23 @@ function BatchesTab() {
         ))}
       </div>
 
-      {selected && (
+      {selected && selectedBatch && (
         <div className="ap-batch-detail">
+          <div className="ap-batch-detail-header">
+            <span className="ap-badge" data-status={selectedBatch.status}>
+              {selectedBatch.status.replace(/_/g, " ")}
+            </span>
+            <button
+              className="ap-btn ap-btn-ghost"
+              onClick={() => handleDownload(selected)}
+              disabled={downloading}
+            >
+              {downloading ? "…" : "Download File"}
+            </button>
+          </div>
+
           {loadingDetail && <div className="ap-loading">Loading detail…</div>}
+
           {detail && (
             <>
               <div className="ap-stats-row">
@@ -485,23 +510,15 @@ function BatchesTab() {
                 <Stat label="Total Net" value={fmt(detail.total_net)} />
                 <Stat label="Reconciled" value={detail.reconciled ? "✓ Yes" : "✗ No"} warn={!detail.reconciled} />
               </div>
-
               {detail.unmatched_names?.length > 0 && (
                 <div className="ap-unmatched">
                   <strong>Unmatched:</strong> {detail.unmatched_names.join(", ")}
                 </div>
               )}
-
               <div className="ap-entries-table">
                 <table>
                   <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>Gross</th>
-                      <th>Deductions</th>
-                      <th>Net Pay</th>
-                      <th>Match</th>
-                    </tr>
+                    <tr><th>Name</th><th>Gross</th><th>Deductions</th><th>Net Pay</th><th>Match</th></tr>
                   </thead>
                   <tbody>
                     {detail.entries?.map((e, i) => (
@@ -517,6 +534,12 @@ function BatchesTab() {
                 </table>
               </div>
             </>
+          )}
+
+          {!detail && !loadingDetail && selectedBatch.status !== "distributed" && selectedBatch.status !== "parsed" && (
+            <div className="ap-hint" style={{ marginTop: 12 }}>
+              Detailed breakdown available after parsing.
+            </div>
           )}
         </div>
       )}
