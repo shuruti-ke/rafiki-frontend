@@ -16,16 +16,15 @@ def upgrade():
     op.execute("""
         DO $$
         BEGIN
-            -- Recreate role_profiles with the correct schema
-            -- First: copy existing data to a temp table if any rows exist
+            -- Save any existing rows (table may be empty; org_id may already be UUID)
             CREATE TEMP TABLE IF NOT EXISTS role_profiles_backup AS
-                SELECT org_id, role_key, role_family, seniority_band, work_pattern,
+                SELECT org_id::text, role_key, role_family, seniority_band, work_pattern,
                        stressor_profile, created_at, updated_at
                 FROM role_profiles
-                WHERE org_id IS NOT NULL AND role_key IS NOT NULL;
+                WHERE role_key IS NOT NULL;
 
             -- Drop and recreate the table cleanly
-            DROP TABLE role_profiles;
+            DROP TABLE role_profiles CASCADE;
 
             CREATE TABLE role_profiles (
                 org_id      UUID        NOT NULL REFERENCES orgs(org_id) ON DELETE CASCADE,
@@ -41,12 +40,13 @@ def upgrade():
 
             CREATE INDEX ix_role_profiles_org_id ON role_profiles (org_id);
 
-            -- Restore data if backup has rows
+            -- Restore rows whose org_id is a valid UUID referencing orgs
             INSERT INTO role_profiles (org_id, role_key, role_family, seniority_band,
                                        work_pattern, stressor_profile, created_at, updated_at)
-            SELECT org_id, role_key, role_family, seniority_band,
-                   work_pattern, stressor_profile, created_at, updated_at
-            FROM role_profiles_backup
+            SELECT b.org_id::uuid, b.role_key, b.role_family, b.seniority_band,
+                   b.work_pattern, b.stressor_profile, b.created_at, b.updated_at
+            FROM role_profiles_backup b
+            JOIN orgs o ON o.org_id = b.org_id::uuid
             ON CONFLICT DO NOTHING;
 
             DROP TABLE IF EXISTS role_profiles_backup;
