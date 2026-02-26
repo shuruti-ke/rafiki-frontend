@@ -1,10 +1,11 @@
-"""Keep role_profiles composite PK, do NOT add id primary key
+"""Add id column to role_profiles (non-primary)
 
 Revision ID: 023
 Revises: 022
 Create Date: 2026-02-25
 """
 from alembic import op
+
 
 revision = "023"
 down_revision = "022"
@@ -13,26 +14,33 @@ depends_on = None
 
 
 def upgrade():
-    # ✅ Do nothing: role_profiles already has a valid composite PK (org_id, role_key)
-    # and your SQLAlchemy model expects that.
-    #
-    # If you want to ensure the unique constraint exists (optional), uncomment:
-    #
-    # op.execute("""
-    #     DO $$
-    #     BEGIN
-    #         IF NOT EXISTS (
-    #             SELECT 1 FROM pg_constraint
-    #             WHERE conname = 'uq_org_role_key'
-    #         ) THEN
-    #             ALTER TABLE role_profiles
-    #             ADD CONSTRAINT uq_org_role_key UNIQUE (org_id, role_key);
-    #         END IF;
-    #     END $$;
-    # """)
+    # 1️⃣ Add id column if it doesn't exist
+    op.execute("""
+        ALTER TABLE role_profiles
+        ADD COLUMN IF NOT EXISTS id BIGSERIAL
+    """)
 
-    pass
+    # 2️⃣ Ensure it has a unique constraint (but NOT primary key)
+    op.execute("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conname = 'uq_role_profiles_id'
+            ) THEN
+                ALTER TABLE role_profiles
+                ADD CONSTRAINT uq_role_profiles_id UNIQUE (id);
+            END IF;
+        END$$
+    """)
 
 
 def downgrade():
-    pass
+    op.execute("""
+        ALTER TABLE role_profiles
+        DROP CONSTRAINT IF EXISTS uq_role_profiles_id
+    """)
+    op.execute("""
+        ALTER TABLE role_profiles
+        DROP COLUMN IF EXISTS id
+    """)
