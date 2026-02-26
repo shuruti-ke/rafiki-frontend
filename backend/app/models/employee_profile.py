@@ -1,7 +1,8 @@
 # backend/app/models/employee_profile.py
 
-from sqlalchemy import Column, String, Text, Date, Integer, DateTime
-from sqlalchemy.dialects.postgresql import UUID
+import uuid
+from sqlalchemy import Column, String, Text, Date, Integer, DateTime, ForeignKey, UniqueConstraint
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.sql import func
 
 from app.database import Base
@@ -12,26 +13,41 @@ class EmployeeProfile(Base):
     Table: employee_profiles
 
     Purpose:
-    - 1:1 HR extension of users_legacy
+    - HR extension of users_legacy
     - Employees are always users
-    - This table stores HR-only metadata
+    - Stores HR-only metadata
 
     Keys:
     - id: UUID (PK)
     - user_id: UUID -> users_legacy.user_id
-    - org_id: UUID
+    - org_id: UUID -> orgs.org_id
     """
 
     __tablename__ = "employee_profiles"
+
+    __table_args__ = (
+        UniqueConstraint("org_id", "user_id", name="uq_employee_profiles_org_user"),
+    )
 
     # ------------------------------------------------------------------
     # Primary identifiers
     # ------------------------------------------------------------------
 
-    id = Column(UUID(as_uuid=True), primary_key=True)
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4, nullable=False)
 
-    user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
-    org_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    user_id = Column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users_legacy.user_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    org_id = Column(
+        PGUUID(as_uuid=True),
+        ForeignKey("orgs.org_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
 
     # ------------------------------------------------------------------
     # Core employment identity
@@ -46,12 +62,12 @@ class EmployeeProfile(Base):
     job_description = Column(Text, nullable=True)
 
     # ------------------------------------------------------------------
-    # Contract info (stored as text in your DB)
+    # Contract info
     # ------------------------------------------------------------------
 
     contract_type = Column(String, nullable=True)
 
-    # IMPORTANT: DB already uses varchar, so keep as String
+    # Kept as String for backward compatibility with existing DB
     contract_start = Column(String, nullable=True)
     contract_end = Column(String, nullable=True)
 
@@ -64,11 +80,11 @@ class EmployeeProfile(Base):
     phone = Column(String, nullable=True)
     avatar_url = Column(String, nullable=True)
 
-    # Legacy single-field emergency contact (keep for backward compatibility)
+    # Legacy single-field emergency contact (backward compatibility)
     emergency_contact = Column(String, nullable=True)
 
     # ------------------------------------------------------------------
-    # 🔥 NEW HR lifecycle fields
+    # HR lifecycle fields
     # ------------------------------------------------------------------
 
     status = Column(String(32), nullable=False, default="active")
@@ -100,7 +116,7 @@ class EmployeeProfile(Base):
     country = Column(String(120), nullable=True)
 
     # ------------------------------------------------------------------
-    # Structured emergency contact (NEW)
+    # Structured emergency contact
     # ------------------------------------------------------------------
 
     emergency_contact_name = Column(String(200), nullable=True)
@@ -113,16 +129,12 @@ class EmployeeProfile(Base):
 
     notes = Column(Text, nullable=True)
 
-    # Temporary login credential — set at account creation, cleared after first password reset
+    # Temporary login credential — set at account creation, cleared after first reset
     initial_password = Column(String(255), nullable=True)
 
     # ------------------------------------------------------------------
     # Audit fields
     # ------------------------------------------------------------------
 
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        onupdate=func.now(),
-    )
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
