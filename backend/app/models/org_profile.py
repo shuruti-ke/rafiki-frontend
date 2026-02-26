@@ -7,7 +7,7 @@ from app.database import Base
 class OrgProfile(Base):
     __tablename__ = "org_profiles"
 
-    # ✅ Your DB does NOT have org_profiles.id, use org_id as the primary key (1 profile per org)
+    # 1 profile per org, org_id is the primary key
     org_id = Column(
         PGUUID(as_uuid=True),
         ForeignKey("orgs.org_id", ondelete="CASCADE"),
@@ -22,13 +22,14 @@ class OrgProfile(Base):
     work_environment = Column(String(50), nullable=True)  # remote, hybrid, on-site, field-based
     benefits_tags = Column(JSONB, nullable=True, default=list)
 
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
 
 class RoleProfile(Base):
     __tablename__ = "role_profiles"
 
+    # Composite primary key: (org_id, role_key)
     org_id = Column(
         PGUUID(as_uuid=True),
         ForeignKey("orgs.org_id", ondelete="CASCADE"),
@@ -38,12 +39,18 @@ class RoleProfile(Base):
     )
 
     role_key = Column(String(100), primary_key=True, nullable=False)
+
     role_family = Column(String(100), nullable=True)
     seniority_band = Column(String(50), nullable=True)  # individual_contributor, team_lead, manager
     work_pattern = Column(String(50), nullable=True)  # standard, night_shift, rotating, travel_intensive
+
+    # Use callable default so each row gets its own list
     stressor_profile = Column(JSONB, nullable=True, default=list)
 
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
-    __table_args__ = ()
+    # Optional but keeps ORM aligned with your DB constraint naming
+    __table_args__ = (
+        UniqueConstraint("org_id", "role_key", name="uq_org_role_key"),
+    )
