@@ -50,7 +50,6 @@ class RoleProfileUpdate(BaseModel):
 
 
 class RoleProfileResponse(BaseModel):
-    id: int
     org_id: UUID
     role_key: str
     role_family: str | None = None
