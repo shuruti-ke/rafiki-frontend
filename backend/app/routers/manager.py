@@ -9,6 +9,7 @@ crisis events, or stress ratings. That separation is architectural.
 """
 
 import logging
+import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func as sa_func
@@ -49,8 +50,8 @@ router = APIRouter(prefix="/api/v1/manager", tags=["Manager Toolkit"])
 @router.get("/team", response_model=list[TeamMemberResponse])
 def get_team(
     db: Session = Depends(get_db),
-    user_id: int = Depends(get_current_user_id),
-    org_id: int = Depends(get_current_org_id),
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    org_id: uuid.UUID = Depends(get_current_org_id),
     _role: str = Depends(require_manager),
 ):
     """Get direct reports / team members for a manager.
@@ -97,8 +98,8 @@ def get_team(
 def get_team_member_profile(
     member_id: int,
     db: Session = Depends(get_db),
-    user_id: int = Depends(get_current_user_id),
-    org_id: int = Depends(get_current_org_id),
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    org_id: uuid.UUID = Depends(get_current_org_id),
     _role: str = Depends(require_manager),
 ):
     """Get scoped employee profile — performance data only, NEVER wellbeing."""
@@ -127,8 +128,8 @@ def get_team_member_profile(
 def get_team_member_evaluations(
     member_id: int,
     db: Session = Depends(get_db),
-    user_id: int = Depends(get_current_user_id),
-    org_id: int = Depends(get_current_org_id),
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    org_id: uuid.UUID = Depends(get_current_org_id),
     _role: str = Depends(require_manager),
 ):
     """Get performance evaluations for a team member."""
@@ -167,8 +168,8 @@ def get_team_member_evaluations(
 def create_coaching_session(
     data: CoachingRequest,
     db: Session = Depends(get_db),
-    user_id: int = Depends(get_current_user_id),
-    org_id: int = Depends(get_current_org_id),
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    org_id: uuid.UUID = Depends(get_current_org_id),
     _role: str = Depends(require_manager),
 ):
     """Generate an AI coaching plan from performance data only."""
@@ -200,8 +201,8 @@ def update_coaching_outcome(
     session_id: int,
     data: CoachingOutcomeUpdate,
     db: Session = Depends(get_db),
-    user_id: int = Depends(get_current_user_id),
-    org_id: int = Depends(get_current_org_id),
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    org_id: uuid.UUID = Depends(get_current_org_id),
     _role: str = Depends(require_manager),
 ):
     """Log the outcome of a coaching conversation."""
@@ -231,8 +232,8 @@ def update_coaching_outcome(
 @router.get("/coaching/history", response_model=list[CoachingSessionResponse])
 def get_coaching_history(
     db: Session = Depends(get_db),
-    user_id: int = Depends(get_current_user_id),
-    org_id: int = Depends(get_current_org_id),
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    org_id: uuid.UUID = Depends(get_current_org_id),
     _role: str = Depends(require_manager),
 ):
     """Get past coaching sessions for the current manager."""
@@ -255,7 +256,7 @@ def get_coaching_history(
 def get_toolkit_modules(
     category: str | None = Query(default=None),
     db: Session = Depends(get_db),
-    org_id: int = Depends(get_current_org_id),
+    org_id: uuid.UUID = Depends(get_current_org_id),
     _role: str = Depends(require_manager),
 ):
     """Get available toolkit modules (org-specific + platform defaults)."""
@@ -266,7 +267,7 @@ def get_toolkit_modules(
 def get_toolkit_module(
     module_id: int,
     db: Session = Depends(get_db),
-    org_id: int = Depends(get_current_org_id),
+    org_id: uuid.UUID = Depends(get_current_org_id),
     _role: str = Depends(require_manager),
 ):
     """Get a specific toolkit module."""
@@ -281,8 +282,8 @@ def get_toolkit_module(
 @router.get("/dashboard", response_model=ManagerDashboardData)
 def get_dashboard(
     db: Session = Depends(get_db),
-    user_id: int = Depends(get_current_user_id),
-    org_id: int = Depends(get_current_org_id),
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    org_id: uuid.UUID = Depends(get_current_org_id),
     _role: str = Depends(require_manager),
 ):
     """Get aggregated manager dashboard data."""
@@ -347,7 +348,7 @@ def get_dashboard(
 @router.get("/admin/configs", response_model=list[ManagerConfigResponse])
 def list_manager_configs(
     db: Session = Depends(get_db),
-    org_id: int = Depends(get_current_org_id),
+    org_id: uuid.UUID = Depends(get_current_org_id),
     _role: str = Depends(require_admin),
 ):
     """List all manager configurations for the org."""
@@ -363,8 +364,8 @@ def list_manager_configs(
 def create_manager_config(
     data: ManagerConfigCreate,
     db: Session = Depends(get_db),
-    user_id: int = Depends(get_current_user_id),
-    org_id: int = Depends(get_current_org_id),
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    org_id: uuid.UUID = Depends(get_current_org_id),
     _role: str = Depends(require_admin),
 ):
     """Assign manager role + scope to a user."""
@@ -404,8 +405,8 @@ def update_manager_config(
     config_id: int,
     data: ManagerConfigUpdate,
     db: Session = Depends(get_db),
-    user_id: int = Depends(get_current_user_id),
-    org_id: int = Depends(get_current_org_id),
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    org_id: uuid.UUID = Depends(get_current_org_id),
     _role: str = Depends(require_admin),
 ):
     """Update manager scope/permissions."""
@@ -432,8 +433,8 @@ def update_manager_config(
 def delete_manager_config(
     config_id: int,
     db: Session = Depends(get_db),
-    user_id: int = Depends(get_current_user_id),
-    org_id: int = Depends(get_current_org_id),
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    org_id: uuid.UUID = Depends(get_current_org_id),
     _role: str = Depends(require_admin),
 ):
     """Revoke manager access."""
@@ -459,7 +460,7 @@ def delete_manager_config(
 @router.get("/admin/toolkit", response_model=list[ToolkitModuleResponse])
 def admin_list_toolkit(
     db: Session = Depends(get_db),
-    org_id: int = Depends(get_current_org_id),
+    org_id: uuid.UUID = Depends(get_current_org_id),
     _role: str = Depends(require_admin),
 ):
     """List all toolkit modules for the org (including inactive)."""
@@ -470,8 +471,8 @@ def admin_list_toolkit(
 def admin_create_toolkit_module(
     data: ToolkitModuleCreate,
     db: Session = Depends(get_db),
-    user_id: int = Depends(get_current_user_id),
-    org_id: int = Depends(get_current_org_id),
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    org_id: uuid.UUID = Depends(get_current_org_id),
     _role: str = Depends(require_admin),
 ):
     """Create or customize a toolkit module for the org."""
@@ -487,8 +488,8 @@ def admin_update_toolkit_module(
     module_id: int,
     data: ToolkitModuleUpdate,
     db: Session = Depends(get_db),
-    user_id: int = Depends(get_current_user_id),
-    org_id: int = Depends(get_current_org_id),
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    org_id: uuid.UUID = Depends(get_current_org_id),
     _role: str = Depends(require_admin),
 ):
     """Edit a toolkit module (org-owned only, not platform defaults)."""
@@ -513,7 +514,7 @@ def admin_update_toolkit_module(
 def get_manager_audit_trail(
     limit: int = Query(default=50, le=200),
     db: Session = Depends(get_db),
-    org_id: int = Depends(get_current_org_id),
+    org_id: uuid.UUID = Depends(get_current_org_id),
     _role: str = Depends(require_admin),
 ):
     """View manager activity audit trail."""
