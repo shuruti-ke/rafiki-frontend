@@ -50,7 +50,4 @@ class RoleProfile(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
-    # Optional but keeps ORM aligned with your DB constraint naming
-    __table_args__ = (
-        UniqueConstraint("org_id", "role_key", name="uq_org_role_key"),
-    )
+    __table_args__ = ()

@@ -55,34 +55,52 @@ def update_org_profile(
 
 @router.get("/roles/debug")
 def debug_roles(db: Session = Depends(get_db)):
-    """Temporary debug endpoint — returns raw DB error detail."""
+    """Temporary debug endpoint — returns raw DB state."""
+    from sqlalchemy import text
     try:
-        result = db.execute(__import__("sqlalchemy").text(
+        cols = db.execute(text(
             "SELECT column_name, data_type FROM information_schema.columns "
             "WHERE table_name = 'role_profiles' ORDER BY ordinal_position"
         )).fetchall()
-        cols = [{"column": r[0], "type": r[1]} for r in result]
-        pk = db.execute(__import__("sqlalchemy").text(
-            "SELECT conname, contype FROM pg_constraint "
+        constraints = db.execute(text(
+            "SELECT conname, contype::text FROM pg_constraint "
             "WHERE conrelid = 'role_profiles'::regclass"
         )).fetchall()
-        constraints = [{"name": r[0], "type": r[1]} for r in pk]
-        return {"columns": cols, "constraints": constraints}
+        # Try raw select
+        rows = db.execute(text("SELECT * FROM role_profiles LIMIT 3")).fetchall()
+        return {
+            "columns": [{"col": r[0], "type": r[1]} for r in cols],
+            "constraints": [{"name": r[0], "type": r[1]} for r in constraints],
+            "sample_rows": [list(r) for r in rows],
+        }
     except Exception as e:
         return {"error": str(e)}
 
 
-@router.get("/roles", response_model=list[RoleProfileResponse])
+@router.get("/roles")
 def list_roles(
     db: Session = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org_id),
 ):
     try:
-        return db.query(RoleProfile).filter(
+        roles = db.query(RoleProfile).filter(
             RoleProfile.org_id == org_id
         ).order_by(RoleProfile.role_key).all()
+        return [
+            {
+                "org_id": str(r.org_id),
+                "role_key": r.role_key,
+                "role_family": r.role_family,
+                "seniority_band": r.seniority_band,
+                "work_pattern": r.work_pattern,
+                "stressor_profile": r.stressor_profile or [],
+                "created_at": r.created_at,
+                "updated_at": r.updated_at,
+            }
+            for r in roles
+        ]
     except Exception as e:
-        raise __import__("fastapi").HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/roles", response_model=RoleProfileResponse)
