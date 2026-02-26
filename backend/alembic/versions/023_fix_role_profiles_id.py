@@ -1,4 +1,4 @@
-"""Fix role_profiles: drop existing PK constraint then add id SERIAL PRIMARY KEY
+"""Keep role_profiles composite PK, do NOT add id primary key
 
 Revision ID: 023
 Revises: 022
@@ -13,23 +13,25 @@ depends_on = None
 
 
 def upgrade():
-    # Drop whatever primary key currently exists on role_profiles
-    op.execute("""
-        DO $$
-        DECLARE
-            pk_name text;
-        BEGIN
-            SELECT conname INTO pk_name
-            FROM pg_constraint
-            WHERE conrelid = 'role_profiles'::regclass AND contype = 'p';
-            IF pk_name IS NOT NULL THEN
-                EXECUTE 'ALTER TABLE role_profiles DROP CONSTRAINT ' || quote_ident(pk_name);
-            END IF;
-        END$$
-    """)
+    # ✅ Do nothing: role_profiles already has a valid composite PK (org_id, role_key)
+    # and your SQLAlchemy model expects that.
+    #
+    # If you want to ensure the unique constraint exists (optional), uncomment:
+    #
+    # op.execute("""
+    #     DO $$
+    #     BEGIN
+    #         IF NOT EXISTS (
+    #             SELECT 1 FROM pg_constraint
+    #             WHERE conname = 'uq_org_role_key'
+    #         ) THEN
+    #             ALTER TABLE role_profiles
+    #             ADD CONSTRAINT uq_org_role_key UNIQUE (org_id, role_key);
+    #         END IF;
+    #     END $$;
+    # """)
 
-    # Now add id SERIAL PRIMARY KEY
-    op.execute("ALTER TABLE role_profiles ADD COLUMN IF NOT EXISTS id SERIAL PRIMARY KEY")
+    pass
 
 
 def downgrade():
