@@ -53,14 +53,36 @@ def update_org_profile(
 
 # ─── Role Profiles (multiple per org) ────────────────────────────────
 
+@router.get("/roles/debug")
+def debug_roles(db: Session = Depends(get_db)):
+    """Temporary debug endpoint — returns raw DB error detail."""
+    try:
+        result = db.execute(__import__("sqlalchemy").text(
+            "SELECT column_name, data_type FROM information_schema.columns "
+            "WHERE table_name = 'role_profiles' ORDER BY ordinal_position"
+        )).fetchall()
+        cols = [{"column": r[0], "type": r[1]} for r in result]
+        pk = db.execute(__import__("sqlalchemy").text(
+            "SELECT conname, contype FROM pg_constraint "
+            "WHERE conrelid = 'role_profiles'::regclass"
+        )).fetchall()
+        constraints = [{"name": r[0], "type": r[1]} for r in pk]
+        return {"columns": cols, "constraints": constraints}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 @router.get("/roles", response_model=list[RoleProfileResponse])
 def list_roles(
     db: Session = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org_id),
 ):
-    return db.query(RoleProfile).filter(
-        RoleProfile.org_id == org_id
-    ).order_by(RoleProfile.role_key).all()
+    try:
+        return db.query(RoleProfile).filter(
+            RoleProfile.org_id == org_id
+        ).order_by(RoleProfile.role_key).all()
+    except Exception as e:
+        raise __import__("fastapi").HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/roles", response_model=RoleProfileResponse)
