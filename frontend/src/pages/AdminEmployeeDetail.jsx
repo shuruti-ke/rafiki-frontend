@@ -5,11 +5,18 @@ import "./AdminEmployeeDetail.css";
 
 export default function AdminEmployeeDetail() {
   const { userId } = useParams();
-  const [tab, setTab] = useState("documents");
+  const [tab, setTab] = useState("info");
   const [documents, setDocuments] = useState([]);
   const [evaluations, setEvaluations] = useState([]);
   const [disciplinary, setDisciplinary] = useState([]);
   const [uploading, setUploading] = useState(false);
+
+  // Employee info
+  const [empInfo, setEmpInfo] = useState(null);
+  const [infoLoading, setInfoLoading] = useState(false);
+  const [infoSaving, setInfoSaving] = useState(false);
+  const [infoEdit, setInfoEdit] = useState(false);
+  const [infoForm, setInfoForm] = useState({});
 
   // Evaluation form
   const [showEvalForm, setShowEvalForm] = useState(false);
@@ -32,6 +39,78 @@ export default function AdminEmployeeDetail() {
   const [discDesc, setDiscDesc] = useState("");
   const [discDate, setDiscDate] = useState("");
   const [discOutcome, setDiscOutcome] = useState("");
+
+  async function fetchInfo() {
+    setInfoLoading(true);
+    try {
+      const res = await authFetch(`${API}/api/v1/employees/${userId}`);
+      if (res.ok) {
+        const data = await res.json();
+        const u = data.user || data;
+        const p = data.profile || {};
+        const flat = {
+          name: u.name || "",
+          email: u.email || "",
+          role: u.role || "user",
+          department: u.department || p.department || "",
+          job_title: u.job_title || p.job_title || "",
+          phone: p.phone || "",
+          employment_number: p.employment_number || "",
+          national_id: p.national_id || "",
+          contract_type: p.contract_type || "",
+          start_date: p.start_date ? p.start_date.split("T")[0] : "",
+          end_date: p.end_date ? p.end_date.split("T")[0] : "",
+          status: p.status || "active",
+          notes: p.notes || "",
+          city: p.city || "",
+          country: p.country || "",
+        };
+        setEmpInfo(flat);
+        setInfoForm(flat);
+      }
+    } finally {
+      setInfoLoading(false);
+    }
+  }
+
+  async function handleSaveInfo(e) {
+    e.preventDefault();
+    setInfoSaving(true);
+    try {
+      const res = await authFetch(`${API}/api/v1/employees/${userId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(infoForm),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const u = (data.employee || data).user || data;
+        const p = (data.employee || data).profile || {};
+        const flat = {
+          name: u.name || "",
+          email: u.email || "",
+          role: u.role || "user",
+          department: u.department || p.department || "",
+          job_title: u.job_title || p.job_title || "",
+          phone: p.phone || "",
+          employment_number: p.employment_number || "",
+          national_id: p.national_id || "",
+          contract_type: p.contract_type || "",
+          start_date: p.start_date ? p.start_date.split("T")[0] : "",
+          end_date: p.end_date ? p.end_date.split("T")[0] : "",
+          status: p.status || "active",
+          notes: p.notes || "",
+          city: p.city || "",
+          country: p.country || "",
+        };
+        setEmpInfo(flat);
+        setInfoForm(flat);
+        setInfoEdit(false);
+      }
+    } finally {
+      setInfoSaving(false);
+    }
+  }
 
   async function fetchDocuments() {
     const res = await authFetch(`${API}/api/v1/employee-docs/${userId}`);
@@ -81,6 +160,7 @@ export default function AdminEmployeeDetail() {
   }
 
   useEffect(() => {
+    fetchInfo();
     fetchDocuments();
     fetchEvaluations();
     fetchDisciplinary();
@@ -92,12 +172,10 @@ export default function AdminEmployeeDetail() {
     const title = prompt("Document title:");
     if (!title) return;
     const docType = prompt("Document type (contract, id_document, certificate, letter, other):", "other") || "other";
-
     setUploading(true);
     const fd = new FormData();
     fd.append("file", file);
     const params = new URLSearchParams({ title, doc_type: docType });
-
     try {
       await authFetch(`${API}/api/v1/employee-docs/${userId}/upload?${params}`, { method: "POST", body: fd });
       fetchDocuments();
@@ -111,6 +189,14 @@ export default function AdminEmployeeDetail() {
     if (!confirm("Delete this document?")) return;
     await authFetch(`${API}/api/v1/employee-docs/${userId}/${docId}`, { method: "DELETE" });
     fetchDocuments();
+  }
+
+  async function handleDownloadDoc(docId) {
+    const res = await authFetch(`${API}/api/v1/employee-docs/${docId}/download`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.url) window.open(data.url, "_blank");
+    }
   }
 
   async function handleCreateEval(e) {
@@ -150,26 +236,29 @@ export default function AdminEmployeeDetail() {
   }
 
   function formatSize(bytes) {
+    if (!bytes) return "—";
     if (bytes < 1024) return bytes + " B";
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
     return (bytes / (1024 * 1024)).toFixed(1) + " MB";
   }
 
-  const ratingStars = (n) => {
-    return Array.from({ length: 5 }, (_, i) => (
-      <span key={i} className={i < n ? "aed-star-filled" : "aed-star-empty"}>*</span>
+  const ratingStars = (n) =>
+    Array.from({ length: 5 }, (_, i) => (
+      <span key={i} className={i < n ? "aed-star-filled" : "aed-star-empty"}>★</span>
     ));
-  };
+
+  const displayName = empInfo?.name || empInfo?.email || userId;
 
   return (
     <div className="aed-page">
       <div className="aed-header">
-        <Link to="/admin/employees" className="btn btnTiny">Back</Link>
-        <h1>Employee #{userId}</h1>
+        <Link to="/admin/employees" className="btn btnTiny">← Back</Link>
+        <h1>{displayName}</h1>
+        {empInfo?.job_title && <span className="aed-header-sub">{empInfo.job_title}{empInfo.department ? ` · ${empInfo.department}` : ""}</span>}
       </div>
 
       <div className="aed-tabs">
-        {["documents", "evaluations", "disciplinary", "credentials"].map((t) => (
+        {["info", "documents", "evaluations", "disciplinary", "credentials"].map((t) => (
           <button
             key={t}
             className={`aed-tab ${tab === t ? "active" : ""}`}
@@ -181,13 +270,135 @@ export default function AdminEmployeeDetail() {
         ))}
       </div>
 
+      {/* Info Tab */}
+      {tab === "info" && (
+        <div className="aed-section">
+          <div className="aed-section-head">
+            <h2>Employee Information</h2>
+            {!infoEdit && <button className="btn btnPrimary" onClick={() => setInfoEdit(true)}>Edit</button>}
+          </div>
+
+          {infoLoading && <p className="aed-muted">Loading…</p>}
+
+          {!infoLoading && empInfo && !infoEdit && (
+            <div className="aed-info-grid">
+              {[
+                ["Full Name", empInfo.name],
+                ["Email", empInfo.email],
+                ["Role", empInfo.role],
+                ["Department", empInfo.department],
+                ["Job Title", empInfo.job_title],
+                ["Phone", empInfo.phone],
+                ["Employment No.", empInfo.employment_number],
+                ["National ID", empInfo.national_id],
+                ["Contract Type", empInfo.contract_type],
+                ["Start Date", empInfo.start_date],
+                ["End Date", empInfo.end_date],
+                ["Status", empInfo.status],
+                ["City", empInfo.city],
+                ["Country", empInfo.country],
+                ["Notes", empInfo.notes],
+              ].map(([label, val]) => val ? (
+                <div key={label} className="aed-info-row">
+                  <span className="aed-info-label">{label}</span>
+                  <span className="aed-info-value">{val}</span>
+                </div>
+              ) : null)}
+            </div>
+          )}
+
+          {!infoLoading && infoEdit && (
+            <form className="aed-form" onSubmit={handleSaveInfo}>
+              <div className="aed-form-2col">
+                <div className="aed-form-field">
+                  <label>Full Name</label>
+                  <input value={infoForm.name} onChange={(e) => setInfoForm({ ...infoForm, name: e.target.value })} />
+                </div>
+                <div className="aed-form-field">
+                  <label>Email</label>
+                  <input value={infoForm.email} onChange={(e) => setInfoForm({ ...infoForm, email: e.target.value })} />
+                </div>
+                <div className="aed-form-field">
+                  <label>Department</label>
+                  <input value={infoForm.department} onChange={(e) => setInfoForm({ ...infoForm, department: e.target.value })} />
+                </div>
+                <div className="aed-form-field">
+                  <label>Job Title</label>
+                  <input value={infoForm.job_title} onChange={(e) => setInfoForm({ ...infoForm, job_title: e.target.value })} />
+                </div>
+                <div className="aed-form-field">
+                  <label>Phone</label>
+                  <input value={infoForm.phone} onChange={(e) => setInfoForm({ ...infoForm, phone: e.target.value })} />
+                </div>
+                <div className="aed-form-field">
+                  <label>Employment No.</label>
+                  <input value={infoForm.employment_number} onChange={(e) => setInfoForm({ ...infoForm, employment_number: e.target.value })} />
+                </div>
+                <div className="aed-form-field">
+                  <label>National ID</label>
+                  <input value={infoForm.national_id} onChange={(e) => setInfoForm({ ...infoForm, national_id: e.target.value })} />
+                </div>
+                <div className="aed-form-field">
+                  <label>Contract Type</label>
+                  <select value={infoForm.contract_type} onChange={(e) => setInfoForm({ ...infoForm, contract_type: e.target.value })}>
+                    <option value="">— Select —</option>
+                    <option value="permanent">Permanent</option>
+                    <option value="fixed_term">Fixed Term</option>
+                    <option value="contract">Contract</option>
+                    <option value="internship">Internship</option>
+                    <option value="part_time">Part Time</option>
+                  </select>
+                </div>
+                <div className="aed-form-field">
+                  <label>Start Date</label>
+                  <input type="date" value={infoForm.start_date} onChange={(e) => setInfoForm({ ...infoForm, start_date: e.target.value })} />
+                </div>
+                <div className="aed-form-field">
+                  <label>End Date</label>
+                  <input type="date" value={infoForm.end_date} onChange={(e) => setInfoForm({ ...infoForm, end_date: e.target.value })} />
+                </div>
+                <div className="aed-form-field">
+                  <label>City</label>
+                  <input value={infoForm.city} onChange={(e) => setInfoForm({ ...infoForm, city: e.target.value })} />
+                </div>
+                <div className="aed-form-field">
+                  <label>Country</label>
+                  <input value={infoForm.country} onChange={(e) => setInfoForm({ ...infoForm, country: e.target.value })} />
+                </div>
+                <div className="aed-form-field">
+                  <label>Status</label>
+                  <select value={infoForm.status} onChange={(e) => setInfoForm({ ...infoForm, status: e.target.value })}>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="on_leave">On Leave</option>
+                    <option value="terminated">Terminated</option>
+                  </select>
+                </div>
+                <div className="aed-form-field" style={{ gridColumn: "1 / -1" }}>
+                  <label>Notes</label>
+                  <textarea value={infoForm.notes} onChange={(e) => setInfoForm({ ...infoForm, notes: e.target.value })} rows={3} />
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+                <button className="btn btnPrimary" type="submit" disabled={infoSaving}>
+                  {infoSaving ? "Saving…" : "Save Changes"}
+                </button>
+                <button className="btn" type="button" onClick={() => { setInfoEdit(false); setInfoForm(empInfo); }}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+      )}
+
       {/* Documents Tab */}
       {tab === "documents" && (
         <div className="aed-section">
           <div className="aed-section-head">
             <h2>Documents ({documents.length})</h2>
             <label className="btn btnPrimary">
-              {uploading ? "Uploading..." : "Upload Document"}
+              {uploading ? "Uploading…" : "Upload Document"}
               <input type="file" hidden onChange={handleUploadDoc} accept=".pdf,.docx,.txt,.png,.jpg" />
             </label>
           </div>
@@ -200,9 +411,9 @@ export default function AdminEmployeeDetail() {
                   <span><strong>{doc.title}</strong></span>
                   <span className="aed-badge">{doc.doc_type}</span>
                   <span>{formatSize(doc.file_size)}</span>
-                  <span>{new Date(doc.created_at).toLocaleDateString()}</span>
-                  <span>
-                    <a className="btn btnTiny" href={`${API}/${doc.file_path}`} target="_blank" rel="noopener noreferrer">Download</a>
+                  <span>{doc.created_at ? new Date(doc.created_at).toLocaleDateString() : "—"}</span>
+                  <span style={{ display: "flex", gap: 6 }}>
+                    <button className="btn btnTiny" onClick={() => handleDownloadDoc(doc.id)}>Download</button>
                     <button className="btn btnTiny miniBtnDanger" onClick={() => handleDeleteDoc(doc.id)}>Delete</button>
                   </span>
                 </div>
@@ -227,7 +438,7 @@ export default function AdminEmployeeDetail() {
               <input type="text" placeholder="Evaluation period (e.g., Q1 2026) *" value={evalPeriod}
                 onChange={(e) => setEvalPeriod(e.target.value)} required />
               <div className="aed-form-row">
-                <label>Rating (1-5):</label>
+                <label>Rating (1–5):</label>
                 <input type="number" min="1" max="5" value={evalRating}
                   onChange={(e) => setEvalRating(parseInt(e.target.value))} />
               </div>
@@ -252,7 +463,7 @@ export default function AdminEmployeeDetail() {
                 {ev.areas_for_improvement && <div><label>Improve:</label> <p>{ev.areas_for_improvement}</p></div>}
                 {ev.goals_for_next_period && <div><label>Goals:</label> <p>{ev.goals_for_next_period}</p></div>}
                 {ev.comments && <div><label>Comments:</label> <p>{ev.comments}</p></div>}
-                <small className="aed-muted">{new Date(ev.created_at).toLocaleDateString()}</small>
+                <small className="aed-muted">{ev.created_at ? new Date(ev.created_at).toLocaleDateString() : ""}</small>
               </div>
             ))
           )}
@@ -293,9 +504,9 @@ export default function AdminEmployeeDetail() {
               <div key={rec.id} className="aed-disc-card">
                 <div className="aed-disc-top">
                   <span className={`aed-disc-type aed-disc-${rec.record_type}`}>
-                    {rec.record_type.replace("_", " ")}
+                    {rec.record_type.replace(/_/g, " ")}
                   </span>
-                  <span>{new Date(rec.date_of_incident).toLocaleDateString()}</span>
+                  <span>{rec.date_of_incident ? new Date(rec.date_of_incident).toLocaleDateString() : "—"}</span>
                 </div>
                 <p>{rec.description}</p>
                 {rec.outcome && <div><label>Outcome:</label> <p>{rec.outcome}</p></div>}
@@ -304,6 +515,7 @@ export default function AdminEmployeeDetail() {
           )}
         </div>
       )}
+
       {/* Credentials Tab */}
       {tab === "credentials" && (
         <div className="aed-section">
