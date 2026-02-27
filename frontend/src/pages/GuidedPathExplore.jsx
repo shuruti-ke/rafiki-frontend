@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { API } from "../api.js";
+import { API, authFetch } from "../api.js";
 import "./GuidedPathExplore.css";
 
 const ICON_MAP = {
@@ -27,8 +27,8 @@ export default function GuidedPathExplore() {
     async function load() {
       try {
         const [modRes, sugRes] = await Promise.all([
-          fetch(`${API}/api/v1/guided-paths/modules`),
-          fetch(`${API}/api/v1/guided-paths/suggest`, { method: "POST" }),
+          authFetch(`${API}/api/v1/guided-paths/modules`),
+          authFetch(`${API}/api/v1/guided-paths/suggest`, { method: "POST" }),
         ]);
         if (modRes.ok) setModules(await modRes.json());
         if (sugRes.ok) {
