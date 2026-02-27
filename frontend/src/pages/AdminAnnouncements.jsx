@@ -60,8 +60,8 @@ export default function AdminAnnouncements() {
   async function handleSelect(ann) {
     setSelected(ann);
     const [readsRes, trainingRes] = await Promise.all([
-      fetch(`${API}/api/v1/announcements/${ann.id}/reads`),
-      fetch(`${API}/api/v1/announcements/${ann.id}/training-status`),
+      authFetch(`${API}/api/v1/announcements/${ann.id}/reads`),
+      authFetch(`${API}/api/v1/announcements/${ann.id}/training-status`),
     ]);
     setReads(await readsRes.json());
     setTrainingStatus(await trainingRes.json());

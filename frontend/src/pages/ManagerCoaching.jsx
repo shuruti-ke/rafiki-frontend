@@ -15,7 +15,7 @@ export default function ManagerCoaching() {
   const [tab, setTab] = useState("new"); // "new" | "history"
 
   useEffect(() => {
-    fetch(`${API}/api/v1/manager/team`)
+    authFetch(`${API}/api/v1/manager/team`)
       .then((r) => r.json())
       .then((data) => setTeam(Array.isArray(data) ? data : []))
       .catch(() => {});
@@ -24,7 +24,7 @@ export default function ManagerCoaching() {
   }, []);
 
   function loadHistory() {
-    fetch(`${API}/api/v1/manager/coaching/history`)
+    authFetch(`${API}/api/v1/manager/coaching/history`)
       .then((r) => r.json())
       .then((data) => setHistory(Array.isArray(data) ? data : []))
       .catch(() => {});

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { API } from "../api.js";
+import { API, authFetch, authFetch } from "../api.js";
 import "./ManagerDashboard.css";
 
 export default function ManagerDashboard() {
@@ -8,7 +8,7 @@ export default function ManagerDashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${API}/api/v1/manager/dashboard`)
+    authFetch(`${API}/api/v1/manager/dashboard`)
       .then((r) => r.json())
       .then(setDash)
       .catch(() => setDash(null))

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { API } from "../api.js";
+import { API, authFetch, authFetch } from "../api.js";
 import "./ManagerTeam.css";
 
 export default function ManagerTeam() {
@@ -9,7 +9,7 @@ export default function ManagerTeam() {
   const [evals, setEvals] = useState({});
 
   useEffect(() => {
-    fetch(`${API}/api/v1/manager/team`)
+    authFetch(`${API}/api/v1/manager/team`)
       .then((r) => r.json())
       .then((data) => setTeam(Array.isArray(data) ? data : []))
       .catch(() => setTeam([]))
@@ -25,7 +25,7 @@ export default function ManagerTeam() {
 
     // Load evaluations if not cached
     if (!evals[userId]) {
-      fetch(`${API}/api/v1/manager/team/${userId}/evaluations`)
+      authFetch(`${API}/api/v1/manager/team/${userId}/evaluations`)
         .then((r) => r.json())
         .then((data) =>
           setEvals((prev) => ({ ...prev, [userId]: Array.isArray(data) ? data : [] }))
