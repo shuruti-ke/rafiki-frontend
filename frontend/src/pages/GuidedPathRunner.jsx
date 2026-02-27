@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { API, authFetch, authFetch } from "../api.js";
+import { API, authFetch } from "../api.js";
 import "./GuidedPathRunner.css";
 
 const THEMES = [

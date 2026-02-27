@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { API, authFetch, authFetch } from "../api.js";
+import { API, authFetch } from "../api.js";
 import "./EmployeeKnowledgeBase.css";
 const CATEGORIES = ["general", "policy", "handbook", "benefits", "training", "compliance", "procedure", "template"];
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { API, authFetch, authFetch } from "../api.js";
+import { API, authFetch } from "../api.js";
 import "./EmployeeChat.css";
 
 export default function ChatPage() {

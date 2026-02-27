@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { API, authFetch, authFetch } from "../api.js";
+import { API, authFetch } from "../api.js";
 import "./AdminAnnouncements.css";
 const PRIORITIES = ["low", "normal", "high", "urgent"];
 

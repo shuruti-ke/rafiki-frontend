@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { API, authFetch, authFetch } from "../api.js";
+import { API, authFetch } from "../api.js";
 import "./ManagerCoaching.css";
 
 export default function ManagerCoaching() {
