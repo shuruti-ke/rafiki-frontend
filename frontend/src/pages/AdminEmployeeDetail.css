@@ -198,3 +198,13 @@
   gap: 10px;
   margin-top: 4px;
 }
+
+.aed-cred-notice {
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  border-radius: 6px;
+  color: #fbbf24;
+  font-size: 13px;
+  padding: 8px 12px;
+  margin: 8px 0;
+}

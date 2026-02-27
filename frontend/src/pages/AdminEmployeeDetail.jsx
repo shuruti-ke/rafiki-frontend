@@ -325,20 +325,24 @@ export default function AdminEmployeeDetail() {
                 <span className="aed-cred-value aed-cred-pw">
                   {credentials.initial_password
                     ? credentials.initial_password
-                    : <em className="aed-muted">Not set — employee may have changed it</em>}
+                    : <em className="aed-muted">No password on record</em>}
                 </span>
               </div>
+              {!credentials.initial_password && (
+                <p className="aed-cred-notice">
+                  No login password has been set for this employee. Click <strong>Generate Password</strong> to create one and share it with them.
+                </p>
+              )}
               <div className="aed-cred-actions">
                 <button className="btn btnPrimary" onClick={copyCredentials} disabled={!credentials.initial_password}>
                   {credCopied ? "Copied!" : "Copy Credentials"}
                 </button>
-                <button className="btn" onClick={handleResetPassword} disabled={credResetLoading}>
-                  {credResetLoading ? "Resetting…" : "Reset Password"}
+                <button className="btn btnPrimary" onClick={handleResetPassword} disabled={credResetLoading}>
+                  {credResetLoading ? "Generating…" : credentials.initial_password ? "Reset Password" : "Generate Password"}
                 </button>
               </div>
               <p className="aed-muted" style={{ marginTop: 12, fontSize: 12 }}>
                 Share these credentials with the employee so they can log in. They should change their password after first login.
-                Resetting generates a new temporary password and saves it here.
               </p>
             </div>
           )}

@@ -357,6 +357,7 @@ def create_employee(
         emergency_contact_relationship=body.emergency_contact_relationship,
 
         notes=body.notes,
+        initial_password=temp_pw,
     )
     db.add(p)
 
