@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { API } from "../api.js";
+import { API, authFetch, authFetch } from "../api.js";
 import "./ManagerCoaching.css";
 
 export default function ManagerCoaching() {
@@ -38,7 +38,7 @@ export default function ManagerCoaching() {
     setPlan(null);
 
     try {
-      const r = await fetch(`${API}/api/v1/manager/coaching`, {
+      const r = await authFetch(`${API}/api/v1/manager/coaching`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -64,7 +64,7 @@ export default function ManagerCoaching() {
 
   async function logOutcome(sessionId, outcome) {
     try {
-      await fetch(`${API}/api/v1/manager/coaching/${sessionId}/outcome`, {
+      await authFetch(`${API}/api/v1/manager/coaching/${sessionId}/outcome`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ outcome }),

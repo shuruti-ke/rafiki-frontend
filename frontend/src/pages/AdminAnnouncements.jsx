@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { API } from "../api.js";
+import { API, authFetch, authFetch } from "../api.js";
 import "./AdminAnnouncements.css";
 const PRIORITIES = ["low", "normal", "high", "urgent"];
 
@@ -18,7 +18,7 @@ export default function AdminAnnouncements() {
   const [creating, setCreating] = useState(false);
 
   async function fetchAnnouncements() {
-    const res = await fetch(`${API}/api/v1/announcements/`);
+    const res = await authFetch(`${API}/api/v1/announcements/`);
     const data = await res.json();
     setAnnouncements(data);
   }
@@ -30,7 +30,7 @@ export default function AdminAnnouncements() {
     if (!title || !content) return;
     setCreating(true);
     try {
-      const res = await fetch(`${API}/api/v1/announcements/`, {
+      const res = await authFetch(`${API}/api/v1/announcements/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title, content, is_training: isTraining, priority }),
@@ -46,13 +46,13 @@ export default function AdminAnnouncements() {
   }
 
   async function handlePublish(id) {
-    await fetch(`${API}/api/v1/announcements/${id}/publish`, { method: "POST" });
+    await authFetch(`${API}/api/v1/announcements/${id}/publish`, { method: "POST" });
     fetchAnnouncements();
   }
 
   async function handleDelete(id) {
     if (!confirm("Delete this announcement?")) return;
-    await fetch(`${API}/api/v1/announcements/${id}`, { method: "DELETE" });
+    await authFetch(`${API}/api/v1/announcements/${id}`, { method: "DELETE" });
     setSelected(null);
     fetchAnnouncements();
   }
@@ -73,7 +73,7 @@ export default function AdminAnnouncements() {
     const userIds = idsStr.split(",").map((s) => parseInt(s.trim())).filter((n) => !isNaN(n));
     if (userIds.length === 0) return;
 
-    await fetch(`${API}/api/v1/announcements/${annId}/assign-training`, {
+    await authFetch(`${API}/api/v1/announcements/${annId}/assign-training`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ user_ids: userIds }),

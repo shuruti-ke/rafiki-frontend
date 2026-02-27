@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { API } from "../api.js";
+import { API, authFetch, authFetch } from "../api.js";
 import "./GuidedPathRunner.css";
 
 const THEMES = [
@@ -68,7 +68,7 @@ export default function GuidedPathRunner() {
         available_time: selectedTime,
         pre_rating: preRating,
       };
-      const res = await fetch(`${API}/api/v1/guided-paths/modules/${moduleId}/start`, {
+      const res = await authFetch(`${API}/api/v1/guided-paths/modules/${moduleId}/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -94,7 +94,7 @@ export default function GuidedPathRunner() {
       if (step?.expected_input === "free_text") response = userInput;
       else if (step?.expected_input === "rating_0_10") response = String(rating);
 
-      const res = await fetch(`${API}/api/v1/guided-paths/sessions/${sessionId}/advance`, {
+      const res = await authFetch(`${API}/api/v1/guided-paths/sessions/${sessionId}/advance`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ response }),
@@ -118,7 +118,7 @@ export default function GuidedPathRunner() {
 
   async function handleSubmitOutcome() {
     try {
-      await fetch(`${API}/api/v1/guided-paths/sessions/${sessionId}/outcome`, {
+      await authFetch(`${API}/api/v1/guided-paths/sessions/${sessionId}/outcome`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ pre_rating: preRating, post_rating: postRating }),

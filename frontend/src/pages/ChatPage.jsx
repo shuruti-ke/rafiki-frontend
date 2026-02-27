@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { API } from "../api.js";
+import { API, authFetch, authFetch } from "../api.js";
 import "./EmployeeChat.css";
 
 export default function ChatPage() {
@@ -23,7 +23,7 @@ export default function ChatPage() {
     setLoading(true);
 
     try {
-      const res = await fetch(`${API}/chat`, {
+      const res = await authFetch(`${API}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: trimmed }),

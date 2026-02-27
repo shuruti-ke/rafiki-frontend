@@ -89,7 +89,7 @@ export default function AdminOrgConfig() {
 
   async function fetchOrgProfile() {
     try {
-      const res = await fetch(`${API}/api/v1/org-config/profile`);
+      const res = await authFetch(`${API}/api/v1/org-config/profile`);
       if (res.ok) {
         const data = await res.json();
         setOrgProfile({
@@ -104,7 +104,7 @@ export default function AdminOrgConfig() {
 
   async function fetchRoles() {
     try {
-      const res = await fetch(`${API}/api/v1/org-config/roles`);
+      const res = await authFetch(`${API}/api/v1/org-config/roles`);
       if (res.ok) setRoles(await res.json());
     } catch { /* silent */ }
   }
@@ -115,7 +115,7 @@ export default function AdminOrgConfig() {
     setSaving(true);
     setMsg("");
     try {
-      const res = await fetch(`${API}/api/v1/org-config/profile`, {
+      const res = await authFetch(`${API}/api/v1/org-config/profile`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(orgProfile),
@@ -176,7 +176,7 @@ export default function AdminOrgConfig() {
     setMsg("");
     try {
       if (editingRole === "__new__") {
-        const res = await fetch(`${API}/api/v1/org-config/roles`, {
+        const res = await authFetch(`${API}/api/v1/org-config/roles`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(roleForm),
@@ -191,7 +191,7 @@ export default function AdminOrgConfig() {
         }
       } else {
         const { role_key, ...updateData } = roleForm;
-        const res = await fetch(`${API}/api/v1/org-config/roles/${editingRole}`, {
+        const res = await authFetch(`${API}/api/v1/org-config/roles/${editingRole}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(updateData),
@@ -214,7 +214,7 @@ export default function AdminOrgConfig() {
   async function handleDeleteRole(roleKey) {
     if (!confirm(`Delete role "${roleKey}"?`)) return;
     try {
-      await fetch(`${API}/api/v1/org-config/roles/${roleKey}`, { method: "DELETE" });
+      await authFetch(`${API}/api/v1/org-config/roles/${roleKey}`, { method: "DELETE" });
       fetchRoles();
       setMsg(`Role "${roleKey}" deleted`);
     } catch { /* silent */ }

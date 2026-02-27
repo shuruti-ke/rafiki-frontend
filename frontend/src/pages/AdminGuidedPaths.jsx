@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { API } from "../api.js";
+import { API, authFetch, authFetch } from "../api.js";
 import "./AdminGuidedPaths.css";
 
 const CATEGORIES = ["relaxation", "cbt", "workplace", "financial", "positive_psychology"];
@@ -31,7 +31,7 @@ export default function AdminGuidedPaths() {
   const [saving, setSaving] = useState(false);
 
   async function fetchModules() {
-    const res = await fetch(`${API}/api/v1/guided-paths/modules?active_only=false`);
+    const res = await authFetch(`${API}/api/v1/guided-paths/modules?active_only=false`);
     if (res.ok) setModules(await res.json());
   }
 
@@ -51,7 +51,7 @@ export default function AdminGuidedPaths() {
 
   async function openEdit(mod) {
     // Fetch full detail with steps
-    const res = await fetch(`${API}/api/v1/guided-paths/modules/${mod.id}`);
+    const res = await authFetch(`${API}/api/v1/guided-paths/modules/${mod.id}`);
     if (!res.ok) return;
     const detail = await res.json();
     setEditingModule(detail);
@@ -118,7 +118,7 @@ export default function AdminGuidedPaths() {
 
   async function handleDeactivate(mod) {
     if (!confirm(`Deactivate "${mod.name}"? It will no longer be available to employees.`)) return;
-    const res = await fetch(`${API}/api/v1/guided-paths/admin/modules/${mod.id}`, { method: "DELETE" });
+    const res = await authFetch(`${API}/api/v1/guided-paths/admin/modules/${mod.id}`, { method: "DELETE" });
     if (res.ok) fetchModules();
   }
 

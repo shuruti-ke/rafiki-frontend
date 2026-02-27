@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { API } from "../api.js";
+import { API, authFetch, authFetch } from "../api.js";
 import "./AdminKnowledgeBase.css";
 const CATEGORIES = ["general", "policy", "handbook", "benefits", "training", "compliance", "procedure", "template"];
 
@@ -23,7 +23,7 @@ export default function AdminKnowledgeBase() {
     const params = new URLSearchParams();
     if (categoryFilter) params.set("category", categoryFilter);
     if (search) params.set("search", search);
-    const res = await fetch(`${API}/api/v1/knowledge-base/?${params}`);
+    const res = await authFetch(`${API}/api/v1/knowledge-base/?${params}`);
     const data = await res.json();
     setDocs(data);
   }
@@ -46,7 +46,7 @@ export default function AdminKnowledgeBase() {
     fd.append("file", uploadFile);
 
     try {
-      const res = await fetch(`${API}/api/v1/knowledge-base/upload?${params}`, {
+      const res = await authFetch(`${API}/api/v1/knowledge-base/upload?${params}`, {
         method: "POST",
         body: fd,
       });
@@ -62,18 +62,18 @@ export default function AdminKnowledgeBase() {
 
   async function handleDelete(id) {
     if (!confirm("Archive this document?")) return;
-    await fetch(`${API}/api/v1/knowledge-base/${id}`, { method: "DELETE" });
+    await authFetch(`${API}/api/v1/knowledge-base/${id}`, { method: "DELETE" });
     fetchDocs();
   }
 
   async function handleViewVersions(id) {
-    const res = await fetch(`${API}/api/v1/knowledge-base/${id}/versions`);
+    const res = await authFetch(`${API}/api/v1/knowledge-base/${id}/versions`);
     const data = await res.json();
     setVersions({ docId: id, list: data });
   }
 
   async function handleUpdateMeta(id) {
-    const res = await fetch(`${API}/api/v1/knowledge-base/${id}`, {
+    const res = await authFetch(`${API}/api/v1/knowledge-base/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(editing),

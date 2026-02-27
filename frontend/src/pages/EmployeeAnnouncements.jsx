@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { API } from "../api.js";
+import { API, authFetch, authFetch } from "../api.js";
 import "./EmployeeAnnouncements.css";
 
 export default function EmployeeAnnouncements() {
@@ -9,7 +9,7 @@ export default function EmployeeAnnouncements() {
   const [trainingAssignments, setTrainingAssignments] = useState([]);
 
   async function fetchAnnouncements() {
-    const res = await fetch(`${API}/api/v1/announcements/`);
+    const res = await authFetch(`${API}/api/v1/announcements/`);
     const data = await res.json();
     // Only show published announcements
     setAnnouncements(data.filter((a) => a.published_at));
@@ -19,14 +19,14 @@ export default function EmployeeAnnouncements() {
 
   async function handleSelect(ann) {
     // Auto-mark as read via GET detail endpoint
-    const res = await fetch(`${API}/api/v1/announcements/${ann.id}`);
+    const res = await authFetch(`${API}/api/v1/announcements/${ann.id}`);
     const data = await res.json();
     setSelected(data);
     setReadIds((prev) => new Set([...prev, ann.id]));
 
     // Fetch training status for this user
     if (ann.is_training) {
-      const tRes = await fetch(`${API}/api/v1/announcements/${ann.id}/training-status`);
+      const tRes = await authFetch(`${API}/api/v1/announcements/${ann.id}/training-status`);
       const tData = await tRes.json();
       setTrainingAssignments(tData);
     } else {
@@ -35,7 +35,7 @@ export default function EmployeeAnnouncements() {
   }
 
   async function handleCompleteTraining(annId) {
-    await fetch(`${API}/api/v1/announcements/${annId}/complete-training`, { method: "POST" });
+    await authFetch(`${API}/api/v1/announcements/${annId}/complete-training`, { method: "POST" });
     // Refresh
     if (selected) handleSelect(selected);
   }

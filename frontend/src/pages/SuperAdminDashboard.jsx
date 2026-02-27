@@ -63,7 +63,7 @@ export default function SuperAdminDashboard() {
       if (orgDescription.trim()) body.description = orgDescription.trim();
       if (orgEmployeeCount) body.employee_count = Number(orgEmployeeCount);
 
-      const res = await fetch(`${API}/super-admin/orgs`, {
+      const res = await authFetch(`${API}/super-admin/orgs`, {
         method: "POST",
         headers: getHeaders(),
         body: JSON.stringify(body),
@@ -87,7 +87,7 @@ export default function SuperAdminDashboard() {
     e.preventDefault();
     setError("");
     try {
-      const res = await fetch(`${API}/super-admin/orgs/${hrOrgId}/admin`, {
+      const res = await authFetch(`${API}/super-admin/orgs/${hrOrgId}/admin`, {
         method: "POST",
         headers: getHeaders(),
         body: JSON.stringify({ email: hrEmail, password: hrPassword, full_name: hrName }),

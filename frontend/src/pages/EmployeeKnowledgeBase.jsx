@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { API } from "../api.js";
+import { API, authFetch, authFetch } from "../api.js";
 import "./EmployeeKnowledgeBase.css";
 const CATEGORIES = ["general", "policy", "handbook", "benefits", "training", "compliance", "procedure", "template"];
 
@@ -13,7 +13,7 @@ export default function EmployeeKnowledgeBase() {
     const params = new URLSearchParams();
     if (categoryFilter) params.set("category", categoryFilter);
     if (search) params.set("search", search);
-    const res = await fetch(`${API}/api/v1/knowledge-base/?${params}`);
+    const res = await authFetch(`${API}/api/v1/knowledge-base/?${params}`);
     const data = await res.json();
     setDocs(data);
   }
@@ -28,7 +28,7 @@ export default function EmployeeKnowledgeBase() {
       return;
     }
 
-    const res = await fetch(`${API}/api/v1/knowledge-base/search?query=${encodeURIComponent(search)}`);
+    const res = await authFetch(`${API}/api/v1/knowledge-base/search?query=${encodeURIComponent(search)}`);
     const data = await res.json();
     setSearchResults(data.results);
   }
