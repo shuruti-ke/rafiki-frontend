@@ -46,7 +46,21 @@ export default function AdminManagerConfig() {
   function loadEmployees() {
     authFetch(`${API}/api/v1/employees/`)
       .then((r) => r.json())
-      .then((data) => setEmployees(Array.isArray(data) ? data : []))
+      .then((data) => {
+        if (!Array.isArray(data)) { setEmployees([]); return; }
+        // API returns [{user: {...}, profile: {...}}, ...] — flatten to flat objects
+        const flat = data.map((e) => {
+          const u = e.user || e;
+          const p = e.profile || {};
+          return {
+            user_id: u.user_id,
+            full_name: u.name || p.full_name || u.email,
+            email: u.email,
+            job_title: p.job_title || u.job_title,
+          };
+        });
+        setEmployees(flat);
+      })
       .catch(() => setEmployees([]));
   }
 
