@@ -309,6 +309,36 @@ def list_conversations(
     return result
 
 
+@router.get("/unread-count")
+def get_unread_count(
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    db: Session = Depends(get_db),
+):
+    """Return total unread DM count for the current user."""
+    convo_ids = (
+        db.query(ConversationParticipant.conversation_id)
+        .filter(ConversationParticipant.user_id == user_id)
+        .subquery()
+    )
+    convos = (
+        db.query(DmConversation)
+        .filter(DmConversation.id.in_(convo_ids), DmConversation.org_id == org_id)
+        .all()
+    )
+    total = sum(
+        db.query(sa_func.count(DmMessage.id))
+        .filter(
+            DmMessage.conversation_id == c.id,
+            DmMessage.sender_id != user_id,
+            DmMessage.read_at == None,
+        )
+        .scalar() or 0
+        for c in convos
+    )
+    return {"unread_count": total}
+
+
 @router.post("/conversations", response_model=ConversationResponse)
 def start_conversation(
     body: StartConversationRequest,
