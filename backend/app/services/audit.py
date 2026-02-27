@@ -16,6 +16,17 @@ def _to_uuid(value: Any) -> Optional[uuid.UUID]:
         return None
 
 
+def _serialize_details(details: Any) -> Any:
+    """Recursively convert UUID/non-JSON-serializable values to strings."""
+    if isinstance(details, dict):
+        return {k: _serialize_details(v) for k, v in details.items()}
+    if isinstance(details, (list, tuple)):
+        return [_serialize_details(v) for v in details]
+    if isinstance(details, uuid.UUID):
+        return str(details)
+    return details
+
+
 def log_action(
     db: Session,
     org_id: Union[uuid.UUID, str, None],
@@ -32,7 +43,7 @@ def log_action(
         action=action,
         resource_type=resource_type,
         resource_id=str(resource_id) if resource_id is not None else None,
-        details=details,
+        details=_serialize_details(details),
         ip_address=ip_address,
     )
     db.add(entry)
