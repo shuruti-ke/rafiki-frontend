@@ -21,9 +21,9 @@ try:
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
     REPORTLAB_OK = True
-except ImportError:
+except Exception as _rl_err:
     REPORTLAB_OK = False
-    logger.warning("reportlab not installed — payslip PDF generation unavailable")
+    logger.warning("reportlab unavailable — payslip PDF generation disabled. Reason: %s", _rl_err)
 
 
 def _fmt(n) -> str:
