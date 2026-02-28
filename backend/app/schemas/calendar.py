@@ -1,6 +1,9 @@
-"""Calendar event schemas."""
+"""
+File: backend/app/schemas/calendar.py
+Calendar event schemas for Pydantic validation.
+"""
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 from datetime import datetime, date
 from typing import Optional, List
 from uuid import UUID
@@ -20,16 +23,16 @@ class ColleagueResponse(BaseModel):
 
 class CalendarEventCreate(BaseModel):
     title: str
-    date: Optional[str] = ""  # ← Added (VARCHAR, NOT NULL, default='')
+    date: str = ""  # VARCHAR NOT NULL DEFAULT ''
     description: Optional[str] = None
-    start_time: Optional[datetime] = None  # ← Made optional (DB allows NULL)
+    start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     is_all_day: bool = False
     is_shared: bool = False
     color: Optional[str] = None
-    event_type: Optional[str] = "meeting"
+    event_type: str = "meeting"
     location: Optional[str] = None
-    is_virtual: Optional[bool] = False
+    is_virtual: bool = False
     meeting_link: Optional[str] = None
     recurrence: Optional[str] = None
     recurrence_end: Optional[date] = None
@@ -38,12 +41,12 @@ class CalendarEventCreate(BaseModel):
     # Additional fields that exist in DB
     objective_id: Optional[UUID] = None
     assigned_to: Optional[UUID] = None
-    is_completed: Optional[bool] = False
+    is_completed: bool = False
 
 
 class CalendarEventUpdate(BaseModel):
     title: Optional[str] = None
-    date: Optional[str] = None  # ← Added
+    date: Optional[str] = None
     description: Optional[str] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
@@ -67,18 +70,18 @@ class CalendarEventUpdate(BaseModel):
 class CalendarEventResponse(BaseModel):
     id: UUID
     org_id: UUID
-    user_id: Optional[UUID] = None  # ← Made optional (DB allows NULL)
+    user_id: Optional[UUID] = None
     title: str
-    date: str  # ← Added (VARCHAR, NOT NULL)
+    date: str
     description: Optional[str] = None
-    start_time: Optional[datetime] = None  # ← Made optional
+    start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     is_all_day: bool
     is_shared: bool
     color: Optional[str] = None
     event_type: str
     location: Optional[str] = None
-    is_virtual: Optional[bool] = False
+    is_virtual: bool
     meeting_link: Optional[str] = None
     recurrence: Optional[str] = None
     recurrence_end: Optional[date] = None
@@ -89,7 +92,7 @@ class CalendarEventResponse(BaseModel):
     objective_id: Optional[UUID] = None
     assigned_to: Optional[UUID] = None
     created_by: Optional[UUID] = None
-    is_completed: bool = False
+    is_completed: bool
     
     created_at: datetime
     updated_at: Optional[datetime] = None
