@@ -17,7 +17,7 @@ class CalendarEvent(Base):
     description = Column(Text, nullable=True)
     
     # Added: date column (VARCHAR, NOT NULL, default='')
-    date = Column(String, nullable=False, default="")
+    date = Column(String, nullable=False, server_default="")
     
     start_time = Column(DateTime(timezone=True), nullable=True)  # ← DB allows NULL
     end_time = Column(DateTime(timezone=True), nullable=True)
@@ -25,7 +25,7 @@ class CalendarEvent(Base):
     is_shared = Column(Boolean, nullable=False, default=False)
     color = Column(String, nullable=True)
 
-    event_type = Column(String, nullable=False, default="meeting")
+    event_type = Column(String, nullable=False, server_default="meeting")
     location = Column(String, nullable=True)
     is_virtual = Column(Boolean, nullable=True, default=False)
     meeting_link = Column(String, nullable=True)
