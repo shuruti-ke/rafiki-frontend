@@ -18,6 +18,8 @@ import GuidedPathExplore from "./pages/GuidedPathExplore.jsx";
 import GuidedPathRunner from "./pages/GuidedPathRunner.jsx";
 import ObjectivesPage from "./pages/ObjectivesPage.jsx";
 import MyDocumentsPage from "./pages/MyDocumentsPage.jsx";
+import CalendarPage from "./pages/CalendarPage.jsx";
+import TimesheetPage from "./pages/TimesheetPage.jsx";
 import ManagerLayout from "./components/ManagerLayout.jsx";
 import ManagerDashboard from "./pages/ManagerDashboard.jsx";
 import ManagerTeam from "./pages/ManagerTeam.jsx";
@@ -53,6 +55,8 @@ export default function App() {
           <Route path="/guided-paths/:moduleId" element={<GuidedPathRunner />} />
           <Route path="/objectives" element={<ObjectivesPage />} />
           <Route path="/my-documents" element={<MyDocumentsPage />} />
+          <Route path="/calendar" element={<CalendarPage />} />
+          <Route path="/timesheet" element={<TimesheetPage />} />
         </Route>
 
         {/* Super Admin Portal */}
@@ -75,6 +79,8 @@ export default function App() {
           <Route path="team" element={<ManagerTeam />} />
           <Route path="coaching" element={<ManagerCoaching />} />
           <Route path="toolkit" element={<ManagerToolkit />} />
+          <Route path="calendar" element={<CalendarPage />} />
+          <Route path="timesheets" element={<TimesheetPage />} />
         </Route>
 
         {/* Admin HR Portal */}
@@ -92,6 +98,8 @@ export default function App() {
           <Route path="org-config" element={<AdminOrgConfig />} />
           <Route path="managers" element={<AdminManagerConfig />} />
           <Route path="payroll" element={<AdminPayroll />} />
+          <Route path="calendar" element={<CalendarPage />} />
+          <Route path="timesheets" element={<TimesheetPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

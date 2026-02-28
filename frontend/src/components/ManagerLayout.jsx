@@ -35,6 +35,12 @@ export default function ManagerLayout() {
           <NavLink to="/manager/toolkit" className={({ isActive }) => `mgr-nav-link ${isActive ? "active" : ""}`}>
             HR Toolkit
           </NavLink>
+          <NavLink to="/manager/calendar" className={({ isActive }) => `mgr-nav-link ${isActive ? "active" : ""}`}>
+            Calendar
+          </NavLink>
+          <NavLink to="/manager/timesheets" className={({ isActive }) => `mgr-nav-link ${isActive ? "active" : ""}`}>
+            Team Timesheets
+          </NavLink>
         </nav>
 
         <div className="mgr-nav-footer">

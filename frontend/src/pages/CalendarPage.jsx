@@ -2,13 +2,14 @@ import { useState, useEffect } from "react";
 import { API, authFetch } from "../api.js";
 import "./CalendarPage.css";
 
-const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-const COLORS = ["#8b5cf6", "#1fbfb8", "#3b82f6", "#ef4444", "#10b981", "#f59e0b"];
+const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const DAY_NAMES = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const EVENT_TYPES = ["meeting","task","reminder","out-of-office","social","training"];
+const EVENT_COLORS = { meeting:"#8b5cf6", task:"#3b82f6", reminder:"#f59e0b", "out-of-office":"#ef4444", social:"#10b981", training:"#6366f1" };
 
-function pad(n) { return String(n).padStart(2, "0"); }
-function fmtTime(iso) { if (!iso) return ""; const d = new Date(iso); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; }
-function fmtDate(y, m, d) { return `${y}-${pad(m + 1)}-${pad(d)}`; }
+function pad(n) { return String(n).padStart(2,"0"); }
+function fmtDate(y,m,d) { return `${y}-${pad(m+1)}-${pad(d)}`; }
+function fmtTime(iso) { if(!iso) return ""; return new Date(iso).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}); }
 
 export default function CalendarPage() {
   const today = new Date();
@@ -16,187 +17,285 @@ export default function CalendarPage() {
   const [month, setMonth] = useState(today.getMonth());
   const [events, setEvents] = useState([]);
   const [selectedDay, setSelectedDay] = useState(null);
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ title: "", description: "", date: "", startTime: "", endTime: "", isAllDay: false, isShared: false, color: "#8b5cf6" });
+  const [showModal, setShowModal] = useState(false);
+  const [editEvent, setEditEvent] = useState(null);
+  const [colleagues, setColleagues] = useState([]);
+
+  const currentUser = JSON.parse(localStorage.getItem("rafiki_user") || "{}");
 
   const loadEvents = async () => {
     const start = new Date(year, month, 1).toISOString();
-    const end = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
+    const end = new Date(year, month+1, 0, 23,59,59).toISOString();
     const res = await authFetch(`${API}/api/v1/calendar/?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`);
     if (res.ok) setEvents(await res.json());
   };
 
-  useEffect(() => { loadEvents(); }, [year, month]);
+  const loadColleagues = async () => {
+    const res = await authFetch(`${API}/api/v1/calendar/colleagues`);
+    if (res.ok) setColleagues(await res.json());
+  };
 
-  const prevMonth = () => { if (month === 0) { setMonth(11); setYear(year - 1); } else setMonth(month - 1); setSelectedDay(null); };
-  const nextMonth = () => { if (month === 11) { setMonth(0); setYear(year + 1); } else setMonth(month + 1); setSelectedDay(null); };
+  useEffect(() => { loadEvents(); }, [year, month]);
+  useEffect(() => { loadColleagues(); }, []);
+
+  const prevMonth = () => { if(month===0){setMonth(11);setYear(year-1);}else setMonth(month-1); setSelectedDay(null); };
+  const nextMonth = () => { if(month===11){setMonth(0);setYear(year+1);}else setMonth(month+1); setSelectedDay(null); };
   const goToday = () => { setYear(today.getFullYear()); setMonth(today.getMonth()); setSelectedDay(today.getDate()); };
 
-  // Calendar grid
-  const firstDow = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const daysInPrev = new Date(year, month, 0).getDate();
+  // Build calendar grid
+  const firstDow = new Date(year,month,1).getDay();
+  const daysInMonth = new Date(year,month+1,0).getDate();
+  const daysInPrev = new Date(year,month,0).getDate();
   const cells = [];
-  for (let i = 0; i < firstDow; i++) cells.push({ day: daysInPrev - firstDow + 1 + i, outside: true });
-  for (let i = 1; i <= daysInMonth; i++) cells.push({ day: i, outside: false });
-  const remaining = 7 - (cells.length % 7);
-  if (remaining < 7) for (let i = 1; i <= remaining; i++) cells.push({ day: i, outside: true });
+  for(let i=0;i<firstDow;i++) cells.push({day:daysInPrev-firstDow+1+i,outside:true});
+  for(let i=1;i<=daysInMonth;i++) cells.push({day:i,outside:false});
+  const rem = 7 - (cells.length % 7);
+  if(rem<7) for(let i=1;i<=rem;i++) cells.push({day:i,outside:true});
 
   const eventsForDay = (d) => {
-    const ds = fmtDate(year, month, d);
-    return events.filter(e => e.start_time && e.start_time.slice(0, 10) === ds);
+    const ds = fmtDate(year,month,d);
+    return events.filter(e => e.start_time && e.start_time.slice(0,10) === ds);
   };
+
+  const isToday = (d) => d===today.getDate()&&month===today.getMonth()&&year===today.getFullYear();
 
   const dayEvents = selectedDay ? eventsForDay(selectedDay) : [];
 
-  const handleCreate = async () => {
-    let start_time, end_time;
-    if (form.isAllDay) {
-      start_time = `${form.date}T00:00:00`;
-      end_time = `${form.date}T23:59:59`;
-    } else {
-      start_time = `${form.date}T${form.startTime || "09:00"}:00`;
-      end_time = form.endTime ? `${form.date}T${form.endTime}:00` : null;
-    }
-    const body = {
-      title: form.title,
-      description: form.description || null,
-      start_time, end_time,
-      is_all_day: form.isAllDay,
-      is_shared: form.isShared,
-      color: form.color,
-    };
-    const res = await authFetch(`${API}/api/v1/calendar/`, { method: "POST", body: JSON.stringify(body) });
-    if (res.ok) { setShowForm(false); resetForm(); loadEvents(); }
+  const handleDeleteEvent = async (id) => {
+    if (!confirm("Delete this event?")) return;
+    const res = await authFetch(`${API}/api/v1/calendar/${id}`, {method:"DELETE"});
+    if (res.ok) loadEvents();
   };
 
-  const handleDeleteEvent = async (id) => {
-    await authFetch(`${API}/api/v1/calendar/${id}`, { method: "DELETE" });
+  const handleRSVP = async (eventId, status) => {
+    await authFetch(`${API}/api/v1/calendar/${eventId}/rsvp`, {
+      method:"POST", body: JSON.stringify({status}),
+    });
     loadEvents();
   };
 
-  const resetForm = () => setForm({ title: "", description: "", date: "", startTime: "", endTime: "", isAllDay: false, isShared: false, color: "#8b5cf6" });
-
-  const openForm = () => {
-    setForm({ ...form, date: selectedDay ? fmtDate(year, month, selectedDay) : fmtDate(year, month, today.getDate()) });
-    setShowForm(true);
-  };
-
-  const isToday = (d) => d === today.getDate() && month === today.getMonth() && year === today.getFullYear();
+  const openCreate = () => { setEditEvent(null); setShowModal(true); };
+  const openEdit = (ev) => { setEditEvent(ev); setShowModal(true); };
 
   return (
-    <div className="cal-page">
-      <div className="cal-header">
-        <h2>Calendar</h2>
-        <div className="cal-nav">
-          <button className="cal-nav-btn" onClick={prevMonth}>&larr;</button>
-          <span className="cal-month-label">{MONTH_NAMES[month]} {year}</span>
-          <button className="cal-nav-btn" onClick={nextMonth}>&rarr;</button>
-          <button className="cal-nav-btn" onClick={goToday}>Today</button>
+    <div className="calp-page">
+      <div className="calp-header">
+        <h1>Calendar</h1>
+        <div style={{display:"flex",gap:"0.5rem"}}>
+          <button className="calp-btn calp-btn-ghost" onClick={goToday}>Today</button>
+          <button className="calp-btn calp-btn-primary" onClick={openCreate}>+ New Event</button>
         </div>
       </div>
 
-      <div className="cal-grid">
-        {DAY_NAMES.map(d => <div key={d} className="cal-day-header">{d}</div>)}
-        {cells.map((c, i) => {
+      <div className="calp-month-nav">
+        <button onClick={prevMonth}>&lsaquo;</button>
+        <div className="calp-month-label">{MONTH_NAMES[month]} {year}</div>
+        <button onClick={nextMonth}>&rsaquo;</button>
+      </div>
+
+      <div className="calp-grid" style={{marginTop:"1rem"}}>
+        {DAY_NAMES.map(d => <div key={d} className="calp-day-header">{d}</div>)}
+        {cells.map((c,i) => {
           const de = !c.outside ? eventsForDay(c.day) : [];
+          const sel = selectedDay===c.day && !c.outside;
           return (
-            <div
-              key={i}
-              className={`cal-day${c.outside ? " outside" : ""}${!c.outside && isToday(c.day) ? " today" : ""}${selectedDay === c.day && !c.outside ? " selected" : ""}`}
-              onClick={() => !c.outside && setSelectedDay(c.day)}
+            <div key={i}
+              className={`calp-day${c.outside?" calp-outside":""}${!c.outside&&isToday(c.day)?" calp-today":""}${sel?" calp-selected":""}`}
+              onClick={() => !c.outside && setSelectedDay(sel?null:c.day)}
             >
-              <div className="cal-day-num">{c.day}</div>
-              {de.length > 0 && (
-                <div className="cal-day-dots">
-                  {de.slice(0, 4).map((e, j) => (
-                    <div key={j} className={`cal-dot ${e.is_shared ? "cal-dot-shared" : "cal-dot-personal"}`} />
-                  ))}
+              <div className="calp-day-num">{c.day}</div>
+              {de.slice(0,3).map(e => (
+                <div key={e.id} className="calp-day-event"
+                  style={{background: EVENT_COLORS[e.event_type] || e.color || "#8b5cf6"}}
+                  onClick={ev => { ev.stopPropagation(); setSelectedDay(c.day); }}
+                >
+                  {e.title}
                 </div>
-              )}
+              ))}
+              {de.length > 3 && <div className="calp-day-more">+{de.length-3} more</div>}
             </div>
           );
         })}
       </div>
 
       {selectedDay && (
-        <div className="cal-day-detail">
-          <div className="cal-day-detail-header">
-            <h3>{MONTH_NAMES[month]} {selectedDay}, {year}</h3>
-            <button className="btn btnTiny btnPrimary" onClick={openForm}>Add Event</button>
-          </div>
-          {dayEvents.length === 0 && <div className="cal-empty">No events this day</div>}
-          <div className="cal-event-list">
-            {dayEvents.map(e => (
-              <div key={e.id} className="cal-event-item">
-                <div className="cal-event-color" style={{ background: e.color || "#8b5cf6" }} />
-                <div className="cal-event-info">
-                  <div className="cal-event-title">{e.title}</div>
-                  <div className="cal-event-time">
-                    {e.is_all_day ? "All day" : `${fmtTime(e.start_time)}${e.end_time ? ` – ${fmtTime(e.end_time)}` : ""}`}
+        <div className="calp-detail">
+          <h3>{MONTH_NAMES[month]} {selectedDay}, {year}</h3>
+          {dayEvents.length === 0 && <div className="calp-detail-empty">No events this day</div>}
+          {dayEvents.map(e => {
+            const myRsvp = (e.attendees||[]).find(a => a.id === currentUser.id);
+            return (
+              <div key={e.id} className="calp-event-card">
+                <div className="calp-event-color" style={{background: EVENT_COLORS[e.event_type] || e.color || "#8b5cf6"}} />
+                <div className="calp-event-info">
+                  <div className="calp-event-title">
+                    {e.title}
+                    <span className="calp-event-badge">{e.event_type || "meeting"}</span>
+                    {e.is_shared && <span className="calp-event-badge" style={{background:"#10b981"}}>shared</span>}
                   </div>
+                  <div className="calp-event-meta">
+                    {e.is_all_day ? "All day" : `${fmtTime(e.start_time)}${e.end_time ? " – "+fmtTime(e.end_time) : ""}`}
+                    {e.location && ` · ${e.location}`}
+                    {e.is_virtual && e.meeting_link && (
+                      <> · <a href={e.meeting_link} target="_blank" rel="noopener noreferrer" style={{color:"var(--accent)"}}>Join</a></>
+                    )}
+                  </div>
+                  {e.description && <div className="calp-event-meta" style={{marginTop:"4px"}}>{e.description}</div>}
+                  {(e.attendees||[]).length > 0 && (
+                    <div className="calp-event-meta" style={{marginTop:"4px"}}>
+                      {(e.attendees||[]).length} attendee{(e.attendees||[]).length!==1?"s":""}
+                      {myRsvp && ` · You: ${myRsvp.status}`}
+                    </div>
+                  )}
                 </div>
-                {e.is_shared && <span className="cal-event-shared-badge">Shared</span>}
-                <button className="cal-event-delete" onClick={() => handleDeleteEvent(e.id)}>×</button>
+                <div className="calp-event-actions">
+                  {e.user_id === currentUser.id && (
+                    <>
+                      <button onClick={() => openEdit(e)}>Edit</button>
+                      <button onClick={() => handleDeleteEvent(e.id)}>Del</button>
+                    </>
+                  )}
+                  {e.user_id !== currentUser.id && (
+                    <>
+                      <button onClick={() => handleRSVP(e.id,"accepted")}>Accept</button>
+                      <button onClick={() => handleRSVP(e.id,"declined")}>Decline</button>
+                    </>
+                  )}
+                </div>
               </div>
-            ))}
-          </div>
+            );
+          })}
         </div>
       )}
 
-      {showForm && (
-        <div className="cal-form">
-          <h3>New Event</h3>
-          <div className="cal-form-row">
-            <label>Title</label>
-            <input type="text" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="Event title" />
+      {showModal && (
+        <EventModal
+          event={editEvent}
+          colleagues={colleagues}
+          selectedDate={selectedDay ? fmtDate(year,month,selectedDay) : null}
+          onClose={() => setShowModal(false)}
+          onSaved={() => { setShowModal(false); loadEvents(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function EventModal({ event, colleagues, selectedDate, onClose, onSaved }) {
+  const isEdit = !!event;
+  const [title, setTitle] = useState(event?.title || "");
+  const [description, setDescription] = useState(event?.description || "");
+  const [eventType, setEventType] = useState(event?.event_type || "meeting");
+  const [startTime, setStartTime] = useState(event?.start_time ? event.start_time.slice(0,16) : (selectedDate ? selectedDate+"T09:00" : ""));
+  const [endTime, setEndTime] = useState(event?.end_time ? event.end_time.slice(0,16) : (selectedDate ? selectedDate+"T10:00" : ""));
+  const [isAllDay, setIsAllDay] = useState(event?.is_all_day || false);
+  const [isShared, setIsShared] = useState(event?.is_shared || false);
+  const [location, setLocation] = useState(event?.location || "");
+  const [isVirtual, setIsVirtual] = useState(event?.is_virtual || false);
+  const [meetingLink, setMeetingLink] = useState(event?.meeting_link || "");
+  const [color, setColor] = useState(event?.color || "#8b5cf6");
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (!title.trim()) return;
+    setSaving(true);
+    const body = {
+      title, description, event_type: eventType,
+      start_time: new Date(startTime).toISOString(),
+      end_time: endTime ? new Date(endTime).toISOString() : null,
+      is_all_day: isAllDay, is_shared: isShared,
+      location: location || null, is_virtual: isVirtual,
+      meeting_link: meetingLink || null, color,
+    };
+
+    const url = isEdit ? `${API}/api/v1/calendar/${event.id}` : `${API}/api/v1/calendar/`;
+    const method = isEdit ? "PUT" : "POST";
+    const res = await authFetch(url, { method, body: JSON.stringify(body) });
+    setSaving(false);
+    if (res.ok) onSaved();
+  };
+
+  return (
+    <div className="calp-modal-overlay" onClick={onClose}>
+      <div className="calp-modal" onClick={e => e.stopPropagation()}>
+        <h2>{isEdit ? "Edit Event" : "New Event"}</h2>
+
+        <div className="calp-form-row">
+          <label>Title</label>
+          <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Event title" />
+        </div>
+
+        <div className="calp-form-row-inline">
+          <div className="calp-form-row">
+            <label>Type</label>
+            <select value={eventType} onChange={e => setEventType(e.target.value)}>
+              {EVENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
           </div>
-          <div className="cal-form-row">
-            <label>Date</label>
-            <input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} />
-          </div>
-          {!form.isAllDay && (
-            <div className="cal-form-inline">
-              <div className="cal-form-row">
-                <label>Start Time</label>
-                <input type="time" value={form.startTime} onChange={e => setForm({ ...form, startTime: e.target.value })} />
-              </div>
-              <div className="cal-form-row">
-                <label>End Time</label>
-                <input type="time" value={form.endTime} onChange={e => setForm({ ...form, endTime: e.target.value })} />
-              </div>
-            </div>
-          )}
-          <div className="cal-form-row">
-            <label className="cal-form-check">
-              <input type="checkbox" checked={form.isAllDay} onChange={e => setForm({ ...form, isAllDay: e.target.checked })} />
-              All day event
-            </label>
-          </div>
-          <div className="cal-form-row">
-            <label className="cal-form-check">
-              <input type="checkbox" checked={form.isShared} onChange={e => setForm({ ...form, isShared: e.target.checked })} />
-              Shared <small>(Visible to all org members)</small>
-            </label>
-          </div>
-          <div className="cal-form-row">
-            <label>Description</label>
-            <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} rows={2} placeholder="Optional details..." />
-          </div>
-          <div className="cal-form-row">
+          <div className="calp-form-row">
             <label>Color</label>
-            <div className="cal-color-swatches">
-              {COLORS.map(c => (
-                <div key={c} className={`cal-swatch${form.color === c ? " active" : ""}`} style={{ background: c }} onClick={() => setForm({ ...form, color: c })} />
-              ))}
-            </div>
-          </div>
-          <div className="cal-form-actions">
-            <button className="btn btnPrimary" onClick={handleCreate} disabled={!form.title.trim() || !form.date}>Create Event</button>
-            <button className="btn btnGhost" onClick={() => { setShowForm(false); resetForm(); }}>Cancel</button>
+            <input type="color" value={color} onChange={e => setColor(e.target.value)} />
           </div>
         </div>
-      )}
+
+        <div className="calp-form-check">
+          <input type="checkbox" id="calp-allday" checked={isAllDay} onChange={e => setIsAllDay(e.target.checked)} />
+          <label htmlFor="calp-allday">All day</label>
+        </div>
+
+        {!isAllDay && (
+          <div className="calp-form-row-inline">
+            <div className="calp-form-row">
+              <label>Start</label>
+              <input type="datetime-local" value={startTime} onChange={e => setStartTime(e.target.value)} />
+            </div>
+            <div className="calp-form-row">
+              <label>End</label>
+              <input type="datetime-local" value={endTime} onChange={e => setEndTime(e.target.value)} />
+            </div>
+          </div>
+        )}
+        {isAllDay && (
+          <div className="calp-form-row">
+            <label>Date</label>
+            <input type="date" value={startTime.slice(0,10)} onChange={e => setStartTime(e.target.value+"T00:00")} />
+          </div>
+        )}
+
+        <div className="calp-form-row">
+          <label>Description</label>
+          <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Optional description" />
+        </div>
+
+        <div className="calp-form-row">
+          <label>Location</label>
+          <input value={location} onChange={e => setLocation(e.target.value)} placeholder="Room, address, etc." />
+        </div>
+
+        <div className="calp-form-check">
+          <input type="checkbox" id="calp-virtual" checked={isVirtual} onChange={e => setIsVirtual(e.target.checked)} />
+          <label htmlFor="calp-virtual">Virtual meeting</label>
+        </div>
+
+        {isVirtual && (
+          <div className="calp-form-row">
+            <label>Meeting link</label>
+            <input value={meetingLink} onChange={e => setMeetingLink(e.target.value)} placeholder="https://..." />
+          </div>
+        )}
+
+        <div className="calp-form-check">
+          <input type="checkbox" id="calp-shared" checked={isShared} onChange={e => setIsShared(e.target.checked)} />
+          <label htmlFor="calp-shared">Share with org</label>
+        </div>
+
+        <div className="calp-modal-actions">
+          <button className="calp-btn calp-btn-ghost" onClick={onClose}>Cancel</button>
+          <button className="calp-btn calp-btn-primary" onClick={handleSave} disabled={saving || !title.trim()}>
+            {saving ? "Saving..." : isEdit ? "Update" : "Create"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -10,6 +10,8 @@ const links = [
   { to: "/announcements", label: "Announcements" },
   { to: "/guided-paths", label: "Guided Paths" },
   { to: "/objectives", label: "Objectives" },
+  { to: "/calendar", label: "Calendar" },
+  { to: "/timesheet", label: "Timesheets" },
 ];
 
 const DAY_NAMES = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
