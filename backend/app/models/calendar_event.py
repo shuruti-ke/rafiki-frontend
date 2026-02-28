@@ -12,23 +12,33 @@ class CalendarEvent(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, server_default=func.gen_random_uuid())
     org_id = Column(UUID(as_uuid=True), nullable=False)
-    user_id = Column(UUID(as_uuid=True), nullable=False)
-    title = Column(String(500), nullable=False)
+    user_id = Column(UUID(as_uuid=True), nullable=True)  # ← DB allows NULL
+    title = Column(String, nullable=False)
     description = Column(Text, nullable=True)
-    start_time = Column(DateTime(timezone=True), nullable=False)
+    
+    # Added: date column (VARCHAR, NOT NULL, default='')
+    date = Column(String, nullable=False, default="")
+    
+    start_time = Column(DateTime(timezone=True), nullable=True)  # ← DB allows NULL
     end_time = Column(DateTime(timezone=True), nullable=True)
     is_all_day = Column(Boolean, nullable=False, default=False)
     is_shared = Column(Boolean, nullable=False, default=False)
-    color = Column(String(20), default="#8b5cf6")
+    color = Column(String, nullable=True)
 
-    event_type = Column(String(30), default="meeting")
-    location = Column(String(500), nullable=True)
-    is_virtual = Column(Boolean, default=False)
-    meeting_link = Column(String(1000), nullable=True)
-    recurrence = Column(String(20), nullable=True)
+    event_type = Column(String, nullable=False, default="meeting")
+    location = Column(String, nullable=True)
+    is_virtual = Column(Boolean, nullable=True, default=False)
+    meeting_link = Column(String, nullable=True)
+    recurrence = Column(String, nullable=True)
     recurrence_end = Column(Date, nullable=True)
     recurrence_parent = Column(UUID(as_uuid=True), nullable=True)
-    attendees = Column(JSONB, default=[])
+    attendees = Column(JSONB, nullable=True, default=[])
 
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    # Additional columns that exist in DB
+    objective_id = Column(UUID(as_uuid=True), nullable=True)
+    assigned_to = Column(UUID(as_uuid=True), nullable=True)
+    created_by = Column(UUID(as_uuid=True), nullable=True)
+    is_completed = Column(Boolean, nullable=False, default=False)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=True)
