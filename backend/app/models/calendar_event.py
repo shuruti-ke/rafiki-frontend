@@ -32,7 +32,7 @@ class CalendarEvent(Base):
     recurrence = Column(String, nullable=True)
     recurrence_end = Column(Date, nullable=True)
     recurrence_parent = Column(UUID(as_uuid=True), nullable=True)
-    attendees = Column(JSONB, nullable=True, default=[])
+    attendees = Column(JSONB, nullable=True, server_default="[]")
 
     # Additional columns that exist in DB
     objective_id = Column(UUID(as_uuid=True), nullable=True)
