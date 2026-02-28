@@ -1,52 +1,28 @@
-"""
-File: backend/app/schemas/calendar.py
-Calendar event schemas for Pydantic validation.
-"""
-
-from pydantic import BaseModel, ConfigDict, Field
-from datetime import datetime, date
+from pydantic import BaseModel
 from typing import Optional
+from datetime import datetime, date
 from uuid import UUID
-
-
-# ── Colleague Response ──
-
-
-class ColleagueResponse(BaseModel):
-    id: str
-    name: str
-    email: str
-
-
-# ── Calendar Event Schemas ──
 
 
 class CalendarEventCreate(BaseModel):
     title: str
-    date: str = Field(default="")
     description: Optional[str] = None
-    start_time: Optional[datetime] = None
+    start_time: datetime
     end_time: Optional[datetime] = None
     is_all_day: bool = False
     is_shared: bool = False
-    color: Optional[str] = None
+    color: str = "#8b5cf6"
     event_type: str = "meeting"
     location: Optional[str] = None
     is_virtual: bool = False
     meeting_link: Optional[str] = None
     recurrence: Optional[str] = None
     recurrence_end: Optional[date] = None
-    attendees: list = Field(default_factory=list)
-    
-    # Additional fields that exist in DB
-    objective_id: Optional[UUID] = None
-    assigned_to: Optional[UUID] = None
-    is_completed: bool = False
+    attendees: list[dict] = []
 
 
 class CalendarEventUpdate(BaseModel):
     title: Optional[str] = None
-    date: Optional[str] = None
     description: Optional[str] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
@@ -59,12 +35,7 @@ class CalendarEventUpdate(BaseModel):
     meeting_link: Optional[str] = None
     recurrence: Optional[str] = None
     recurrence_end: Optional[date] = None
-    attendees: Optional[list] = None
-    
-    # Additional fields that exist in DB
-    objective_id: Optional[UUID] = None
-    assigned_to: Optional[UUID] = None
-    is_completed: Optional[bool] = None
+    attendees: Optional[list[dict]] = None
 
 
 class CalendarEventResponse(BaseModel):
@@ -72,29 +43,21 @@ class CalendarEventResponse(BaseModel):
     org_id: UUID
     user_id: Optional[UUID] = None
     title: str
-    date: str
     description: Optional[str] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
-    is_all_day: bool
-    is_shared: bool
-    color: Optional[str] = None
-    event_type: str
+    is_all_day: bool = False
+    is_shared: bool = False
+    color: Optional[str] = "#8b5cf6"
+    event_type: Optional[str] = "meeting"
     location: Optional[str] = None
-    is_virtual: bool
+    is_virtual: Optional[bool] = False
     meeting_link: Optional[str] = None
     recurrence: Optional[str] = None
     recurrence_end: Optional[date] = None
     recurrence_parent: Optional[UUID] = None
-    attendees: list = Field(default_factory=list)
-    
-    # Additional fields that exist in DB
-    objective_id: Optional[UUID] = None
-    assigned_to: Optional[UUID] = None
-    created_by: Optional[UUID] = None
-    is_completed: bool
-    
-    created_at: datetime
+    attendees: Optional[list[dict]] = []
+    created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = {"from_attributes": True}
