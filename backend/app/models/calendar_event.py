@@ -1,3 +1,5 @@
+import uuid
+
 from sqlalchemy import Column, String, Text, Boolean, DateTime, Date
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import UUID, JSONB
@@ -8,7 +10,7 @@ from app.database import Base
 class CalendarEvent(Base):
     __tablename__ = "calendar_events"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, server_default=func.gen_random_uuid())
     org_id = Column(UUID(as_uuid=True), nullable=False)
     user_id = Column(UUID(as_uuid=True), nullable=False)
     title = Column(String(500), nullable=False)
