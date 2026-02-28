@@ -1,7 +1,21 @@
-from pydantic import BaseModel
-from typing import Optional
+"""Calendar event schemas."""
+
+from pydantic import BaseModel, ConfigDict
 from datetime import datetime, date
+from typing import Optional, List
 from uuid import UUID
+
+
+# ── Colleague Response ──
+
+
+class ColleagueResponse(BaseModel):
+    id: str
+    name: str
+    email: str
+
+
+# ── Calendar Event Schemas ──
 
 
 class CalendarEventCreate(BaseModel):
@@ -18,7 +32,7 @@ class CalendarEventCreate(BaseModel):
     meeting_link: Optional[str] = None
     recurrence: Optional[str] = None
     recurrence_end: Optional[date] = None
-    attendees: list[dict] = []
+    attendees: Optional[List[dict]] = []
 
 
 class CalendarEventUpdate(BaseModel):
@@ -35,7 +49,7 @@ class CalendarEventUpdate(BaseModel):
     meeting_link: Optional[str] = None
     recurrence: Optional[str] = None
     recurrence_end: Optional[date] = None
-    attendees: Optional[list[dict]] = None
+    attendees: Optional[List[dict]] = None
 
 
 class CalendarEventResponse(BaseModel):
@@ -49,15 +63,15 @@ class CalendarEventResponse(BaseModel):
     is_all_day: bool
     is_shared: bool
     color: str
-    event_type: Optional[str] = "meeting"
+    event_type: str
     location: Optional[str] = None
-    is_virtual: Optional[bool] = False
+    is_virtual: bool
     meeting_link: Optional[str] = None
     recurrence: Optional[str] = None
     recurrence_end: Optional[date] = None
     recurrence_parent: Optional[UUID] = None
-    attendees: Optional[list[dict]] = []
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    attendees: Optional[List[dict]] = []
+    created_at: datetime
+    updated_at: datetime
 
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(from_attributes=True)
