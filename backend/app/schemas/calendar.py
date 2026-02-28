@@ -3,9 +3,9 @@ File: backend/app/schemas/calendar.py
 Calendar event schemas for Pydantic validation.
 """
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from datetime import datetime, date
-from typing import Optional, List
+from typing import Optional
 from uuid import UUID
 
 
@@ -23,7 +23,7 @@ class ColleagueResponse(BaseModel):
 
 class CalendarEventCreate(BaseModel):
     title: str
-    date: str = ""  # VARCHAR NOT NULL DEFAULT ''
+    date: str = Field(default="")
     description: Optional[str] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
@@ -36,7 +36,7 @@ class CalendarEventCreate(BaseModel):
     meeting_link: Optional[str] = None
     recurrence: Optional[str] = None
     recurrence_end: Optional[date] = None
-    attendees: Optional[List[dict]] = []
+    attendees: list = Field(default_factory=list)
     
     # Additional fields that exist in DB
     objective_id: Optional[UUID] = None
@@ -59,7 +59,7 @@ class CalendarEventUpdate(BaseModel):
     meeting_link: Optional[str] = None
     recurrence: Optional[str] = None
     recurrence_end: Optional[date] = None
-    attendees: Optional[List[dict]] = None
+    attendees: Optional[list] = None
     
     # Additional fields that exist in DB
     objective_id: Optional[UUID] = None
@@ -86,7 +86,7 @@ class CalendarEventResponse(BaseModel):
     recurrence: Optional[str] = None
     recurrence_end: Optional[date] = None
     recurrence_parent: Optional[UUID] = None
-    attendees: Optional[List[dict]] = []
+    attendees: list = Field(default_factory=list)
     
     # Additional fields that exist in DB
     objective_id: Optional[UUID] = None
