@@ -6,6 +6,7 @@ import "./EmployeeLayout.css";
 const links = [
   { to: "/chat", label: "Chat" },
   { to: "/knowledge-base", label: "Knowledge Base" },
+  { to: "/my-documents", label: "My Documents" },
   { to: "/announcements", label: "Announcements" },
   { to: "/guided-paths", label: "Guided Paths" },
   { to: "/objectives", label: "Objectives" },

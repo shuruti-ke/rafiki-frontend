@@ -17,6 +17,7 @@ import EmployeeAnnouncements from "./pages/EmployeeAnnouncements.jsx";
 import GuidedPathExplore from "./pages/GuidedPathExplore.jsx";
 import GuidedPathRunner from "./pages/GuidedPathRunner.jsx";
 import ObjectivesPage from "./pages/ObjectivesPage.jsx";
+import MyDocumentsPage from "./pages/MyDocumentsPage.jsx";
 import ManagerLayout from "./components/ManagerLayout.jsx";
 import ManagerDashboard from "./pages/ManagerDashboard.jsx";
 import ManagerTeam from "./pages/ManagerTeam.jsx";
@@ -51,6 +52,7 @@ export default function App() {
           <Route path="/guided-paths" element={<GuidedPathExplore />} />
           <Route path="/guided-paths/:moduleId" element={<GuidedPathRunner />} />
           <Route path="/objectives" element={<ObjectivesPage />} />
+          <Route path="/my-documents" element={<MyDocumentsPage />} />
         </Route>
 
         {/* Super Admin Portal */}

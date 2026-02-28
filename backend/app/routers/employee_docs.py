@@ -70,14 +70,18 @@ def upload_my_document(
     file: UploadFile = File(...),
     doc_type: str = Query(default="other"),
     title: str = Query(...),
+    visibility: str = Query(default="private"),
     db: Session = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org_id),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
     """
     Employee uploads a personal document for themselves.
-    HR/Super will still have access because privileged roles can access any user's docs.
+    visibility: 'private' (only self) or 'hr_visible' (HR admin can also see).
     """
+    if visibility not in ("private", "hr_visible"):
+        visibility = "private"
+
     file_path, original_name, size = save_upload(file, subfolder="employee_docs")
 
     doc = EmployeeDocument(
@@ -90,6 +94,7 @@ def upload_my_document(
         mime_type=file.content_type or "application/octet-stream",
         file_size=size,
         uploaded_by=current_user_id,
+        visibility=visibility,
     )
     db.add(doc)
     db.commit()
@@ -146,6 +151,36 @@ def delete_my_document(
         {"user_id": str(current_user_id)},
     )
     return {"ok": True, "message": "Document deleted"}
+
+
+@router.put("/me/{doc_id}/visibility", response_model=EmployeeDocumentResponse)
+def update_my_document_visibility(
+    doc_id: uuid.UUID,
+    visibility: str = Query(...),
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    """Employee updates visibility of their own document: 'private' or 'hr_visible'."""
+    if visibility not in ("private", "hr_visible"):
+        raise HTTPException(status_code=400, detail="visibility must be 'private' or 'hr_visible'")
+
+    doc = (
+        db.query(EmployeeDocument)
+        .filter(
+            EmployeeDocument.id == doc_id,
+            EmployeeDocument.org_id == org_id,
+            EmployeeDocument.user_id == current_user_id,
+        )
+        .first()
+    )
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    doc.visibility = visibility
+    db.commit()
+    db.refresh(doc)
+    return doc
 
 
 @router.get("/{doc_id}/download")

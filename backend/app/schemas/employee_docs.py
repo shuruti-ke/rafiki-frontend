@@ -18,6 +18,7 @@ class EmployeeDocumentResponse(BaseModel):
     mime_type: str
     file_size: int
     uploaded_by: uuid.UUID
+    visibility: str = "private"
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

@@ -1,0 +1,190 @@
+.mydoc-page { max-width: 900px; }
+
+.mydoc-header { margin-bottom: 20px; }
+.mydoc-header h1 { font-weight: 800; font-size: 22px; }
+.mydoc-sub { color: var(--muted); font-size: 13px; margin-top: 4px; }
+
+.mydoc-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 4px;
+}
+.mydoc-tab {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  padding: 8px 16px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  border-radius: 8px 8px 0 0;
+  transition: all 0.15s;
+}
+.mydoc-tab:hover { color: var(--text); background: rgba(255,255,255,0.06); }
+.mydoc-tab.active {
+  color: var(--accent);
+  background: rgba(139, 92, 246, 0.08);
+  border-bottom: 2px solid var(--accent);
+}
+
+.mydoc-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.mydoc-section-head h2 { font-size: 16px; font-weight: 700; }
+
+.mydoc-upload-form {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.mydoc-upload-form input,
+.mydoc-upload-form select {
+  width: 100%;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 10px;
+  outline: none;
+}
+
+.mydoc-visibility-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.mydoc-visibility-label {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.mydoc-vis-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  transition: all 0.15s;
+}
+.mydoc-vis-option.selected {
+  border-color: var(--accent);
+  background: rgba(139, 92, 246, 0.1);
+}
+.mydoc-vis-option input[type="radio"] { display: none; }
+
+.mydoc-table {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.mydoc-table-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--panel);
+  font-size: 14px;
+}
+.mydoc-table-row:hover { background: rgba(255,255,255,0.03); }
+.mydoc-row-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+.mydoc-row-info strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mydoc-meta { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.mydoc-row-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.mydoc-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(148,163,184,.12);
+  color: var(--muted);
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.mydoc-vis-btn {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--muted);
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.mydoc-vis-btn.vis-private {
+  border-color: var(--border);
+  color: var(--muted);
+}
+.mydoc-vis-btn.vis-hr {
+  border-color: rgba(139, 92, 246, 0.4);
+  color: var(--accent);
+  background: rgba(139, 92, 246, 0.08);
+}
+.mydoc-vis-btn:hover { opacity: 0.8; }
+
+.mydoc-hint {
+  margin-top: 16px;
+  font-size: 12px;
+  color: var(--muted);
+  padding: 10px 14px;
+  background: var(--panel);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.mydoc-payslip-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.mydoc-payslip-info h3 { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+.mydoc-payslip-info p { font-size: 13px; color: var(--muted); }
+.mydoc-payslip-amounts { display: flex; gap: 16px; align-items: center; }
+.mydoc-payslip-amount { text-align: center; }
+.mydoc-payslip-amount label {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  font-weight: 700;
+}
+.mydoc-payslip-amount span { display: block; font-size: 15px; font-weight: 700; }
+
+.mydoc-empty {
+  padding: 40px 16px;
+  text-align: center;
+  color: var(--muted);
+}
