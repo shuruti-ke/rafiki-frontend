@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { API, authFetch, authFetch } from "../api.js";
+import { API, authFetch } from "../api.js";
 import "./ManagerDashboard.css";
 
 export default function ManagerDashboard() {
