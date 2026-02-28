@@ -74,6 +74,49 @@ def list_events(
     return q.order_by(CalendarEvent.start_time).all()
 
 
+@router.get("/colleagues")
+def list_colleagues(
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    db: Session = Depends(get_db),
+):
+    users = db.query(User).filter(
+        User.org_id == org_id,
+        User.is_active == True,
+    ).all()
+    return [
+        {
+            "id": str(u.user_id),
+            "name": u.name or u.email or "Unknown",
+            "email": u.email or "",
+        }
+        for u in users
+    ]
+
+
+@router.get("/date/{date_str}", response_model=list[CalendarEventResponse])
+def events_for_date(
+    date_str: str,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    db: Session = Depends(get_db),
+):
+    try:
+        d = date.fromisoformat(date_str)
+    except ValueError:
+        raise HTTPException(400, "Invalid date format, use YYYY-MM-DD")
+
+    start = datetime(d.year, d.month, d.day)
+    end = start + timedelta(days=1)
+
+    return db.query(CalendarEvent).filter(
+        CalendarEvent.org_id == org_id,
+        or_(CalendarEvent.user_id == user_id, CalendarEvent.is_shared == True),
+        CalendarEvent.start_time >= start,
+        CalendarEvent.start_time < end,
+    ).order_by(CalendarEvent.start_time).all()
+
+
 @router.get("/{event_id}", response_model=CalendarEventResponse)
 def get_event(
     event_id: uuid.UUID,
@@ -182,44 +225,3 @@ def rsvp_event(
     return {"ok": True, "attendees": event.attendees}
 
 
-@router.get("/date/{date_str}", response_model=list[CalendarEventResponse])
-def events_for_date(
-    date_str: str,
-    user_id: uuid.UUID = Depends(get_current_user_id),
-    org_id: uuid.UUID = Depends(get_current_org_id),
-    db: Session = Depends(get_db),
-):
-    try:
-        d = date.fromisoformat(date_str)
-    except ValueError:
-        raise HTTPException(400, "Invalid date format, use YYYY-MM-DD")
-
-    start = datetime(d.year, d.month, d.day)
-    end = start + timedelta(days=1)
-
-    return db.query(CalendarEvent).filter(
-        CalendarEvent.org_id == org_id,
-        or_(CalendarEvent.user_id == user_id, CalendarEvent.is_shared == True),
-        CalendarEvent.start_time >= start,
-        CalendarEvent.start_time < end,
-    ).order_by(CalendarEvent.start_time).all()
-
-
-@router.get("/colleagues")
-def list_colleagues(
-    user_id: uuid.UUID = Depends(get_current_user_id),
-    org_id: uuid.UUID = Depends(get_current_org_id),
-    db: Session = Depends(get_db),
-):
-    users = db.query(User).filter(
-        User.org_id == org_id,
-        User.is_active == True,
-    ).all()
-    return [
-        {
-            "id": str(u.user_id),
-            "name": u.name or u.email or "Unknown",
-            "email": u.email or "",
-        }
-        for u in users
-    ]
