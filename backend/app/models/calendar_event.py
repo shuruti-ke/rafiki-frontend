@@ -17,7 +17,7 @@ class CalendarEvent(Base):
     description = Column(Text, nullable=True)
     
     # Added: date column (VARCHAR, NOT NULL, default='')
-    date = Column(String, nullable=False, server_default="")
+    date = Column(String, nullable=True, server_default="")
     
     start_time = Column(DateTime(timezone=True), nullable=True)  # ← DB allows NULL
     end_time = Column(DateTime(timezone=True), nullable=True)
