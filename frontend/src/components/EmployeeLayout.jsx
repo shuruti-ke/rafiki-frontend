@@ -33,6 +33,126 @@ function timeAgo(iso) {
   return `${d}d`;
 }
 
+/* ─── Payroll Approval in Messages ─── */
+function PayrollApprovalBlock({ payload, onAction }) {
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [showReject, setShowReject] = useState(false);
+  const [batchStatus, setBatchStatus] = useState(null);
+
+  useEffect(() => {
+    if (!payload.batch_id) return;
+    authFetch(`${API}/api/v1/payroll/batches/${payload.batch_id}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data?.status) setBatchStatus(data.status); })
+      .catch(() => {});
+  }, [payload.batch_id]);
+
+  const status = batchStatus || payload.batch_status;
+  const isActionable = status === "uploaded_needs_approval";
+
+  async function handleApprove() {
+    setBusy(true);
+    try {
+      const r = await authFetch(`${API}${payload.approve_endpoint}`, { method: "POST" });
+      const data = await r.json();
+      if (r.ok) { setDone("approved"); onAction && onAction(); }
+      else setDone("error:" + (data.detail || "Failed"));
+    } catch { setDone("error:Network error"); }
+    finally { setBusy(false); }
+  }
+
+  async function handleReject() {
+    setBusy(true);
+    try {
+      const r = await authFetch(
+        `${API}${payload.reject_endpoint}?reason=${encodeURIComponent(rejectReason)}`,
+        { method: "POST" }
+      );
+      const data = await r.json();
+      if (r.ok) { setDone("rejected"); onAction && onAction(); }
+      else setDone("error:" + (data.detail || "Failed"));
+    } catch { setDone("error:Network error"); }
+    finally { setBusy(false); }
+  }
+
+  const statusLabel = {
+    distributed: "Already distributed",
+    uploaded: "Already approved",
+    rejected: "Already rejected",
+    uploaded_needs_approval: null,
+  }[status];
+
+  return (
+    <div style={{ background: "rgba(139,92,246,0.08)", borderRadius: 8, padding: "8px 10px", marginTop: 4, fontSize: "0.8rem" }}>
+      <div style={{ fontWeight: 600, marginBottom: 4 }}>Payroll Approval</div>
+      <div style={{ color: "var(--muted)", marginBottom: 4 }}>
+        {payload.month} — {payload.filename}
+      </div>
+      {payload.download_url && (
+        <a href={payload.download_url} target="_blank" rel="noreferrer" style={{ color: "var(--accent)", fontSize: "0.75rem" }}>
+          Download
+        </a>
+      )}
+      {done === "approved" && <div style={{ color: "#34d399", marginTop: 4 }}>Approved</div>}
+      {done === "rejected" && <div style={{ color: "#f87171", marginTop: 4 }}>Rejected</div>}
+      {done?.startsWith("error:") && <div style={{ color: "#f87171", marginTop: 4 }}>{done.slice(6)}</div>}
+      {!done && !isActionable && statusLabel && (
+        <div style={{ color: "var(--muted)", marginTop: 4 }}>{statusLabel}</div>
+      )}
+      {!done && isActionable && !showReject && (
+        <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+          <button className="btn btnPrimary btnTiny" onClick={handleApprove} disabled={busy}>
+            {busy ? "…" : "Approve"}
+          </button>
+          <button className="btn btnGhost btnTiny" onClick={() => setShowReject(true)} disabled={busy}>
+            Reject
+          </button>
+        </div>
+      )}
+      {!done && isActionable && showReject && (
+        <div style={{ marginTop: 6 }}>
+          <input
+            style={{ width: "100%", padding: "4px 6px", borderRadius: 4, border: "1px solid var(--border)", background: "rgba(255,255,255,0.05)", color: "var(--text)", fontSize: "0.75rem", marginBottom: 4 }}
+            placeholder="Reason (optional)"
+            value={rejectReason}
+            onChange={e => setRejectReason(e.target.value)}
+          />
+          <div style={{ display: "flex", gap: 6 }}>
+            <button className="btn btnPrimary btnTiny" onClick={handleReject} disabled={busy}>
+              {busy ? "…" : "Confirm Reject"}
+            </button>
+            <button className="btn btnGhost btnTiny" onClick={() => setShowReject(false)} disabled={busy}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SidebarMessageContent({ content, onAction }) {
+  const marker = "[[PAYROLL_APPROVAL]]";
+  const endMarker = "[[/PAYROLL_APPROVAL]]";
+  const start = content.indexOf(marker);
+  if (start === -1) return <div style={{ whiteSpace: "pre-wrap" }}>{content}</div>;
+
+  const end = content.indexOf(endMarker, start);
+  const before = content.slice(0, start).trim();
+  const jsonStr = content.slice(start + marker.length, end === -1 ? undefined : end);
+  let payload = {};
+  try { payload = JSON.parse(jsonStr); } catch { /* fallback */ }
+
+  return (
+    <div>
+      {before && <div style={{ whiteSpace: "pre-wrap" }}>{before}</div>}
+      <PayrollApprovalBlock payload={payload} onAction={onAction} />
+    </div>
+  );
+}
+
 /* ─── Mini Calendar ─── */
 function MiniCalendar() {
   const today = new Date();
@@ -282,7 +402,7 @@ function SidebarMessages() {
                 {activeConvo.is_group && m.sender_id !== myId && (
                   <div className="emp-msg-sender">{sender?.name || "Unknown"}</div>
                 )}
-                <div>{m.content}</div>
+                <SidebarMessageContent content={m.content} onAction={() => loadThread(activeConvo.id)} />
                 <div className="emp-msg-time">{fmtTime(m.created_at)}</div>
               </div>
             );
