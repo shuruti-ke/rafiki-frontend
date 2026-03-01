@@ -140,14 +140,12 @@ function SidebarMessageContent({ content, onAction }) {
   if (start === -1) return <div style={{ whiteSpace: "pre-wrap" }}>{content}</div>;
 
   const end = content.indexOf(endMarker, start);
-  const before = content.slice(0, start).trim();
   const jsonStr = content.slice(start + marker.length, end === -1 ? undefined : end);
   let payload = {};
   try { payload = JSON.parse(jsonStr); } catch { /* fallback */ }
 
   return (
     <div>
-      {before && <div style={{ whiteSpace: "pre-wrap" }}>{before}</div>}
       <PayrollApprovalBlock payload={payload} onAction={onAction} />
     </div>
   );
@@ -481,7 +479,7 @@ function SidebarMessages() {
             </div>
             <div className="emp-msg-item-preview">
               {c.unread_count > 0 && <span className="emp-msg-unread">{c.unread_count}</span>}
-              {c.last_message || "No messages"}
+              {(c.last_message || "No messages").replace(/\[\[PAYROLL_APPROVAL\]\][\s\S]*?\[\[\/PAYROLL_APPROVAL\]\]/g, "[Payroll approval request]").trim()}
             </div>
           </div>
         ))}
