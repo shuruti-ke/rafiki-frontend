@@ -15,7 +15,7 @@ from app.services.prompt import assemble_prompt
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(tags=["Chat"])
+router = APIRouter(prefix="/api/v1", tags=["Chat"])
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929").strip()
