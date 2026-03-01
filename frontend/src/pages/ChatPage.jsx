@@ -23,10 +23,18 @@ export default function ChatPage() {
     setLoading(true);
 
     try {
+      // Build conversation history (skip the initial greeting, map roles)
+      const history = msgs
+        .filter((m, i) => !(i === 0 && m.role === "rafiki"))
+        .map(m => ({
+          role: m.role === "you" ? "user" : "assistant",
+          content: m.text,
+        }));
+
       const res = await authFetch(`${API}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: trimmed }),
+        body: JSON.stringify({ message: trimmed, history }),
       });
       const data = await res.json();
       setMsgs((m) => [...m, { role: "rafiki", text: data.reply ?? "..." }]);

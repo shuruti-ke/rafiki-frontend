@@ -26,8 +26,13 @@ PROJECT_MANIFEST = BACKEND_DIR / "uploads" / "project_files.json"
 ALLOWED_TEXT_EXTS = {".txt", ".md", ".py", ".js", ".ts", ".json", ".csv", ".html", ".css", ".yml", ".yaml"}
 MAX_CONTEXT_CHARS_PER_FILE = 8000
 MAX_TOTAL_CONTEXT_CHARS = 20000
+class HistoryMessage(BaseModel):
+    role: str  # "user" or "assistant"
+    content: str
+
 class ChatRequest(BaseModel):
     message: str
+    history: Optional[List[HistoryMessage]] = None
     context_files: Optional[List[str]] = None
     model: Optional[str] = None
 
@@ -120,13 +125,20 @@ def chat(
             "x-api-key": ANTHROPIC_API_KEY,
             "anthropic-version": "2023-06-01",
         }
+        # Build messages array with conversation history
+        messages = []
+        if req.history:
+            # Limit to last 20 turns to stay within token limits
+            for h in req.history[-20:]:
+                role = "assistant" if h.role == "assistant" else "user"
+                messages.append({"role": role, "content": h.content})
+        messages.append({"role": "user", "content": final_user_message})
+
         payload = {
             "model": chosen,
             "max_tokens": 4096,
             "system": system_prompt,
-            "messages": [
-                {"role": "user", "content": final_user_message},
-            ],
+            "messages": messages,
         }
 
         r = httpx.post("https://api.anthropic.com/v1/messages", headers=headers, json=payload, timeout=60)
