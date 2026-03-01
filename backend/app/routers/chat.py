@@ -7,8 +7,10 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional, List
+from uuid import UUID
 from sqlalchemy.orm import Session
 from app.database import get_db
+from app.dependencies import get_current_user_id, get_current_org_id
 from app.services.prompt import assemble_prompt
 
 logger = logging.getLogger(__name__)
@@ -24,9 +26,6 @@ PROJECT_MANIFEST = BACKEND_DIR / "uploads" / "project_files.json"
 ALLOWED_TEXT_EXTS = {".txt", ".md", ".py", ".js", ".ts", ".json", ".csv", ".html", ".css", ".yml", ".yaml"}
 MAX_CONTEXT_CHARS_PER_FILE = 8000
 MAX_TOTAL_CONTEXT_CHARS = 20000
-DEMO_ORG_ID = 1
-
-
 class ChatRequest(BaseModel):
     message: str
     context_files: Optional[List[str]] = None
@@ -82,7 +81,12 @@ def _read_project_manifest():
 
 
 @router.post("/chat", response_model=ChatResponse)
-def chat(req: ChatRequest, db: Session = Depends(get_db)):
+def chat(
+    req: ChatRequest,
+    db: Session = Depends(get_db),
+    user_id: UUID = Depends(get_current_user_id),
+    org_id: UUID = Depends(get_current_org_id),
+):
     try:
         project_files = _read_project_manifest()
         requested = req.context_files or []
@@ -101,14 +105,15 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)):
         if len(final_user_message) > MAX_USER_CHARS_HARD:
             final_user_message = final_user_message[:MAX_USER_CHARS_HARD] + "\n\n[TRUNCATED]"
 
-        # Build system prompt with KB context
+        # Build personalized system prompt with full context
         system_prompt = assemble_prompt(
             db=db,
-            org_id=DEMO_ORG_ID,
+            org_id=org_id,
+            user_id=user_id,
             user_message=content,
         )
 
-        logger.info("model=%s  chars=%d", chosen, len(final_user_message))
+        logger.info("model=%s  user=%s  msg_chars=%d  system_chars=%d", chosen, user_id, len(final_user_message), len(system_prompt))
 
         headers = {
             "Content-Type": "application/json",

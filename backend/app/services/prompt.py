@@ -1,61 +1,85 @@
+"""
+Rafiki@Work — Enhanced System Prompt Builder
+
+Integrates knowledge base, employee profile, objectives, timesheets,
+employee documents, and interaction memory into a personalized system prompt.
+"""
+
 import logging
 from sqlalchemy.orm import Session
-from app.models.document import Document
-from app.services.knowledge_search import search_chunks, format_kb_context
+from app.services.user_context import build_user_context
 
 logger = logging.getLogger(__name__)
 
-RAFIKI_SYSTEM_PROMPT = """You are Rafiki, an AI workplace wellbeing assistant created by Shoulder2LeanOn.
-You provide supportive, evidence-based guidance on workplace mental health and wellbeing.
+
+RAFIKI_SYSTEM_PROMPT = """You are Rafiki, an AI workplace wellbeing and productivity assistant created by Shoulder2LeanOn.
+You provide supportive, evidence-based guidance on workplace mental health, wellbeing, performance, and career development.
 You are warm, empathetic, and culturally aware — especially attuned to East African workplace contexts.
 
+IMPORTANT — PERSONALIZATION:
+You have detailed information about the employee you are speaking with (provided below).
+USE this information to give PERSONALIZED, SPECIFIC advice — never generic responses.
+When you know their name, use it naturally. When you know their objectives, reference them.
+When you know their time patterns, factor that into your guidance.
+When the Knowledge Base has relevant policies or documents, cite them by name.
+
 Key principles:
-- Be supportive and non-judgmental
-- Provide evidence-based wellbeing guidance
+- Be warm, supportive, and non-judgmental — address employees by name when known
+- Give SPECIFIC advice based on what you know about them, their role, their goals
+- Reference their actual objectives and suggest concrete next steps
+- If their timesheet shows patterns (high meeting load, low utilization), proactively address them
+- Reference organization Knowledge Base documents when relevant, citing the source document name
 - Respect privacy and confidentiality
 - Escalate crisis situations appropriately
-- Reference organization knowledge base documents when relevant, citing sources
+- If you don't have specific information about something, say so rather than making assumptions
 
-When referencing information from the Knowledge Base, always cite the source document name."""
-
-
-def _build_kb_context(db: Session, org_id: int, user_message: str) -> str:
-    """Search document chunks matching the user's message and format as context."""
-    if not user_message:
-        return ""
-
-    try:
-        chunks = search_chunks(db, org_id, user_message, limit=5)
-        if not chunks:
-            return ""
-
-        doc_ids = list({c["document_id"] for c in chunks})
-        docs = db.query(Document).filter(Document.id.in_(doc_ids)).all()
-        doc_map = {d.id: d for d in docs}
-
-        return format_kb_context(chunks, doc_map)
-    except Exception as e:
-        logger.error("KB context build failed: %s", e)
-        return ""
+When referencing KB documents, cite them like: "According to [Document Title]..."
+When discussing objectives, reference specific key results and progress percentages.
+When discussing workload, reference actual timesheet data rather than guessing."""
 
 
 def assemble_prompt(
     db: Session | None = None,
     org_id: int = 1,
+    user_id=None,
     user_context: str = "",
     user_message: str | None = None,
 ) -> str:
-    """Assemble the full system prompt with optional KB context."""
+    """Assemble the full system prompt with personalized user context."""
     parts = [RAFIKI_SYSTEM_PROMPT]
 
-    # User context (org-specific customization)
     if user_context:
-        parts.append(f"\n\nUSER CONTEXT:\n{user_context}")
+        parts.append(f"\nORGANIZATION CONTEXT:\n{user_context}")
 
-    # Knowledge base context (from document search)
-    if db and user_message:
-        kb_context = _build_kb_context(db, org_id, user_message)
-        if kb_context:
-            parts.append(f"\n\n{kb_context}")
+    if db:
+        try:
+            rich_context = build_user_context(
+                db=db,
+                org_id=org_id,
+                user_id=user_id,
+                user_message=user_message or "",
+            )
+            if rich_context:
+                parts.append(
+                    "\n══════════════════════════════════════\n"
+                    "EMPLOYEE CONTEXT (use this to personalize your responses):\n"
+                    "══════════════════════════════════════\n"
+                    + rich_context
+                )
+        except Exception as e:
+            logger.error("Failed to build user context: %s", e)
+
+    parts.append(
+        "\n══════════════════════════════════════\n"
+        "RESPONSE GUIDELINES:\n"
+        "══════════════════════════════════════\n"
+        "- Address the employee by name if known\n"
+        "- Reference specific objectives/KRs when discussing goals or performance\n"
+        "- Reference specific KB documents when answering policy/procedure questions\n"
+        "- Flag any concerning patterns you notice (high stress indicators, low utilization, overwork)\n"
+        "- Offer actionable, specific suggestions — not generic advice\n"
+        "- If the employee seems to be struggling, be proactive about support resources\n"
+        "- Keep responses conversational and supportive, not like a report"
+    )
 
     return "\n".join(parts)
