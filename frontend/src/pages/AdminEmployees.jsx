@@ -1,46 +1,64 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
+import { API, authFetch } from "../api.js";
 
 export default function AdminEmployees() {
-  const [searchId, setSearchId] = useState("");
+  const [search, setSearch] = useState("");
+  const [employees, setEmployees] = useState([]);
+
+  useEffect(() => {
+    authFetch(`${API}/api/v1/employees/`)
+      .then(r => r.ok ? r.json() : [])
+      .then(setEmployees)
+      .catch(() => {});
+  }, []);
+
+  const filtered = search.trim()
+    ? employees.filter(e => {
+        const u = e.user || {};
+        const q = search.toLowerCase();
+        return (u.name || "").toLowerCase().includes(q) ||
+               (u.email || "").toLowerCase().includes(q) ||
+               (u.user_id || "").toLowerCase().includes(q);
+      })
+    : employees;
 
   return (
-    <div style={{ maxWidth: 600 }}>
+    <div style={{ maxWidth: 700 }}>
       <h1 style={{ fontWeight: 800, fontSize: 22, marginBottom: 8 }}>Employee Management</h1>
       <p style={{ color: "var(--muted)", fontSize: 14, marginBottom: 20 }}>
         View and manage employee documents, evaluations, and disciplinary records.
       </p>
 
-      <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
-        <input
-          className="search"
-          placeholder="Enter employee ID..."
-          value={searchId}
-          onChange={(e) => setSearchId(e.target.value)}
-          style={{ flex: 1 }}
-        />
-        {searchId && (
-          <Link to={`/admin/employees/${searchId}`} className="btn btnPrimary">
-            View Profile
-          </Link>
-        )}
-      </div>
+      <input
+        className="search"
+        placeholder="Search by name, email, or ID..."
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        style={{ width: "100%", marginBottom: 16, boxSizing: "border-box" }}
+      />
 
-      <p style={{ color: "var(--muted)", fontSize: 13 }}>
-        Enter an employee user ID to manage their profile, or use the direct links below for demo accounts.
-      </p>
+      {filtered.length === 0 && (
+        <p style={{ color: "var(--muted)", fontSize: 13 }}>
+          {employees.length === 0 ? "No employees found." : "No matches."}
+        </p>
+      )}
 
-      <div style={{ display: "grid", gap: 8, marginTop: 16 }}>
-        {[1, 2, 3].map((id) => (
-          <Link
-            key={id}
-            to={`/admin/employees/${id}`}
-            className="btn"
-            style={{ textAlign: "left", textDecoration: "none" }}
-          >
-            Employee #{id}
-          </Link>
-        ))}
+      <div style={{ display: "grid", gap: 8 }}>
+        {filtered.map((e) => {
+          const u = e.user || {};
+          return (
+            <Link
+              key={u.user_id}
+              to={`/admin/employees/${u.user_id}`}
+              className="btn"
+              style={{ textAlign: "left", textDecoration: "none", display: "flex", justifyContent: "space-between", alignItems: "center" }}
+            >
+              <span>{u.name || u.email || "Unknown"}</span>
+              <span style={{ color: "var(--muted)", fontSize: 12 }}>{u.role || ""} {u.department ? `· ${u.department}` : ""}</span>
+            </Link>
+          );
+        })}
       </div>
     </div>
   );
