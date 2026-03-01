@@ -22,6 +22,7 @@ export default function CalendarPage() {
   const [colleagues, setColleagues] = useState([]);
 
   const currentUser = JSON.parse(localStorage.getItem("rafiki_user") || "{}");
+  const currentUserId = currentUser.user_id || currentUser.id;
 
   const loadEvents = async () => {
     const start = new Date(year, month, 1).toISOString();
@@ -136,8 +137,8 @@ export default function CalendarPage() {
           </div>
           {dayEvents.length === 0 && <div className="calp-detail-empty" style={{marginTop:"0.75rem"}}>No events this day</div>}
           {dayEvents.map(e => {
-            const myRsvp = (e.attendees||[]).find(a => String(a.id) === String(currentUser.id));
-            const isOwner = String(e.user_id) === String(currentUser.id);
+            const myRsvp = (e.attendees||[]).find(a => String(a.id) === String(currentUserId));
+            const isOwner = String(e.user_id) === String(currentUserId);
             return (
               <div key={e.id} className="calp-event-card" style={{cursor:"pointer"}} onClick={() => openEdit(e)}>
                 <div className="calp-event-color" style={{background: EVENT_COLORS[e.event_type] || e.color || "#8b5cf6"}} />
@@ -186,7 +187,7 @@ export default function CalendarPage() {
         <EventModal
           event={editEvent}
           colleagues={colleagues}
-          currentUser={currentUser}
+          currentUserId={currentUserId}
           selectedDate={selectedDay ? fmtDate(year,month,selectedDay) : null}
           onClose={() => setShowModal(false)}
           onSaved={() => { setShowModal(false); loadEvents(); }}
@@ -262,7 +263,7 @@ function AttendeePicker({ colleagues, selected, onChange, currentUserId }) {
 }
 
 /* ─── Event Modal ─── */
-function EventModal({ event, colleagues, currentUser, selectedDate, onClose, onSaved }) {
+function EventModal({ event, colleagues, currentUserId, selectedDate, onClose, onSaved }) {
   const isEdit = !!event;
   const [title, setTitle] = useState(event?.title || "");
   const [description, setDescription] = useState(event?.description || "");
@@ -278,7 +279,7 @@ function EventModal({ event, colleagues, currentUser, selectedDate, onClose, onS
   const [attendees, setAttendees] = useState(event?.attendees || []);
   const [saving, setSaving] = useState(false);
 
-  const isOwner = !event || String(event.user_id) === String(currentUser.id);
+  const isOwner = !event || String(event.user_id) === String(currentUserId);
 
   const handleSave = async () => {
     if (!title.trim() || !isOwner) return;
@@ -381,7 +382,7 @@ function EventModal({ event, colleagues, currentUser, selectedDate, onClose, onS
               colleagues={colleagues}
               selected={attendees}
               onChange={setAttendees}
-              currentUserId={currentUser.id}
+              currentUserId={currentUserId}
             />
           ) : (
             <div style={{fontSize:"0.8rem",color:"var(--muted)"}}>
