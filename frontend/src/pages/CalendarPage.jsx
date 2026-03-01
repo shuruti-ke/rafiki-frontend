@@ -149,13 +149,13 @@ export default function CalendarPage() {
                   )}
                 </div>
                 <div className="calp-event-actions">
-                  {e.user_id === currentUser.id && (
+                  {String(e.user_id) === String(currentUser.id) && (
                     <>
                       <button onClick={() => openEdit(e)}>Edit</button>
                       <button onClick={() => handleDeleteEvent(e.id)}>Del</button>
                     </>
                   )}
-                  {e.user_id !== currentUser.id && (
+                  {String(e.user_id) !== String(currentUser.id) && (
                     <>
                       <button onClick={() => handleRSVP(e.id,"accepted")}>Accept</button>
                       <button onClick={() => handleRSVP(e.id,"declined")}>Decline</button>
