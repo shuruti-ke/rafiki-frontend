@@ -1,0 +1,191 @@
+.adash-wrap { max-width: 960px; }
+
+.adash-header { margin-bottom: 24px; }
+.adash-header h1 { font-weight: 800; font-size: 22px; margin: 0 0 4px; }
+.adash-header p { color: var(--muted); font-size: 14px; margin: 0; }
+
+/* ── KPI Cards ── */
+.adash-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 28px;
+}
+
+.adash-kpi {
+  background: var(--card, #fff);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 14px 14px;
+  position: relative;
+  overflow: hidden;
+}
+
+.adash-kpi::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: var(--kpi-color, var(--accent));
+}
+
+.adash-kpi-value {
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1.1;
+  margin-bottom: 2px;
+}
+
+.adash-kpi-label {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* ── Charts Section ── */
+.adash-charts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.adash-chart {
+  background: var(--card, #fff);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+}
+
+.adash-chart-title {
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+/* Horizontal bar chart */
+.adash-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.adash-bar-label {
+  font-size: 11px;
+  width: 100px;
+  flex-shrink: 0;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.adash-bar-track {
+  flex: 1;
+  height: 18px;
+  background: rgba(139, 92, 246, 0.06);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+
+.adash-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: var(--accent);
+  min-width: 2px;
+  transition: width 0.4s ease;
+}
+
+.adash-bar-value {
+  font-size: 11px;
+  font-weight: 600;
+  width: 40px;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+/* Segmented status bar */
+.adash-seg {
+  display: flex;
+  height: 24px;
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.adash-seg-part {
+  height: 100%;
+  min-width: 2px;
+  transition: width 0.4s ease;
+}
+
+.adash-seg-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.adash-seg-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+}
+
+.adash-seg-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+/* ── Quick Links ── */
+.adash-links {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.adash-link {
+  display: block;
+  background: var(--card, #fff);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s;
+}
+
+.adash-link:hover {
+  border-color: var(--accent);
+}
+
+.adash-link strong {
+  font-size: 13px;
+  display: block;
+  margin-bottom: 2px;
+}
+
+.adash-link p {
+  font-size: 11px;
+  color: var(--muted);
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* Loading / error states */
+.adash-loading {
+  text-align: center;
+  color: var(--muted);
+  padding: 40px 0;
+  font-size: 13px;
+}
+
+@media (max-width: 700px) {
+  .adash-charts { grid-template-columns: 1fr; }
+  .adash-kpis { grid-template-columns: repeat(2, 1fr); }
+}

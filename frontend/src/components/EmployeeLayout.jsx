@@ -4,6 +4,7 @@ import { API, authFetch } from "../api.js";
 import "./EmployeeLayout.css";
 
 const links = [
+  { to: "/dashboard", label: "Home" },
   { to: "/chat", label: "Chat" },
   { to: "/knowledge-base", label: "Knowledge Base" },
   { to: "/my-documents", label: "My Documents" },

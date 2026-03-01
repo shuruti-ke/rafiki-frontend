@@ -20,6 +20,7 @@ import ObjectivesPage from "./pages/ObjectivesPage.jsx";
 import MyDocumentsPage from "./pages/MyDocumentsPage.jsx";
 import CalendarPage from "./pages/CalendarPage.jsx";
 import TimesheetPage from "./pages/TimesheetPage.jsx";
+import EmployeeDashboard from "./pages/EmployeeDashboard.jsx";
 import ManagerLayout from "./components/ManagerLayout.jsx";
 import ManagerDashboard from "./pages/ManagerDashboard.jsx";
 import ManagerTeam from "./pages/ManagerTeam.jsx";
@@ -48,6 +49,7 @@ export default function App() {
 
         {/* Employee pages — shared layout with nav */}
         <Route element={<EmployeeLayout />}>
+          <Route path="/dashboard" element={<EmployeeDashboard />} />
           <Route path="/chat" element={<ChatPage />} />
           <Route path="/knowledge-base" element={<EmployeeKnowledgeBase />} />
           <Route path="/announcements" element={<EmployeeAnnouncements />} />

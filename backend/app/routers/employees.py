@@ -15,10 +15,18 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
+from sqlalchemy import func
+
 from app.database import get_db
-from app.dependencies import get_current_org_id, require_admin
+from app.dependencies import get_current_org_id, require_admin, require_manager
 from app.models.user import User  # users_legacy (UUID)
 from app.models.employee_profile import EmployeeProfile
+from app.models.timesheet import TimesheetEntry
+from app.models.objective import Objective
+from app.models.calendar_event import CalendarEvent
+from app.models.document import Document
+from app.models.employee_document import EmployeeDocument
+from app.models.announcement import Announcement
 from app.services.auth import get_password_hash
 
 router = APIRouter(prefix="/api/v1/employees", tags=["Employee Management"])
@@ -482,6 +490,123 @@ async def batch_upload_employees(
         "skipped": results["skipped"],
         "errors": results["errors"],
     }
+
+
+@router.get("/analytics")
+def employee_analytics(
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    _role: str = Depends(require_manager),
+):
+    """Org-wide analytics for HR admin / manager dashboard."""
+    now = datetime.utcnow()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    thirty_days_ago = now - __import__("datetime").timedelta(days=30)
+
+    result = {}
+
+    # ── Employees ──
+    try:
+        users = db.query(User).filter(User.org_id == org_id).all()
+        active = [u for u in users if getattr(u, "is_active", True)]
+        dept_counts = {}
+        role_counts = {}
+        new_this_month = 0
+        for u in users:
+            d = getattr(u, "department", None) or "Unassigned"
+            dept_counts[d] = dept_counts.get(d, 0) + 1
+            r = str(u.role) if u.role else "user"
+            role_counts[r] = role_counts.get(r, 0) + 1
+            if getattr(u, "created_at", None) and u.created_at >= month_start:
+                new_this_month += 1
+        result["employees"] = {
+            "total": len(users),
+            "active": len(active),
+            "by_department": dept_counts,
+            "by_role": role_counts,
+            "new_this_month": new_this_month,
+        }
+    except Exception:
+        result["employees"] = None
+
+    # ── Timesheets (last 30 days) ──
+    try:
+        entries = (
+            db.query(TimesheetEntry)
+            .filter(TimesheetEntry.org_id == org_id, TimesheetEntry.date >= thirty_days_ago.date())
+            .all()
+        )
+        total_hours = sum(float(e.hours or 0) for e in entries)
+        unique_days = len(set(e.date for e in entries if e.date))
+        by_project = {}
+        by_category = {}
+        for e in entries:
+            p = e.project or "Uncategorized"
+            by_project[p] = by_project.get(p, 0) + float(e.hours or 0)
+            c = e.category or "General"
+            by_category[c] = by_category.get(c, 0) + float(e.hours or 0)
+        result["timesheets"] = {
+            "total_hours_30d": round(total_hours, 1),
+            "avg_daily": round(total_hours / max(unique_days, 1), 1),
+            "by_project": by_project,
+            "by_category": by_category,
+        }
+    except Exception:
+        result["timesheets"] = None
+
+    # ── Objectives ──
+    try:
+        objectives = db.query(Objective).filter(Objective.org_id == org_id).all()
+        by_status = {}
+        progress_sum = 0
+        for o in objectives:
+            s = getattr(o, "status", "draft") or "draft"
+            by_status[s] = by_status.get(s, 0) + 1
+            progress_sum += float(getattr(o, "progress", 0) or 0)
+        result["objectives"] = {
+            "total": len(objectives),
+            "by_status": by_status,
+            "avg_progress": round(progress_sum / max(len(objectives), 1), 1),
+        }
+    except Exception:
+        result["objectives"] = None
+
+    # ── Calendar Events (this month) ──
+    try:
+        events = (
+            db.query(CalendarEvent)
+            .filter(CalendarEvent.org_id == org_id, CalendarEvent.start_time >= month_start)
+            .all()
+        )
+        by_type = {}
+        for e in events:
+            t = getattr(e, "event_type", "other") or "other"
+            by_type[t] = by_type.get(t, 0) + 1
+        result["calendar"] = {"events_this_month": len(events), "by_type": by_type}
+    except Exception:
+        result["calendar"] = None
+
+    # ── Documents ──
+    try:
+        kb_count = db.query(func.count(Document.id)).filter(Document.org_id == org_id).scalar() or 0
+        emp_doc_count = db.query(func.count(EmployeeDocument.id)).filter(EmployeeDocument.org_id == org_id).scalar() or 0
+        result["documents"] = {"kb_doc_count": kb_count, "employee_doc_count": emp_doc_count}
+    except Exception:
+        result["documents"] = None
+
+    # ── Announcements ──
+    try:
+        total_ann = db.query(func.count(Announcement.id)).filter(Announcement.org_id == org_id).scalar() or 0
+        recent_ann = (
+            db.query(func.count(Announcement.id))
+            .filter(Announcement.org_id == org_id, Announcement.created_at >= thirty_days_ago)
+            .scalar() or 0
+        )
+        result["announcements"] = {"total": total_ann, "recent_count": recent_ann}
+    except Exception:
+        result["announcements"] = None
+
+    return result
 
 
 @router.get("/{user_id}")
