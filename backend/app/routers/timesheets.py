@@ -71,69 +71,6 @@ def list_entries(
     return q.order_by(TimesheetEntry.date.desc()).all()
 
 
-@router.get("/{entry_id}", response_model=TimesheetEntryResponse)
-def get_entry(
-    entry_id: uuid.UUID,
-    user_id: uuid.UUID = Depends(get_current_user_id),
-    org_id: uuid.UUID = Depends(get_current_org_id),
-    db: Session = Depends(get_db),
-):
-    entry = db.query(TimesheetEntry).filter(
-        TimesheetEntry.id == entry_id,
-        TimesheetEntry.org_id == org_id,
-        TimesheetEntry.user_id == user_id,
-    ).first()
-    if not entry:
-        raise HTTPException(404, "Entry not found")
-    return entry
-
-
-@router.put("/{entry_id}", response_model=TimesheetEntryResponse)
-def update_entry(
-    entry_id: uuid.UUID,
-    body: TimesheetEntryUpdate,
-    user_id: uuid.UUID = Depends(get_current_user_id),
-    org_id: uuid.UUID = Depends(get_current_org_id),
-    db: Session = Depends(get_db),
-):
-    entry = db.query(TimesheetEntry).filter(
-        TimesheetEntry.id == entry_id,
-        TimesheetEntry.org_id == org_id,
-        TimesheetEntry.user_id == user_id,
-    ).first()
-    if not entry:
-        raise HTTPException(404, "Entry not found")
-    if entry.status not in ("draft", "rejected"):
-        raise HTTPException(400, "Can only edit draft or rejected entries")
-
-    for field, val in body.model_dump(exclude_unset=True).items():
-        setattr(entry, field, val)
-    db.commit()
-    db.refresh(entry)
-    return entry
-
-
-@router.delete("/{entry_id}")
-def delete_entry(
-    entry_id: uuid.UUID,
-    user_id: uuid.UUID = Depends(get_current_user_id),
-    org_id: uuid.UUID = Depends(get_current_org_id),
-    db: Session = Depends(get_db),
-):
-    entry = db.query(TimesheetEntry).filter(
-        TimesheetEntry.id == entry_id,
-        TimesheetEntry.org_id == org_id,
-        TimesheetEntry.user_id == user_id,
-    ).first()
-    if not entry:
-        raise HTTPException(404, "Entry not found")
-    if entry.status not in ("draft", "rejected"):
-        raise HTTPException(400, "Can only delete draft or rejected entries")
-    db.delete(entry)
-    db.commit()
-    return {"ok": True}
-
-
 # ── Submit / Approve ──
 
 
@@ -328,3 +265,69 @@ def list_projects(
         TimesheetEntry.org_id == org_id,
     ).distinct().all()
     return sorted(set(r[0] for r in rows))
+
+
+# ── Single-entry endpoints (must be AFTER all fixed paths) ──
+
+
+@router.get("/{entry_id}", response_model=TimesheetEntryResponse)
+def get_entry(
+    entry_id: uuid.UUID,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    db: Session = Depends(get_db),
+):
+    entry = db.query(TimesheetEntry).filter(
+        TimesheetEntry.id == entry_id,
+        TimesheetEntry.org_id == org_id,
+        TimesheetEntry.user_id == user_id,
+    ).first()
+    if not entry:
+        raise HTTPException(404, "Entry not found")
+    return entry
+
+
+@router.put("/{entry_id}", response_model=TimesheetEntryResponse)
+def update_entry(
+    entry_id: uuid.UUID,
+    body: TimesheetEntryUpdate,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    db: Session = Depends(get_db),
+):
+    entry = db.query(TimesheetEntry).filter(
+        TimesheetEntry.id == entry_id,
+        TimesheetEntry.org_id == org_id,
+        TimesheetEntry.user_id == user_id,
+    ).first()
+    if not entry:
+        raise HTTPException(404, "Entry not found")
+    if entry.status not in ("draft", "rejected"):
+        raise HTTPException(400, "Can only edit draft or rejected entries")
+
+    for field, val in body.model_dump(exclude_unset=True).items():
+        setattr(entry, field, val)
+    db.commit()
+    db.refresh(entry)
+    return entry
+
+
+@router.delete("/{entry_id}")
+def delete_entry(
+    entry_id: uuid.UUID,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    db: Session = Depends(get_db),
+):
+    entry = db.query(TimesheetEntry).filter(
+        TimesheetEntry.id == entry_id,
+        TimesheetEntry.org_id == org_id,
+        TimesheetEntry.user_id == user_id,
+    ).first()
+    if not entry:
+        raise HTTPException(404, "Entry not found")
+    if entry.status not in ("draft", "rejected"):
+        raise HTTPException(400, "Can only delete draft or rejected entries")
+    db.delete(entry)
+    db.commit()
+    return {"ok": True}
