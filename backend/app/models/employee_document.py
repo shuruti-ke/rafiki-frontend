@@ -2,7 +2,7 @@
 import enum
 import uuid
 
-from sqlalchemy import Column, String, DateTime, Integer, ForeignKey
+from sqlalchemy import Column, String, DateTime, Integer, ForeignKey, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 
@@ -46,6 +46,7 @@ class EmployeeDocument(Base):
 
     uploaded_by = Column(UUID(as_uuid=True), nullable=False)
     visibility = Column(String(20), nullable=False, default="private")
+    extracted_text = Column(Text, nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(

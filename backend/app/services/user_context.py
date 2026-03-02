@@ -183,6 +183,65 @@ def _build_employee_docs_context(db: Session, org_id, user_id) -> str:
         return ""
 
 
+# ── 4b. GUIDED PATHS ──
+
+def _build_guided_paths_context(db: Session, org_id, user_id) -> str:
+    try:
+        import zlib
+        from app.models.guided_path import GuidedModule, GuidedPathSession
+
+        # Convert UUID org_id/user_id to integer keys used by guided paths tables
+        int_org = zlib.crc32(org_id.bytes) & 0x7FFFFFFF if hasattr(org_id, 'bytes') else int(org_id)
+        int_user = zlib.crc32(user_id.bytes) & 0x7FFFFFFF if hasattr(user_id, 'bytes') else int(user_id)
+
+        # Recent sessions (last 5)
+        sessions = (
+            db.query(GuidedPathSession)
+            .filter(GuidedPathSession.user_id == int_user, GuidedPathSession.org_id == int_org)
+            .order_by(desc(GuidedPathSession.started_at))
+            .limit(5)
+            .all()
+        )
+
+        # Available modules
+        modules = (
+            db.query(GuidedModule)
+            .filter(GuidedModule.is_active == True)
+            .filter((GuidedModule.org_id == int_org) | (GuidedModule.org_id.is_(None)))
+            .all()
+        )
+
+        if not sessions and not modules:
+            return ""
+
+        parts = ["GUIDED WELLNESS PATHS:"]
+
+        if sessions:
+            mod_ids = list({s.module_id for s in sessions})
+            mod_map = {m.id: m for m in db.query(GuidedModule).filter(GuidedModule.id.in_(mod_ids)).all()}
+
+            parts.append("  Recent sessions:")
+            for s in sessions:
+                mod = mod_map.get(s.module_id)
+                mod_name = mod.name if mod else "Unknown module"
+                total_steps = len(mod.steps) if mod and mod.steps else "?"
+                date_str = s.started_at.strftime('%b %d, %Y') if s.started_at else ""
+                rating_str = ""
+                if s.pre_rating is not None and s.post_rating is not None:
+                    rating_str = f", wellness {s.pre_rating}→{s.post_rating}"
+                parts.append(f"    • {mod_name} — {s.status}, step {s.current_step}/{total_steps}{rating_str} ({date_str})")
+
+        if modules:
+            parts.append("  Available modules:")
+            for m in modules:
+                parts.append(f"    • {m.name} ({m.category}, ~{m.duration_minutes}min): {(m.description or '')[:100]}")
+
+        return "\n".join(parts)
+    except Exception as e:
+        logger.debug("Guided paths context build skipped: %s", e)
+        return ""
+
+
 # ── 5. KB — RELEVANT DOCUMENTS ──
 
 def _build_kb_context(db: Session, org_id, user_message: str) -> str:
@@ -319,6 +378,10 @@ def build_user_context(
         emp_docs = _build_employee_docs_context(db, org_id, user_id)
         if emp_docs:
             sections.append(emp_docs)
+
+        guided = _build_guided_paths_context(db, org_id, user_id)
+        if guided:
+            sections.append(guided)
 
     kb_relevant = _build_kb_context(db, org_id, user_message)
     if kb_relevant:

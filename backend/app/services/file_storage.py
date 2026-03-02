@@ -145,6 +145,17 @@ def save_upload(file: UploadFile, subfolder: str = "documents") -> tuple[str, st
     return r2_key, original_name, size
 
 
+def download_file_bytes(r2_key: str) -> bytes:
+    """Download a file from R2 and return its contents as bytes."""
+    try:
+        s3 = _get_s3()
+        response = s3.get_object(Bucket=R2_BUCKET, Key=r2_key)
+        return response["Body"].read()
+    except Exception as e:
+        logger.error(f"R2 download failed for {r2_key}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to download file from storage")
+
+
 def get_download_url(r2_key: str, expires_in: int = 3600) -> str:
     """Generate a presigned URL for downloading a file from R2."""
     try:

@@ -18,8 +18,30 @@ from app.schemas.employee_docs import (
     DisciplinaryRecordCreate,
     DisciplinaryRecordResponse,
 )
-from app.services.file_storage import save_upload, get_download_url
+from app.services.file_storage import save_upload, get_download_url, download_file_bytes
+from app.services.document_processor import extract_text_from_bytes
 from app.services.audit import log_action
+
+_EXTRACTABLE_MIMES = {
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "text/plain",
+    "text/csv",
+}
+
+
+def _try_extract_text(doc, logger=None):
+    """Best-effort text extraction for a newly uploaded employee document."""
+    if doc.mime_type not in _EXTRACTABLE_MIMES:
+        return
+    try:
+        content_bytes = download_file_bytes(doc.file_path)
+        text = extract_text_from_bytes(content_bytes, doc.mime_type)
+        if text:
+            doc.extracted_text = text
+    except Exception as e:
+        if logger:
+            logger.warning("Text extraction failed for doc %s: %s", doc.id, e)
 
 router = APIRouter(prefix="/api/v1/employee-docs", tags=["Employee Documents"])
 
@@ -97,6 +119,8 @@ def upload_my_document(
         visibility=visibility,
     )
     db.add(doc)
+    db.flush()
+    _try_extract_text(doc)
     db.commit()
     db.refresh(doc)
 
@@ -245,6 +269,8 @@ def upload_employee_doc(
         uploaded_by=current_user_id,
     )
     db.add(doc)
+    db.flush()
+    _try_extract_text(doc)
     db.commit()
     db.refresh(doc)
 

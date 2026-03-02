@@ -4,6 +4,8 @@ import "./EmployeeChat.css";
 
 const GREETING = { role: "rafiki", text: "Hi! I'm Rafiki, your workplace wellbeing assistant. How can I support you today?" };
 
+const ACCEPTED_FILES = ".pdf,.doc,.docx,.txt,.csv,.xlsx,.xls,.ppt,.pptx,.png,.jpg,.jpeg,.webp,.gif";
+
 function timeAgo(dateStr) {
   if (!dateStr) return "";
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -24,7 +26,10 @@ export default function ChatPage() {
   const [sessionId, setSessionId] = useState(null);
   const [sessions, setSessions] = useState([]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [attachments, setAttachments] = useState([]);
+  const [uploading, setUploading] = useState(false);
   const endRef = useRef(null);
+  const fileRef = useRef(null);
 
   // Load sessions list
   const loadSessions = useCallback(async () => {
@@ -47,6 +52,7 @@ export default function ChatPage() {
       if (!res.ok) return;
       const messages = await res.json();
       setSessionId(id);
+      setAttachments([]);
       setMsgs([
         GREETING,
         ...messages.map(m => ({
@@ -61,6 +67,7 @@ export default function ChatPage() {
     setSessionId(null);
     setMsgs([GREETING]);
     setInput("");
+    setAttachments([]);
   }
 
   async function deleteSession(e, id) {
@@ -72,12 +79,49 @@ export default function ChatPage() {
     } catch {}
   }
 
+  async function handleFileSelect(e) {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    setUploading(true);
+
+    for (const file of files) {
+      try {
+        const form = new FormData();
+        form.append("file", file);
+        const res = await authFetch(`${API}/api/v1/chat/upload-attachment`, {
+          method: "POST",
+          body: form,
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          alert(err.detail || "Failed to upload file");
+          continue;
+        }
+        const data = await res.json();
+        setAttachments(prev => [...prev, data]);
+      } catch {
+        alert(`Failed to upload ${file.name}`);
+      }
+    }
+
+    setUploading(false);
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  function removeAttachment(idx) {
+    setAttachments(prev => prev.filter((_, i) => i !== idx));
+  }
+
   async function send() {
     const trimmed = input.trim();
-    if (!trimmed || loading) return;
+    if ((!trimmed && !attachments.length) || loading) return;
 
-    setMsgs((m) => [...m, { role: "you", text: trimmed }]);
+    const fileNames = attachments.map(a => a.filename);
+    const displayText = trimmed + (fileNames.length ? `\n[Attached: ${fileNames.join(", ")}]` : "");
+    setMsgs((m) => [...m, { role: "you", text: displayText }]);
     setInput("");
+    const currentAttachments = [...attachments];
+    setAttachments([]);
     setLoading(true);
 
     try {
@@ -88,8 +132,9 @@ export default function ChatPage() {
           content: m.text,
         }));
 
-      const body = { message: trimmed, history };
+      const body = { message: trimmed || "Please review the attached file(s).", history };
       if (sessionId) body.session_id = sessionId;
+      if (currentAttachments.length) body.attachments = currentAttachments;
 
       const res = await authFetch(`${API}/api/v1/chat`, {
         method: "POST",
@@ -183,7 +228,35 @@ export default function ChatPage() {
           <div ref={endRef} />
         </div>
 
+        {/* Attachment pills */}
+        {attachments.length > 0 && (
+          <div className="ec-attachments">
+            {attachments.map((a, i) => (
+              <span key={i} className="ec-attachment-pill">
+                {a.mime_type?.startsWith("image/") ? "\u{1F5BC}" : "\u{1F4CE}"} {a.filename}
+                <button onClick={() => removeAttachment(i)} className="ec-attachment-remove">×</button>
+              </span>
+            ))}
+          </div>
+        )}
+
         <div className="ec-composer">
+          <input
+            ref={fileRef}
+            type="file"
+            accept={ACCEPTED_FILES}
+            multiple
+            onChange={handleFileSelect}
+            style={{ display: "none" }}
+          />
+          <button
+            className="ec-attach-btn"
+            onClick={() => fileRef.current?.click()}
+            disabled={uploading || loading}
+            title="Attach file"
+          >
+            {uploading ? "..." : "\u{1F4CE}"}
+          </button>
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -191,7 +264,7 @@ export default function ChatPage() {
             placeholder="How are you feeling today?"
             rows={2}
           />
-          <button className="btn btnPrimary" onClick={send} disabled={loading || !input.trim()}>
+          <button className="btn btnPrimary" onClick={send} disabled={loading || (!input.trim() && !attachments.length)}>
             Send
           </button>
         </div>

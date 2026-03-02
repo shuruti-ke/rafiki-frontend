@@ -2,9 +2,10 @@ import os
 import logging
 import httpx
 import json
+import base64
 import traceback
 from pathlib import Path
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
 from pydantic import BaseModel
 from typing import Optional, List
 from uuid import UUID
@@ -12,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import get_current_user_id, get_current_org_id
 from app.services.prompt import assemble_prompt
+from app.services.document_processor import extract_text_from_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -30,12 +32,20 @@ class HistoryMessage(BaseModel):
     role: str  # "user" or "assistant"
     content: str
 
+class AttachmentData(BaseModel):
+    filename: str
+    mime_type: str
+    extracted_text: Optional[str] = None
+    image_base64: Optional[str] = None
+    media_type: Optional[str] = None  # e.g. "image/png"
+
 class ChatRequest(BaseModel):
     message: str
     history: Optional[List[HistoryMessage]] = None
     context_files: Optional[List[str]] = None
     model: Optional[str] = None
     session_id: Optional[str] = None
+    attachments: Optional[List[AttachmentData]] = None
 
 
 class ChatResponse(BaseModel):
@@ -87,6 +97,66 @@ def _read_project_manifest():
     return []
 
 
+ATTACHMENT_ALLOWED_MIMES = {
+    # Documents
+    "application/pdf", "text/plain", "text/csv",
+    "application/msword",  # .doc
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",  # .docx
+    "application/vnd.ms-excel",  # .xls
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",  # .xlsx
+    "application/vnd.ms-powerpoint",  # .ppt
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",  # .pptx
+    # Images
+    "image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif",
+}
+ATTACHMENT_IMAGE_MIMES = {"image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"}
+ATTACHMENT_MAX_SIZE = 20 * 1024 * 1024  # 20 MB
+
+
+@router.post("/chat/upload-attachment")
+async def upload_chat_attachment(
+    file: UploadFile = File(...),
+):
+    """Upload a file for Rafiki to review in the current chat turn. Returns extracted text or base64 image."""
+    mime = (file.content_type or "").lower().strip()
+    ext = Path(file.filename or "").suffix.lower()
+
+    # Fallback mime detection by extension
+    if not mime or mime == "application/octet-stream":
+        mime = {
+            ".pdf": "application/pdf", ".txt": "text/plain", ".csv": "text/csv",
+            ".doc": "application/msword",
+            ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ".xls": "application/vnd.ms-excel",
+            ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ".ppt": "application/vnd.ms-powerpoint",
+            ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+            ".webp": "image/webp", ".gif": "image/gif",
+        }.get(ext, mime)
+
+    if mime not in ATTACHMENT_ALLOWED_MIMES:
+        raise HTTPException(status_code=400, detail=f"File type not supported: {file.content_type}")
+
+    content_bytes = await file.read()
+    if len(content_bytes) > ATTACHMENT_MAX_SIZE:
+        raise HTTPException(status_code=413, detail="File too large (max 20MB)")
+    if not content_bytes:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    filename = Path(file.filename or "attachment").name
+    result = {"filename": filename, "mime_type": mime}
+
+    if mime in ATTACHMENT_IMAGE_MIMES:
+        result["image_base64"] = base64.b64encode(content_bytes).decode("ascii")
+        result["media_type"] = "image/jpeg" if mime == "image/jpg" else mime
+    else:
+        text = extract_text_from_bytes(content_bytes, mime)
+        result["extracted_text"] = text if text else f"[Could not extract text from {filename}]"
+
+    return result
+
+
 @router.post("/chat", response_model=ChatResponse)
 def chat(
     req: ChatRequest,
@@ -101,7 +171,31 @@ def chat(
         context_blob = load_context_files(combined)
 
         content = req.message
-        final_user_message = content if not context_blob else f"{content}\n\n{context_blob}"
+
+        # Append extracted text from attachments to the message
+        attachment_text_parts = []
+        image_blocks = []
+        if req.attachments:
+            for att in req.attachments:
+                if att.extracted_text:
+                    attachment_text_parts.append(f"\n\n### ATTACHED FILE: {att.filename}\n{att.extracted_text}")
+                if att.image_base64 and att.media_type:
+                    image_blocks.append({
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": att.media_type,
+                            "data": att.image_base64,
+                        },
+                    })
+
+        text_with_attachments = content
+        if attachment_text_parts:
+            text_with_attachments += "".join(attachment_text_parts)
+        if context_blob:
+            text_with_attachments += f"\n\n{context_blob}"
+
+        final_user_message = text_with_attachments
 
         if not ANTHROPIC_API_KEY:
             raise HTTPException(status_code=503, detail="Anthropic API not configured. Set ANTHROPIC_API_KEY in environment.")
@@ -134,7 +228,12 @@ def chat(
             for h in req.history[-20:]:
                 role = "assistant" if h.role == "assistant" else "user"
                 messages.append({"role": role, "content": h.content})
-        messages.append({"role": "user", "content": final_user_message})
+        # Build user content: multi-modal if images attached, plain text otherwise
+        if image_blocks:
+            user_content = [*image_blocks, {"type": "text", "text": final_user_message}]
+        else:
+            user_content = final_user_message
+        messages.append({"role": "user", "content": user_content})
 
         payload = {
             "model": chosen,
