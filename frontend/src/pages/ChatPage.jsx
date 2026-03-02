@@ -31,7 +31,7 @@ export default function ChatPage() {
           content: m.text,
         }));
 
-      const res = await authFetch(`${API}/chat`, {
+      const res = await authFetch(`${API}/api/v1/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: trimmed, history }),
