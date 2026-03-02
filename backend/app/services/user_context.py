@@ -1,25 +1,59 @@
 """
-Rafiki@Work — User Context Aggregator Service
+Rafiki@Work — User Context Aggregator Service (Intent-Driven)
 
-Builds a rich, personalized context about the current user by pulling from:
-  - Employee profile (role, department, tenure, manager)
-  - Objectives / OKRs + key results
-  - Timesheet patterns (projects, time allocation, utilization)
-  - Employee documents (contracts, certifications)
-  - Knowledge base document chunks matching the query
-  - KB category awareness (what docs exist)
-  - Interaction memory (topics they frequently ask about)
+Two-phase context assembly:
+  Phase 1 (always): Lightweight catalog — profile, data inventory, KB categories, memory
+  Phase 2 (on-demand): Full data fetched only when user intent matches
 """
 
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, func
 
 logger = logging.getLogger(__name__)
 
+
+# ══════════════════════════════════════
+# INTENT DETECTION
+# ══════════════════════════════════════
+
+INTENT_KEYWORDS = {
+    "objectives": ["goal", "objective", "okr", "target", "kpi", "progress", "performance review", "key result"],
+    "timesheets": ["hours", "timesheet", "time", "utilization", "project", "overtime", "workload", "logged"],
+    "documents": ["document", "contract", "certificate", "letter", "file", "upload", "attachment"],
+    "payroll": ["salary", "pay", "payslip", "compensation", "bonus", "deduction", "net pay", "gross", "wage"],
+    "calendar": ["meeting", "calendar", "schedule", "event", "appointment", "deadline", "tomorrow", "this week", "next week", "today"],
+    "announcements": ["announcement", "news", "update", "training", "notice", "policy change", "unread"],
+    "performance": ["evaluation", "review", "rating", "strengths", "improvement", "feedback", "appraisal", "performance eval"],
+    "guided_paths": ["guided", "module", "wellness", "breathing", "burnout", "stress path", "mindfulness session"],
+    "coaching": ["coaching", "report", "team member", "direct report", "mentoring", "one-on-one"],
+}
+
+# Default intents loaded when no specific intent is detected
+DEFAULT_INTENTS = {"objectives", "calendar"}
+
+
+def _detect_intents(user_message: str) -> set[str]:
+    """Detect which data domains the user is asking about via keyword matching."""
+    if not user_message:
+        return DEFAULT_INTENTS
+
+    msg_lower = user_message.lower()
+    matched = set()
+    for intent, keywords in INTENT_KEYWORDS.items():
+        if any(kw in msg_lower for kw in keywords):
+            matched.add(intent)
+
+    # If nothing specific matched, load sensible defaults
+    return matched if matched else DEFAULT_INTENTS
+
+
+# ══════════════════════════════════════
+# PHASE 1: ALWAYS-LOADED CONTEXT
+# ══════════════════════════════════════
 
 # ── 1. EMPLOYEE PROFILE ──
 
@@ -59,7 +93,147 @@ def _build_employee_profile(db: Session, org_id, user_id) -> str:
         return ""
 
 
-# ── 2. OBJECTIVES & KEY RESULTS ──
+# ── 2. DATA INVENTORY (the "catalog card") ──
+
+def _build_data_inventory(db: Session, org_id, user_id) -> str:
+    """Quick count queries so Rafiki knows what data exists without loading it."""
+    try:
+        counts = {}
+
+        # Objectives
+        try:
+            from app.models.objective import Objective
+            counts["Objectives"] = (
+                db.query(func.count(Objective.id))
+                .filter(Objective.user_id == user_id, Objective.status.in_(["active", "pending_review", "draft"]))
+                .scalar() or 0
+            )
+        except Exception:
+            counts["Objectives"] = 0
+
+        # Timesheets (30 days)
+        try:
+            from app.models.timesheet import TimesheetEntry
+            cutoff = date.today() - timedelta(days=30)
+            counts["Timesheet entries (30d)"] = (
+                db.query(func.count(TimesheetEntry.id))
+                .filter(TimesheetEntry.user_id == user_id, TimesheetEntry.date >= cutoff)
+                .scalar() or 0
+            )
+        except Exception:
+            counts["Timesheet entries (30d)"] = 0
+
+        # Employee documents
+        try:
+            from app.models.employee_document import EmployeeDocument
+            counts["Documents"] = (
+                db.query(func.count(EmployeeDocument.id))
+                .filter(EmployeeDocument.user_id == user_id, EmployeeDocument.org_id == org_id)
+                .scalar() or 0
+            )
+        except Exception:
+            counts["Documents"] = 0
+
+        # Payslips
+        try:
+            from app.models.payroll import Payslip
+            counts["Payslips"] = (
+                db.query(func.count(Payslip.payslip_id))
+                .filter(Payslip.employee_user_id == user_id, Payslip.org_id == org_id)
+                .scalar() or 0
+            )
+        except Exception:
+            counts["Payslips"] = 0
+
+        # Calendar events (next 7 days)
+        try:
+            from app.models.calendar_event import CalendarEvent
+            now = datetime.utcnow()
+            week_out = now + timedelta(days=7)
+            counts["Calendar events (7d)"] = (
+                db.query(func.count(CalendarEvent.id))
+                .filter(
+                    CalendarEvent.org_id == org_id,
+                    (CalendarEvent.user_id == user_id) | (CalendarEvent.is_shared == True),
+                    CalendarEvent.start_time >= now,
+                    CalendarEvent.start_time <= week_out,
+                )
+                .scalar() or 0
+            )
+        except Exception:
+            counts["Calendar events (7d)"] = 0
+
+        # Announcements (unread)
+        try:
+            from app.models.announcement import Announcement, AnnouncementRead
+            from sqlalchemy import and_
+
+            total_active = (
+                db.query(func.count(Announcement.id))
+                .filter(
+                    Announcement.org_id == org_id,
+                    Announcement.published_at != None,
+                    (Announcement.expires_at == None) | (Announcement.expires_at >= datetime.utcnow()),
+                )
+                .scalar() or 0
+            )
+            read_count = (
+                db.query(func.count(AnnouncementRead.id))
+                .join(Announcement)
+                .filter(
+                    Announcement.org_id == org_id,
+                    AnnouncementRead.user_id == user_id,
+                )
+                .scalar() or 0
+            )
+            unread = max(total_active - read_count, 0)
+            counts["Announcements"] = f"{unread} unread" if unread else "all read"
+        except Exception:
+            counts["Announcements"] = 0
+
+        # Performance evaluations
+        try:
+            from app.models.performance import PerformanceEvaluation
+            counts["Evaluations"] = (
+                db.query(func.count(PerformanceEvaluation.id))
+                .filter(PerformanceEvaluation.user_id == user_id, PerformanceEvaluation.org_id == org_id)
+                .scalar() or 0
+            )
+        except Exception:
+            counts["Evaluations"] = 0
+
+        # Guided path sessions
+        try:
+            import zlib
+            from app.models.guided_path import GuidedPathSession
+            int_org = zlib.crc32(org_id.bytes) & 0x7FFFFFFF if hasattr(org_id, 'bytes') else int(org_id)
+            int_user = zlib.crc32(user_id.bytes) & 0x7FFFFFFF if hasattr(user_id, 'bytes') else int(user_id)
+            counts["Guided path sessions"] = (
+                db.query(func.count(GuidedPathSession.id))
+                .filter(GuidedPathSession.user_id == int_user, GuidedPathSession.org_id == int_org)
+                .scalar() or 0
+            )
+        except Exception:
+            counts["Guided path sessions"] = 0
+
+        items = [f"  {k}: {v}" for k, v in counts.items() if v and v != 0]
+        if not items:
+            return ""
+
+        parts = ["DATA AVAILABLE FOR THIS EMPLOYEE:"]
+        parts.extend(items)
+        parts.append("  → Ask me about any of these — I can look up the details.")
+        return "\n".join(parts)
+    except Exception as e:
+        logger.debug("Data inventory build skipped: %s", e)
+        return ""
+
+
+# ══════════════════════════════════════
+# PHASE 2: ON-DEMAND CONTEXT BUILDERS
+# ══════════════════════════════════════
+
+# ── OBJECTIVES & KEY RESULTS ──
 
 def _build_objectives_context(db: Session, user_id) -> str:
     try:
@@ -100,7 +274,7 @@ def _build_objectives_context(db: Session, user_id) -> str:
         return ""
 
 
-# ── 3. TIMESHEET PATTERNS ──
+# ── TIMESHEET PATTERNS ──
 
 def _build_timesheet_context(db: Session, user_id) -> str:
     try:
@@ -151,7 +325,7 @@ def _build_timesheet_context(db: Session, user_id) -> str:
         return ""
 
 
-# ── 4. EMPLOYEE DOCUMENTS ──
+# ── EMPLOYEE DOCUMENTS ──
 
 def _build_employee_docs_context(db: Session, org_id, user_id) -> str:
     try:
@@ -183,18 +357,16 @@ def _build_employee_docs_context(db: Session, org_id, user_id) -> str:
         return ""
 
 
-# ── 4b. GUIDED PATHS ──
+# ── GUIDED PATHS ──
 
 def _build_guided_paths_context(db: Session, org_id, user_id) -> str:
     try:
         import zlib
         from app.models.guided_path import GuidedModule, GuidedPathSession
 
-        # Convert UUID org_id/user_id to integer keys used by guided paths tables
         int_org = zlib.crc32(org_id.bytes) & 0x7FFFFFFF if hasattr(org_id, 'bytes') else int(org_id)
         int_user = zlib.crc32(user_id.bytes) & 0x7FFFFFFF if hasattr(user_id, 'bytes') else int(user_id)
 
-        # Recent sessions (last 5)
         sessions = (
             db.query(GuidedPathSession)
             .filter(GuidedPathSession.user_id == int_user, GuidedPathSession.org_id == int_org)
@@ -203,7 +375,6 @@ def _build_guided_paths_context(db: Session, org_id, user_id) -> str:
             .all()
         )
 
-        # Available modules
         modules = (
             db.query(GuidedModule)
             .filter(GuidedModule.is_active == True)
@@ -242,7 +413,225 @@ def _build_guided_paths_context(db: Session, org_id, user_id) -> str:
         return ""
 
 
-# ── 5. KB — RELEVANT DOCUMENTS ──
+# ── PAYROLL / PAYSLIPS ──
+
+def _build_payroll_context(db: Session, org_id, user_id) -> str:
+    try:
+        from app.models.payroll import Payslip, PayrollBatch
+
+        payslips = (
+            db.query(Payslip)
+            .filter(Payslip.employee_user_id == user_id, Payslip.org_id == org_id)
+            .order_by(desc(Payslip.created_at))
+            .limit(3)
+            .all()
+        )
+        if not payslips:
+            return ""
+
+        # Fetch batch info for period labels
+        batch_ids = list({p.batch_id for p in payslips})
+        batches = db.query(PayrollBatch).filter(PayrollBatch.batch_id.in_(batch_ids)).all()
+        batch_map = {b.batch_id: b for b in batches}
+
+        parts = ["RECENT PAYSLIPS:"]
+        for p in payslips:
+            batch = batch_map.get(p.batch_id)
+            if batch:
+                import calendar as cal_mod
+                month_name = cal_mod.month_name[batch.period_month]
+                period = f"{month_name} {batch.period_year}"
+            else:
+                period = "Unknown period"
+            gross = p.gross_pay
+            deductions = p.total_deductions
+            net = p.net_pay
+            line = f"  • {period}"
+            if gross is not None:
+                line += f" — Gross: {float(gross):,.2f}"
+            if deductions is not None:
+                line += f", Deductions: {float(deductions):,.2f}"
+            if net is not None:
+                line += f", Net: {float(net):,.2f}"
+            parts.append(line)
+        return "\n".join(parts)
+    except Exception as e:
+        logger.debug("Payroll context build skipped: %s", e)
+        return ""
+
+
+# ── CALENDAR EVENTS ──
+
+def _build_calendar_context(db: Session, org_id, user_id) -> str:
+    try:
+        from app.models.calendar_event import CalendarEvent
+
+        now = datetime.utcnow()
+        week_out = now + timedelta(days=7)
+
+        events = (
+            db.query(CalendarEvent)
+            .filter(
+                CalendarEvent.org_id == org_id,
+                (CalendarEvent.user_id == user_id) | (CalendarEvent.is_shared == True),
+                CalendarEvent.start_time >= now,
+                CalendarEvent.start_time <= week_out,
+            )
+            .order_by(CalendarEvent.start_time)
+            .limit(15)
+            .all()
+        )
+        if not events:
+            return ""
+
+        parts = ["UPCOMING CALENDAR EVENTS (next 7 days):"]
+        for ev in events:
+            time_str = ev.start_time.strftime("%a %b %d, %H:%M") if ev.start_time else ""
+            type_str = f" [{ev.event_type}]" if ev.event_type else ""
+            loc = f" @ {ev.location}" if ev.location else ""
+            attendee_count = len(ev.attendees) if ev.attendees else 0
+            att_str = f" ({attendee_count} attendees)" if attendee_count else ""
+            parts.append(f"  • {time_str}{type_str} {ev.title}{loc}{att_str}")
+        return "\n".join(parts)
+    except Exception as e:
+        logger.debug("Calendar context build skipped: %s", e)
+        return ""
+
+
+# ── ANNOUNCEMENTS ──
+
+def _build_announcements_context(db: Session, org_id, user_id) -> str:
+    try:
+        from app.models.announcement import Announcement, AnnouncementRead, TrainingAssignment
+
+        now = datetime.utcnow()
+        announcements = (
+            db.query(Announcement)
+            .filter(
+                Announcement.org_id == org_id,
+                Announcement.published_at != None,
+                (Announcement.expires_at == None) | (Announcement.expires_at >= now),
+            )
+            .order_by(desc(Announcement.published_at))
+            .limit(10)
+            .all()
+        )
+
+        # Get user's read IDs
+        read_ids = set()
+        if announcements:
+            reads = (
+                db.query(AnnouncementRead.announcement_id)
+                .filter(AnnouncementRead.user_id == user_id)
+                .all()
+            )
+            read_ids = {r[0] for r in reads}
+
+        # Training assignments for this user
+        training = (
+            db.query(TrainingAssignment)
+            .filter(TrainingAssignment.user_id == user_id, TrainingAssignment.completed_at == None)
+            .all()
+        )
+
+        if not announcements and not training:
+            return ""
+
+        parts = ["RECENT ANNOUNCEMENTS:"]
+        for a in announcements:
+            status = "READ" if a.id in read_ids else "UNREAD"
+            priority = f" [{a.priority.upper()}]" if a.priority and a.priority != "normal" else ""
+            tag = " [TRAINING]" if a.is_training else ""
+            date_str = a.published_at.strftime("%b %d") if a.published_at else ""
+            parts.append(f"  • ({status}){priority}{tag} {a.title} — {date_str}")
+            if a.content:
+                parts.append(f"    {a.content[:150]}")
+
+        if training:
+            parts.append("\n  PENDING TRAINING ASSIGNMENTS:")
+            for t in training:
+                ann = db.query(Announcement).filter(Announcement.id == t.announcement_id).first()
+                title = ann.title if ann else "Unknown"
+                due = f" — due {t.due_date.strftime('%b %d, %Y')}" if t.due_date else ""
+                parts.append(f"    • {title}{due}")
+
+        return "\n".join(parts)
+    except Exception as e:
+        logger.debug("Announcements context build skipped: %s", e)
+        return ""
+
+
+# ── PERFORMANCE EVALUATIONS ──
+
+def _build_performance_context(db: Session, org_id, user_id) -> str:
+    try:
+        from app.models.performance import PerformanceEvaluation
+
+        evals = (
+            db.query(PerformanceEvaluation)
+            .filter(PerformanceEvaluation.user_id == user_id, PerformanceEvaluation.org_id == org_id)
+            .order_by(desc(PerformanceEvaluation.created_at))
+            .limit(3)
+            .all()
+        )
+        if not evals:
+            return ""
+
+        parts = ["PERFORMANCE EVALUATIONS:"]
+        for ev in evals:
+            period = ev.evaluation_period or "Unknown period"
+            rating = f" — Rating: {ev.overall_rating}/5" if ev.overall_rating else ""
+            parts.append(f"\n  • {period}{rating}")
+            if ev.strengths:
+                parts.append(f"    Strengths: {ev.strengths[:200]}")
+            if ev.areas_for_improvement:
+                parts.append(f"    Areas for improvement: {ev.areas_for_improvement[:200]}")
+            if ev.goals_for_next_period:
+                parts.append(f"    Goals for next period: {ev.goals_for_next_period[:200]}")
+
+        return "\n".join(parts)
+    except Exception as e:
+        logger.debug("Performance context build skipped: %s", e)
+        return ""
+
+
+# ── COACHING SESSIONS (managers only) ──
+
+def _build_coaching_context(db: Session, org_id, user_id) -> str:
+    try:
+        from app.models.user import User
+
+        user = db.query(User).filter(User.user_id == user_id).first()
+        if not user or user.role not in ("admin", "manager"):
+            return ""
+
+        from app.models.toolkit import CoachingSession
+
+        sessions = (
+            db.query(CoachingSession)
+            .filter(CoachingSession.manager_id == user_id, CoachingSession.org_id == org_id)
+            .order_by(desc(CoachingSession.created_at))
+            .limit(5)
+            .all()
+        )
+        if not sessions:
+            return ""
+
+        parts = ["RECENT COACHING SESSIONS (as manager):"]
+        for s in sessions:
+            date_str = s.created_at.strftime("%b %d, %Y") if s.created_at else ""
+            outcome = f" — Outcome: {s.outcome_logged}" if s.outcome_logged else ""
+            parts.append(f"  • {s.employee_name}: {(s.concern or '')[:120]}{outcome} ({date_str})")
+
+        return "\n".join(parts)
+    except Exception as e:
+        logger.debug("Coaching context build skipped: %s", e)
+        return ""
+
+
+# ══════════════════════════════════════
+# KB CONTEXT (always runs, query-dependent)
+# ══════════════════════════════════════
 
 def _build_kb_context(db: Session, org_id, user_message: str) -> str:
     if not user_message:
@@ -263,8 +652,6 @@ def _build_kb_context(db: Session, org_id, user_message: str) -> str:
         logger.debug("KB context build skipped: %s", e)
         return ""
 
-
-# ── 6. KB CATEGORY AWARENESS ──
 
 def _build_kb_categories_context(db: Session, org_id) -> str:
     try:
@@ -294,7 +681,9 @@ def _build_kb_categories_context(db: Session, org_id) -> str:
         return ""
 
 
-# ── 7. INTERACTION MEMORY ──
+# ══════════════════════════════════════
+# INTERACTION MEMORY
+# ══════════════════════════════════════
 
 _user_topic_memory: dict[str, list[str]] = {}
 
@@ -350,7 +739,7 @@ def _update_and_build_memory(user_id, user_message: str) -> str:
 
 
 # ══════════════════════════════════════
-# MAIN AGGREGATOR
+# MAIN AGGREGATOR (Intent-Driven)
 # ══════════════════════════════════════
 
 def build_user_context(
@@ -359,30 +748,20 @@ def build_user_context(
     user_id=None,
     user_message: str = "",
 ) -> str:
-    """Build comprehensive personalized context about the current user."""
+    """Build personalized context using intent-driven two-phase assembly."""
     sections = []
 
+    # ── PHASE 1: Always loaded (lightweight catalog) ──
     if user_id:
         profile = _build_employee_profile(db, org_id, user_id)
         if profile:
             sections.append(profile)
 
-        objectives = _build_objectives_context(db, user_id)
-        if objectives:
-            sections.append(objectives)
+        inventory = _build_data_inventory(db, org_id, user_id)
+        if inventory:
+            sections.append(inventory)
 
-        timesheets = _build_timesheet_context(db, user_id)
-        if timesheets:
-            sections.append(timesheets)
-
-        emp_docs = _build_employee_docs_context(db, org_id, user_id)
-        if emp_docs:
-            sections.append(emp_docs)
-
-        guided = _build_guided_paths_context(db, org_id, user_id)
-        if guided:
-            sections.append(guided)
-
+    # KB search (query-dependent, already selective)
     kb_relevant = _build_kb_context(db, org_id, user_message)
     if kb_relevant:
         sections.append(kb_relevant)
@@ -391,6 +770,57 @@ def build_user_context(
     if kb_categories:
         sections.append(kb_categories)
 
+    # ── PHASE 2: On-demand based on detected intent ──
+    if user_id:
+        intents = _detect_intents(user_message)
+        logger.debug("Detected intents for message: %s → %s", user_message[:80], intents)
+
+        if "objectives" in intents:
+            ctx = _build_objectives_context(db, user_id)
+            if ctx:
+                sections.append(ctx)
+
+        if "timesheets" in intents:
+            ctx = _build_timesheet_context(db, user_id)
+            if ctx:
+                sections.append(ctx)
+
+        if "documents" in intents:
+            ctx = _build_employee_docs_context(db, org_id, user_id)
+            if ctx:
+                sections.append(ctx)
+
+        if "payroll" in intents:
+            ctx = _build_payroll_context(db, org_id, user_id)
+            if ctx:
+                sections.append(ctx)
+
+        if "calendar" in intents:
+            ctx = _build_calendar_context(db, org_id, user_id)
+            if ctx:
+                sections.append(ctx)
+
+        if "announcements" in intents:
+            ctx = _build_announcements_context(db, org_id, user_id)
+            if ctx:
+                sections.append(ctx)
+
+        if "performance" in intents:
+            ctx = _build_performance_context(db, org_id, user_id)
+            if ctx:
+                sections.append(ctx)
+
+        if "guided_paths" in intents:
+            ctx = _build_guided_paths_context(db, org_id, user_id)
+            if ctx:
+                sections.append(ctx)
+
+        if "coaching" in intents:
+            ctx = _build_coaching_context(db, org_id, user_id)
+            if ctx:
+                sections.append(ctx)
+
+    # ── ALWAYS: Interaction memory ──
     if user_id and user_message:
         memory = _update_and_build_memory(user_id, user_message)
         if memory:
