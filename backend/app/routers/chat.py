@@ -35,10 +35,12 @@ class ChatRequest(BaseModel):
     history: Optional[List[HistoryMessage]] = None
     context_files: Optional[List[str]] = None
     model: Optional[str] = None
+    session_id: Optional[str] = None
 
 
 class ChatResponse(BaseModel):
     reply: str
+    session_id: Optional[str] = None
 
 
 def load_context_files(names):
@@ -152,7 +154,33 @@ def chat(
         for block in (data.get("content") or []):
             if isinstance(block, dict) and block.get("type") == "text":
                 reply_text += block.get("text", "")
-        return ChatResponse(reply=reply_text.strip() or "...")
+        reply_text = reply_text.strip() or "..."
+
+        # Persist messages to chat session
+        session_id_out = req.session_id
+        try:
+            from app.models.chat_session import ChatSession, ChatMessage
+            if not req.session_id:
+                title = content[:50].strip() or "New Chat"
+                session = ChatSession(user_id=user_id, org_id=org_id, title=title)
+                db.add(session)
+                db.flush()
+                session_id_out = str(session.id)
+            else:
+                session = db.query(ChatSession).filter(ChatSession.id == req.session_id).first()
+                if session:
+                    from sqlalchemy.sql import func
+                    session.updated_at = func.now()
+
+            if session_id_out:
+                db.add(ChatMessage(session_id=session_id_out, role="user", content=content))
+                db.add(ChatMessage(session_id=session_id_out, role="assistant", content=reply_text))
+                db.commit()
+        except Exception as e:
+            logger.warning("Failed to persist chat message: %s", e)
+            db.rollback()
+
+        return ChatResponse(reply=reply_text, session_id=session_id_out)
 
     except HTTPException:
         raise

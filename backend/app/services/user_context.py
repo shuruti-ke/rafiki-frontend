@@ -169,7 +169,14 @@ def _build_employee_docs_context(db: Session, org_id, user_id) -> str:
 
         parts = ["EMPLOYEE DOCUMENTS ON FILE:"]
         for d in docs:
-            parts.append(f"  • [{d.doc_type}] {d.title} ({d.original_filename})")
+            date_str = ""
+            if d.created_at:
+                try:
+                    date_str = f" — uploaded {d.created_at.strftime('%b %d, %Y')}"
+                except Exception:
+                    pass
+            vis = f" ({d.visibility})" if getattr(d, "visibility", None) else ""
+            parts.append(f"  • [{d.doc_type}] {d.title} ({d.original_filename}){date_str}{vis}")
         return "\n".join(parts)
     except Exception as e:
         logger.debug("Employee docs context build skipped: %s", e)
