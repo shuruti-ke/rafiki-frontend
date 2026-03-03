@@ -2,7 +2,7 @@ import enum
 import uuid
 
 from sqlalchemy import (
-    Column, Integer, String, Text, Boolean, DateTime, ForeignKey, UniqueConstraint
+    Column, Integer, String, Text, Boolean, DateTime, ForeignKey, UniqueConstraint, text
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID, JSONB
 from sqlalchemy.orm import relationship
@@ -21,7 +21,7 @@ class AnnouncementPriority(str, enum.Enum):
 class Announcement(Base):
     __tablename__ = "announcements"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = Column(PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
 
     # ✅ FIX: org_id is UUID in your schema
     org_id = Column(PGUUID(as_uuid=True), ForeignKey("orgs.org_id", ondelete="CASCADE"), nullable=False, index=True)
@@ -51,8 +51,8 @@ class Announcement(Base):
 class AnnouncementRead(Base):
     __tablename__ = "announcement_reads"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    announcement_id = Column(Integer, ForeignKey("announcements.id", ondelete="CASCADE"), nullable=False)
+    id = Column(PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    announcement_id = Column(PGUUID(as_uuid=True), ForeignKey("announcements.id", ondelete="CASCADE"), nullable=False)
 
     # ✅ FIX: users_legacy.user_id is UUID
     user_id = Column(PGUUID(as_uuid=True), ForeignKey("users_legacy.user_id", ondelete="CASCADE"), nullable=False)
@@ -69,8 +69,8 @@ class AnnouncementRead(Base):
 class TrainingAssignment(Base):
     __tablename__ = "training_assignments"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    announcement_id = Column(Integer, ForeignKey("announcements.id", ondelete="CASCADE"), nullable=False)
+    id = Column(PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    announcement_id = Column(PGUUID(as_uuid=True), ForeignKey("announcements.id", ondelete="CASCADE"), nullable=False)
 
     # ✅ FIX: users_legacy.user_id is UUID
     user_id = Column(PGUUID(as_uuid=True), ForeignKey("users_legacy.user_id", ondelete="CASCADE"), nullable=False)
