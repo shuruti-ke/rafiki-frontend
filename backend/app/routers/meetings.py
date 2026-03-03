@@ -71,7 +71,7 @@ def list_meetings(
             Meeting.org_id == org_id,
             Meeting.is_active == True,
         )
-        .order_by(desc(Meeting.scheduled_at.nullslast()), desc(Meeting.created_at))
+        .order_by(Meeting.scheduled_at.desc().nullslast(), desc(Meeting.created_at))
         .all()
     )
     # Filter to meetings where user is host or participant
@@ -95,7 +95,7 @@ def list_all_meetings(
     meetings = (
         db.query(Meeting)
         .filter(Meeting.org_id == org_id, Meeting.is_active == True)
-        .order_by(desc(Meeting.scheduled_at.nullslast()), desc(Meeting.created_at))
+        .order_by(Meeting.scheduled_at.desc().nullslast(), desc(Meeting.created_at))
         .all()
     )
     return [_to_response(m) for m in meetings]
@@ -209,4 +209,5 @@ def delete_meeting(
 
     meeting.is_active = False
     db.commit()
+
     return {"ok": True, "message": "Meeting cancelled"}
