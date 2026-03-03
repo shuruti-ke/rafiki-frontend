@@ -45,6 +45,43 @@ def _try_extract_text(doc, logger=None):
 
 router = APIRouter(prefix="/api/v1/employee-docs", tags=["Employee Documents"])
 
+
+@router.post("/reindex-text")
+def reindex_employee_docs_text(
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
+    role: str = Depends(get_current_role),
+):
+    """Re-extract text for employee docs that have null extracted_text."""
+    if role not in _PRIVILEGED_ROLES:
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    docs = (
+        db.query(EmployeeDocument)
+        .filter(
+            EmployeeDocument.org_id == org_id,
+            EmployeeDocument.extracted_text.is_(None),
+            EmployeeDocument.mime_type.in_(_EXTRACTABLE_MIMES),
+        )
+        .all()
+    )
+
+    results = {"total": len(docs), "extracted": 0, "failed": 0}
+    for doc in docs:
+        try:
+            _try_extract_text(doc, logger)
+            if doc.extracted_text:
+                results["extracted"] += 1
+            else:
+                results["failed"] += 1
+        except Exception as e:
+            logger.error("Re-extract failed for doc %s: %s", doc.id, e)
+            results["failed"] += 1
+
+    db.commit()
+    return results
+
 # Path B (DB as-is)
 _PRIVILEGED_ROLES = {"hr_admin", "super_admin"}
 

@@ -351,6 +351,13 @@ def _build_employee_docs_context(db: Session, org_id, user_id) -> str:
                     pass
             vis = f" ({d.visibility})" if getattr(d, "visibility", None) else ""
             parts.append(f"  • [{d.doc_type}] {d.title} ({d.original_filename}){date_str}{vis}")
+            # Include extracted text content so Rafiki can actually read the document
+            if getattr(d, "extracted_text", None):
+                # Truncate very long docs to avoid blowing up context
+                text = d.extracted_text[:3000]
+                if len(d.extracted_text) > 3000:
+                    text += "\n    [... document truncated ...]"
+                parts.append(f"    CONTENT:\n    {text}")
         return "\n".join(parts)
     except Exception as e:
         logger.debug("Employee docs context build skipped: %s", e)
