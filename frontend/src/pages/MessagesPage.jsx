@@ -109,25 +109,150 @@ function PayrollApprovalBlock({ payload, onAction }) {
   );
 }
 
-// Parse [[PAYROLL_APPROVAL]]...[[/PAYROLL_APPROVAL]] out of message content
-function MessageContent({ content, onAction }) {
-  const marker = "[[PAYROLL_APPROVAL]]";
-  const endMarker = "[[/PAYROLL_APPROVAL]]";
-  const start = content.indexOf(marker);
-  if (start === -1) return <div style={{ whiteSpace: "pre-wrap" }}>{content}</div>;
+// ── Objective review block renderer ──────────────────────────
+function ObjectiveReviewBlock({ payload, onAction }) {
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(null);
+  const [revisionNotes, setRevisionNotes] = useState("");
+  const [showRevision, setShowRevision] = useState(false);
+  const [objStatus, setObjStatus] = useState(null);
 
-  const end = content.indexOf(endMarker, start);
-  const before = content.slice(0, start).trim();
-  const jsonStr = content.slice(start + marker.length, end === -1 ? undefined : end);
-  let payload = {};
-  try { payload = JSON.parse(jsonStr); } catch { /* fallback */ }
+  useEffect(() => {
+    if (!payload.objective_id) return;
+    authFetch(`${API}/api/v1/objectives/${payload.objective_id}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data?.status) setObjStatus(data.status); })
+      .catch(() => {});
+  }, [payload.objective_id]);
+
+  const isActionable = objStatus === "pending_review";
+
+  async function handleApprove() {
+    setBusy(true);
+    try {
+      const r = await authFetch(`${API}${payload.approve_endpoint}`, {
+        method: "POST",
+        body: JSON.stringify({ review_status: "approved" }),
+      });
+      const data = await r.json();
+      if (r.ok) { setDone("approved"); onAction && onAction(); }
+      else setDone("error:" + (data.detail || "Failed"));
+    } catch { setDone("error:Network error"); }
+    finally { setBusy(false); }
+  }
+
+  async function handleNeedsRevision() {
+    setBusy(true);
+    try {
+      const r = await authFetch(`${API}${payload.reject_endpoint}`, {
+        method: "POST",
+        body: JSON.stringify({ review_status: "needs_revision", review_notes: revisionNotes || null }),
+      });
+      const data = await r.json();
+      if (r.ok) { setDone("needs_revision"); onAction && onAction(); }
+      else setDone("error:" + (data.detail || "Failed"));
+    } catch { setDone("error:Network error"); }
+    finally { setBusy(false); }
+  }
 
   return (
-    <div>
-      {before && <div style={{ whiteSpace: "pre-wrap", marginBottom: 8 }}>{before}</div>}
-      <PayrollApprovalBlock payload={payload} onAction={onAction} />
+    <div className="ms-payroll-block">
+      <div className="ms-payroll-title">📋 Objective Review Request</div>
+      <div className="ms-payroll-meta">
+        <span>Title: <strong>{payload.title}</strong></span>
+        <span>From: {payload.submitter_name}</span>
+        <span>Progress: {payload.progress}%</span>
+        {payload.target_date && <span>Due: {payload.target_date}</span>}
+      </div>
+      {payload.description && (
+        <div style={{ fontSize: 13, color: "var(--muted)", margin: "6px 0" }}>{payload.description}</div>
+      )}
+      {payload.key_results_summary && payload.key_results_summary !== "None" && (
+        <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>Key Results: {payload.key_results_summary}</div>
+      )}
+
+      {done === "approved" && <div className="ms-payroll-status ok">Approved</div>}
+      {done === "needs_revision" && <div className="ms-payroll-status warn">Sent back for revision</div>}
+      {done?.startsWith("error:") && <div className="ms-payroll-status err">{done.slice(6)}</div>}
+
+      {!done && !isActionable && objStatus && (
+        <div className="ms-payroll-status muted">
+          {objStatus === "active" ? "Already approved" : objStatus === "draft" ? "Already sent back for revision" : "No longer pending review"}
+        </div>
+      )}
+
+      {!done && isActionable && !showRevision && (
+        <div className="ms-payroll-actions">
+          <button className="btn btnPrimary" onClick={handleApprove} disabled={busy}>
+            {busy ? "…" : "Approve"}
+          </button>
+          <button className="btn btnDanger" onClick={() => setShowRevision(true)} disabled={busy}>
+            Needs Revision
+          </button>
+        </div>
+      )}
+
+      {!done && isActionable && showRevision && (
+        <div className="ms-payroll-reject">
+          <input
+            className="ms-payroll-reason"
+            placeholder="Review notes (optional)"
+            value={revisionNotes}
+            onChange={e => setRevisionNotes(e.target.value)}
+          />
+          <div className="ms-payroll-actions">
+            <button className="btn btnDanger" onClick={handleNeedsRevision} disabled={busy}>
+              {busy ? "…" : "Confirm"}
+            </button>
+            <button className="btn btnGhost" onClick={() => setShowRevision(false)} disabled={busy}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
+}
+
+// Parse [[PAYROLL_APPROVAL]]...[[/PAYROLL_APPROVAL]] and [[OBJECTIVE_REVIEW]]...[[/OBJECTIVE_REVIEW]] out of message content
+function MessageContent({ content, onAction }) {
+  // Check for payroll approval
+  const payrollMarker = "[[PAYROLL_APPROVAL]]";
+  const payrollEnd = "[[/PAYROLL_APPROVAL]]";
+  const payrollStart = content.indexOf(payrollMarker);
+  if (payrollStart !== -1) {
+    const pEnd = content.indexOf(payrollEnd, payrollStart);
+    const before = content.slice(0, payrollStart).trim();
+    const jsonStr = content.slice(payrollStart + payrollMarker.length, pEnd === -1 ? undefined : pEnd);
+    let payload = {};
+    try { payload = JSON.parse(jsonStr); } catch { /* fallback */ }
+    return (
+      <div>
+        {before && <div style={{ whiteSpace: "pre-wrap", marginBottom: 8 }}>{before}</div>}
+        <PayrollApprovalBlock payload={payload} onAction={onAction} />
+      </div>
+    );
+  }
+
+  // Check for objective review
+  const objMarker = "[[OBJECTIVE_REVIEW]]";
+  const objEnd = "[[/OBJECTIVE_REVIEW]]";
+  const objStart = content.indexOf(objMarker);
+  if (objStart !== -1) {
+    const oEnd = content.indexOf(objEnd, objStart);
+    const before = content.slice(0, objStart).trim();
+    const jsonStr = content.slice(objStart + objMarker.length, oEnd === -1 ? undefined : oEnd);
+    let payload = {};
+    try { payload = JSON.parse(jsonStr); } catch { /* fallback */ }
+    return (
+      <div>
+        {before && <div style={{ whiteSpace: "pre-wrap", marginBottom: 8 }}>{before}</div>}
+        <ObjectiveReviewBlock payload={payload} onAction={onAction} />
+      </div>
+    );
+  }
+
+  return <div style={{ whiteSpace: "pre-wrap" }}>{content}</div>;
 }
 
 function timeAgo(iso) {

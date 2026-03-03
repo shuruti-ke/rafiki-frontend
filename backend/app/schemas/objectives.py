@@ -64,6 +64,10 @@ class ObjectiveResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class SubmitForReviewRequest(BaseModel):
+    reviewer_id: UUID
+
+
 class ReviewRequest(BaseModel):
     review_status: str  # "approved" or "needs_revision"
     review_notes: Optional[str] = None

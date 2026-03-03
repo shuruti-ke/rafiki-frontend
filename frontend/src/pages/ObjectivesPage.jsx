@@ -29,6 +29,13 @@ export default function ObjectivesPage() {
   const [shareDropdown, setShareDropdown] = useState(false);
   const sharePickerRef = useRef(null);
 
+  // Reviewer picker state
+  const [showReviewerPicker, setShowReviewerPicker] = useState(false);
+  const [reviewers, setReviewers] = useState([]);
+  const [reviewerSearch, setReviewerSearch] = useState("");
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const reviewerPickerRef = useRef(null);
+
   const load = async () => {
     const url = filter === "all" ? `${API}/api/v1/objectives/` : `${API}/api/v1/objectives/?status=${filter}`;
     const res = await authFetch(url);
@@ -65,9 +72,29 @@ export default function ObjectivesPage() {
     load();
   };
 
-  const handleSubmitReview = async (id) => {
-    const res = await authFetch(`${API}/api/v1/objectives/${id}/submit-review`, { method: "POST" });
-    if (res.ok) { load(); setSelected(await res.json()); }
+  const handleSubmitReview = async (id, reviewerId) => {
+    setSubmittingReview(true);
+    const res = await authFetch(`${API}/api/v1/objectives/${id}/submit-review`, {
+      method: "POST",
+      body: JSON.stringify({ reviewer_id: reviewerId }),
+    });
+    setSubmittingReview(false);
+    if (res.ok) {
+      setShowReviewerPicker(false);
+      setReviewerSearch("");
+      load();
+      setSelected(await res.json());
+    }
+  };
+
+  const openReviewerPicker = async () => {
+    setShowReviewerPicker(true);
+    setReviewerSearch("");
+    const res = await authFetch(`${API}/api/v1/objectives/reviewers`);
+    if (res.ok) {
+      const data = await res.json();
+      setReviewers(data.reviewers || []);
+    }
   };
 
   const handleUpdateKR = async (objId, krId, value) => {
@@ -131,6 +158,7 @@ export default function ObjectivesPage() {
   useEffect(() => {
     const handleClick = (e) => {
       if (sharePickerRef.current && !sharePickerRef.current.contains(e.target)) setShareDropdown(false);
+      if (reviewerPickerRef.current && !reviewerPickerRef.current.contains(e.target)) setShowReviewerPicker(false);
     };
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
@@ -275,7 +303,38 @@ export default function ObjectivesPage() {
             <button className="btn btnTiny" onClick={() => handleAddKR(selected.id)}>+ Key Result</button>
             <button className="btn btnTiny" onClick={openShare}>Share</button>
             {(selected.status === "draft" || selected.status === "active") && (
-              <button className="btn btnTiny btnPrimary" onClick={() => handleSubmitReview(selected.id)}>Submit for Review</button>
+              <div style={{ position: "relative", display: "inline-block" }} ref={reviewerPickerRef}>
+                <button className="btn btnTiny btnPrimary" onClick={openReviewerPicker} disabled={submittingReview}>
+                  {submittingReview ? "Submitting..." : "Submit for Review"}
+                </button>
+                {showReviewerPicker && (
+                  <div className="obj-share" style={{ position: "absolute", top: "100%", left: 0, zIndex: 20, minWidth: 260, marginTop: 4 }}>
+                    <div className="obj-share-header">Select a reviewer</div>
+                    <input
+                      className="obj-share-search"
+                      value={reviewerSearch}
+                      onChange={e => setReviewerSearch(e.target.value)}
+                      placeholder="Search by name or email..."
+                      autoFocus
+                    />
+                    <div className="obj-share-dropdown" style={{ position: "relative", display: "block", maxHeight: 180, overflowY: "auto" }}>
+                      {reviewers.filter(r =>
+                        (r.name || "").toLowerCase().includes(reviewerSearch.toLowerCase()) ||
+                        (r.email || "").toLowerCase().includes(reviewerSearch.toLowerCase())
+                      ).length === 0 && <div className="obj-share-dropdown-empty">No reviewers found</div>}
+                      {reviewers.filter(r =>
+                        (r.name || "").toLowerCase().includes(reviewerSearch.toLowerCase()) ||
+                        (r.email || "").toLowerCase().includes(reviewerSearch.toLowerCase())
+                      ).map(r => (
+                        <div key={r.user_id} className="obj-share-dropdown-item" onClick={() => handleSubmitReview(selected.id, r.user_id)}>
+                          <span>{r.name}</span>
+                          <span style={{ color: "var(--muted)", fontSize: 12, marginLeft: 8 }}>{r.role.replace("_", " ")}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
             {(selected.status === "draft" || selected.status === "cancelled") && (
               <button className="btn btnTiny" style={{ color: "var(--danger)" }} onClick={() => handleDelete(selected.id)}>Delete</button>
