@@ -1,5 +1,5 @@
 from sqlalchemy import Column, String, Text, Integer, Float, Date, DateTime, Boolean, ForeignKey
-from sqlalchemy.sql import func
+from sqlalchemy.sql import func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -43,3 +43,13 @@ class KeyResult(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     objective = relationship("Objective", back_populates="key_results")
+
+
+class ObjectiveComment(Base):
+    __tablename__ = "objective_comments"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    objective_id = Column(UUID(as_uuid=True), ForeignKey("objectives.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), nullable=False)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

@@ -8,11 +8,12 @@ from typing import Optional
 
 from app.database import get_db
 from app.dependencies import get_current_user_id, get_current_org_id, require_manager
-from app.models.objective import Objective, KeyResult
+from app.models.objective import Objective, KeyResult, ObjectiveComment
+from app.models.user import User
 from app.schemas.objectives import (
     ObjectiveCreate, ObjectiveUpdate, ObjectiveResponse,
     KeyResultCreate, KeyResultUpdate, KeyResultResponse,
-    ReviewRequest,
+    ReviewRequest, CommentCreate, CommentResponse,
 )
 
 router = APIRouter(prefix="/api/v1/objectives", tags=["Objectives"])
@@ -253,3 +254,64 @@ def review_objective(
     db.commit()
     db.refresh(obj)
     return obj
+
+
+# ── Comments ──
+
+@router.get("/{objective_id}/comments", response_model=list[CommentResponse])
+def list_comments(
+    objective_id: uuid.UUID,
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    db: Session = Depends(get_db),
+):
+    obj = db.query(Objective).filter(Objective.id == objective_id, Objective.org_id == org_id).first()
+    if not obj:
+        raise HTTPException(404, "Objective not found in your org")
+    rows = (
+        db.query(ObjectiveComment, User.full_name)
+        .outerjoin(User, ObjectiveComment.user_id == User.user_id)
+        .filter(ObjectiveComment.objective_id == objective_id)
+        .order_by(ObjectiveComment.created_at.asc())
+        .all()
+    )
+    return [
+        CommentResponse(
+            id=c.id,
+            objective_id=c.objective_id,
+            user_id=c.user_id,
+            user_name=name or "Unknown",
+            content=c.content,
+            created_at=c.created_at,
+        )
+        for c, name in rows
+    ]
+
+
+@router.post("/{objective_id}/comments", response_model=CommentResponse)
+def add_comment(
+    objective_id: uuid.UUID,
+    body: CommentCreate,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    db: Session = Depends(get_db),
+):
+    obj = db.query(Objective).filter(Objective.id == objective_id, Objective.org_id == org_id).first()
+    if not obj:
+        raise HTTPException(404, "Objective not found in your org")
+    comment = ObjectiveComment(
+        objective_id=objective_id,
+        user_id=user_id,
+        content=body.content.strip(),
+    )
+    db.add(comment)
+    db.commit()
+    db.refresh(comment)
+    user = db.query(User).filter(User.user_id == user_id).first()
+    return CommentResponse(
+        id=comment.id,
+        objective_id=comment.objective_id,
+        user_id=comment.user_id,
+        user_name=user.full_name if user else "Unknown",
+        content=comment.content,
+        created_at=comment.created_at,
+    )

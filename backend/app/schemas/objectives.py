@@ -67,3 +67,18 @@ class ObjectiveResponse(BaseModel):
 class ReviewRequest(BaseModel):
     review_status: str  # "approved" or "needs_revision"
     review_notes: Optional[str] = None
+
+
+class CommentCreate(BaseModel):
+    content: str
+
+
+class CommentResponse(BaseModel):
+    id: UUID
+    objective_id: UUID
+    user_id: UUID
+    user_name: Optional[str] = None
+    content: str
+    created_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
