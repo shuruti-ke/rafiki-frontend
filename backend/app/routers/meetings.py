@@ -3,7 +3,9 @@ import logging
 import uuid
 import os
 import time
+import httpx
 from datetime import datetime, timezone
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -13,7 +15,11 @@ from app.database import get_db
 from app.dependencies import get_current_org_id, get_current_user_id, get_current_role
 from app.models.meeting import Meeting, _generate_room_name
 from app.models.user import User
-from app.schemas.meetings import MeetingCreate, MeetingUpdate, MeetingResponse
+from app.schemas.meetings import (
+    MeetingCreate, MeetingUpdate, MeetingResponse,
+    AgendaResponse, SummaryRequest, SummaryResponse,
+    WellbeingRequest, PushObjectivesRequest,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -21,13 +27,21 @@ logger = logging.getLogger(__name__)
 JAAS_APP_ID = os.getenv("JAAS_APP_ID", "").strip()
 JAAS_API_KEY_ID = os.getenv("JAAS_API_KEY_ID", "").strip()
 JAAS_PRIVATE_KEY = os.getenv("JAAS_PRIVATE_KEY", "").strip().replace("\\n", "\n")
-
 JITSI_BASE_URL = f"https://8x8.vc/{JAAS_APP_ID}" if JAAS_APP_ID else "https://meet.jit.si"
 
-router = APIRouter(prefix="/api/v1/meetings", tags=["Meetings"])
+# ── Claude / Bonsai config (reuses existing env vars) ──
+BONSAI_API_KEY = os.getenv("BONSAI_API_KEY", "").strip()
+BONSAI_BASE_URL = os.getenv("BONSAI_BASE_URL", "https://go.trybons.ai").strip().rstrip("/")
+CLAUDE_MODEL = "anthropic/claude-sonnet-4.5"
 
+# Internal base URL for pushing objectives
+INTERNAL_API_BASE = os.getenv("INTERNAL_API_BASE", "https://rafiki-backend.onrender.com")
+
+router = APIRouter(prefix="/api/v1/meetings", tags=["Meetings"])
 _PRIVILEGED_ROLES = {"hr_admin", "super_admin"}
 
+
+# ── Helpers ──
 
 def _build_jitsi_url(room_name: str) -> str:
     return f"{JITSI_BASE_URL}/{room_name}"
@@ -40,11 +54,8 @@ def _generate_jaas_token(user_id, user_name, user_email, room_name, is_moderator
         import jwt
         now = int(time.time())
         payload = {
-            "iss": "chat",
-            "aud": "jitsi",
-            "iat": now,
-            "exp": now + 7200,
-            "nbf": now - 10,
+            "iss": "chat", "aud": "jitsi",
+            "iat": now, "exp": now + 7200, "nbf": now - 10,
             "sub": JAAS_APP_ID,
             "context": {
                 "user": {
@@ -63,11 +74,35 @@ def _generate_jaas_token(user_id, user_name, user_email, room_name, is_moderator
             },
             "room": room_name,
         }
-        headers = {"kid": JAAS_API_KEY_ID, "alg": "RS256"}
-        return jwt.encode(payload, JAAS_PRIVATE_KEY, algorithm="RS256", headers=headers)
+        return jwt.encode(payload, JAAS_PRIVATE_KEY, algorithm="RS256",
+                          headers={"kid": JAAS_API_KEY_ID, "alg": "RS256"})
     except Exception as e:
-        logger.error("Failed to generate Jaas JWT: %s", e)
+        logger.error("Jaas JWT error: %s", e)
         return None
+
+
+def _claude(system: str, user: str) -> str:
+    """Call Claude via Bonsai and return text response."""
+    if not BONSAI_API_KEY:
+        raise HTTPException(503, "AI not configured")
+    try:
+        resp = httpx.post(
+            f"{BONSAI_BASE_URL}/v1/messages",
+            headers={"x-api-key": BONSAI_API_KEY, "Content-Type": "application/json"},
+            json={
+                "model": CLAUDE_MODEL,
+                "max_tokens": 1000,
+                "system": system,
+                "messages": [{"role": "user", "content": user}],
+            },
+            timeout=30,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return data["content"][0]["text"].strip()
+    except Exception as e:
+        logger.error("Claude API error: %s", e)
+        raise HTTPException(502, f"AI generation failed: {e}")
 
 
 def _to_response(meeting: Meeting) -> dict:
@@ -76,6 +111,8 @@ def _to_response(meeting: Meeting) -> dict:
     return d
 
 
+# ── CRUD ──
+
 @router.post("", response_model=MeetingResponse)
 def create_meeting(
     data: MeetingCreate,
@@ -83,13 +120,10 @@ def create_meeting(
     org_id: uuid.UUID = Depends(get_current_org_id),
     user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    room = _generate_room_name()
     meeting = Meeting(
-        org_id=org_id,
-        host_id=user_id,
-        title=data.title,
-        description=data.description,
-        room_name=room,
+        org_id=org_id, host_id=user_id,
+        title=data.title, description=data.description,
+        room_name=_generate_room_name(),
         scheduled_at=data.scheduled_at,
         duration_minutes=data.duration_minutes,
         participant_ids=data.participant_ids or [],
@@ -116,8 +150,7 @@ def list_meetings(
     )
     visible = [
         m for m in meetings
-        if m.host_id == user_id
-        or (m.participant_ids and user_id in m.participant_ids)
+        if m.host_id == user_id or (m.participant_ids and user_id in m.participant_ids)
     ]
     return [_to_response(m) for m in visible]
 
@@ -129,7 +162,7 @@ def list_all_meetings(
     role: str = Depends(get_current_role),
 ):
     if role not in _PRIVILEGED_ROLES:
-        raise HTTPException(status_code=403, detail="Admin only")
+        raise HTTPException(403, "Admin only")
     meetings = (
         db.query(Meeting)
         .filter(Meeting.org_id == org_id, Meeting.is_active == True)
@@ -139,7 +172,8 @@ def list_all_meetings(
     return [_to_response(m) for m in meetings]
 
 
-# ── /token must be defined BEFORE /{meeting_id} to avoid route conflict ──
+# ── AI endpoints (before /{meeting_id} to avoid route conflict) ──
+
 @router.post("/{meeting_id}/token")
 def get_meeting_token(
     meeting_id: uuid.UUID,
@@ -152,25 +186,15 @@ def get_meeting_token(
         Meeting.id == meeting_id, Meeting.org_id == org_id
     ).first()
     if not meeting:
-        raise HTTPException(status_code=404, detail="Meeting not found")
-
+        raise HTTPException(404, "Meeting not found")
     is_participant = meeting.participant_ids and user_id in meeting.participant_ids
     if role not in _PRIVILEGED_ROLES and meeting.host_id != user_id and not is_participant:
-        raise HTTPException(status_code=403, detail="Not authorized to join this meeting")
-
+        raise HTTPException(403, "Not authorized")
     user = db.query(User).filter(User.user_id == user_id).first()
     user_name = getattr(user, "name", None) or "Rafiki User"
     user_email = getattr(user, "email", None) or ""
     is_moderator = meeting.host_id == user_id or role in _PRIVILEGED_ROLES
-
-    token = _generate_jaas_token(
-        user_id=user_id,
-        user_name=user_name,
-        user_email=user_email,
-        room_name=meeting.room_name,
-        is_moderator=is_moderator,
-    )
-
+    token = _generate_jaas_token(user_id, user_name, user_email, meeting.room_name, is_moderator)
     return {
         "token": token,
         "room_name": meeting.room_name,
@@ -180,6 +204,216 @@ def get_meeting_token(
         "jaas_configured": bool(token),
     }
 
+
+@router.post("/{meeting_id}/agenda", response_model=AgendaResponse)
+def generate_agenda(
+    meeting_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    """Generate a meeting agenda using Claude based on meeting context."""
+    meeting = db.query(Meeting).filter(
+        Meeting.id == meeting_id, Meeting.org_id == org_id
+    ).first()
+    if not meeting:
+        raise HTTPException(404, "Meeting not found")
+
+    system = (
+        "You are Rafiki, an AI workplace assistant for East African organizations. "
+        "Generate a clear, structured meeting agenda. Be concise and practical. "
+        "Format as a numbered list of agenda items with time estimates."
+    )
+    user_prompt = (
+        f"Generate a meeting agenda for:\n"
+        f"Title: {meeting.title}\n"
+        f"Type: {meeting.meeting_type}\n"
+        f"Duration: {meeting.duration_minutes} minutes\n"
+        f"Description: {meeting.description or 'Not provided'}\n\n"
+        f"Create a practical agenda with time allocations that adds up to {meeting.duration_minutes} minutes."
+    )
+
+    agenda_text = _claude(system, user_prompt)
+    meeting.agenda = agenda_text
+    db.commit()
+
+    return {"meeting_id": meeting_id, "agenda": agenda_text}
+
+
+@router.post("/{meeting_id}/summary", response_model=SummaryResponse)
+def generate_summary(
+    meeting_id: uuid.UUID,
+    data: SummaryRequest,
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    """Generate meeting summary and extract action items using Claude."""
+    meeting = db.query(Meeting).filter(
+        Meeting.id == meeting_id, Meeting.org_id == org_id
+    ).first()
+    if not meeting:
+        raise HTTPException(404, "Meeting not found")
+
+    system = (
+        "You are Rafiki, an AI workplace assistant. Analyze the meeting and produce: "
+        "1) A concise summary (2-3 sentences). "
+        "2) A list of clear, actionable action items. "
+        "Respond in this exact JSON format: "
+        '{"summary": "...", "action_items": ["item1", "item2", ...]}'
+    )
+
+    context = f"Meeting title: {meeting.title}\nType: {meeting.meeting_type}\nDuration: {meeting.duration_minutes} mins"
+    if meeting.agenda:
+        context += f"\nAgenda:\n{meeting.agenda}"
+    if data.notes:
+        context += f"\nNotes/Transcript:\n{data.notes}"
+
+    raw = _claude(system, context)
+
+    # Parse JSON response
+    import json
+    try:
+        clean = raw.replace("```json", "").replace("```", "").strip()
+        parsed = json.loads(clean)
+        summary = parsed.get("summary", raw)
+        action_items = parsed.get("action_items", [])
+    except Exception:
+        summary = raw
+        action_items = []
+
+    meeting.summary = summary
+    meeting.action_items = action_items
+    db.commit()
+
+    return {"meeting_id": meeting_id, "summary": summary, "action_items": action_items}
+
+
+@router.post("/{meeting_id}/wellbeing")
+def log_wellbeing(
+    meeting_id: uuid.UUID,
+    data: WellbeingRequest,
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    """Log a post-meeting wellbeing rating (1-5). Stored anonymously on the meeting."""
+    if not 1 <= data.rating <= 5:
+        raise HTTPException(400, "Rating must be between 1 and 5")
+    meeting = db.query(Meeting).filter(
+        Meeting.id == meeting_id, Meeting.org_id == org_id
+    ).first()
+    if not meeting:
+        raise HTTPException(404, "Meeting not found")
+
+    meeting.wellbeing_rating = data.rating
+    db.commit()
+
+    # Generate a supportive response from Rafiki
+    if data.rating <= 2:
+        system = "You are Rafiki, a compassionate workplace wellbeing assistant."
+        prompt = (
+            f"An employee rated their post-meeting wellbeing as {data.rating}/5 "
+            f"(low). Their note: '{data.note or 'none'}'. "
+            "Give a brief (2 sentences), warm, supportive message and suggest one small action."
+        )
+        message = _claude(system, prompt)
+    else:
+        message = "Thanks for sharing how you're feeling. Keep up the great work! 🌟"
+
+    return {"ok": True, "rating": data.rating, "message": message}
+
+
+@router.post("/{meeting_id}/push-objectives")
+def push_objectives(
+    meeting_id: uuid.UUID,
+    data: PushObjectivesRequest,
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    role: str = Depends(get_current_role),
+):
+    """Push meeting action items as new objectives for the current user."""
+    meeting = db.query(Meeting).filter(
+        Meeting.id == meeting_id, Meeting.org_id == org_id
+    ).first()
+    if not meeting:
+        raise HTTPException(404, "Meeting not found")
+
+    from app.models.objective import Objective, KeyResult
+
+    created = []
+    for item in data.action_items:
+        obj = Objective(
+            org_id=org_id,
+            user_id=user_id,
+            title=item,
+            description=f"Action item from meeting: {meeting.title}",
+            target_date=data.target_date,
+            status="draft",
+        )
+        db.add(obj)
+        db.flush()
+        kr = KeyResult(
+            objective_id=obj.id,
+            title="Complete action item",
+            target_value=100,
+            current_value=0,
+            unit="%",
+        )
+        db.add(kr)
+        created.append({"title": item, "objective_id": str(obj.id)})
+
+    db.commit()
+    return {"ok": True, "created": len(created), "objectives": created}
+
+
+@router.post("/{meeting_id}/coaching-notes")
+def save_coaching_notes(
+    meeting_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    role: str = Depends(get_current_role),
+):
+    """For 1-on-1 meetings: auto-generate and save coaching notes via Claude."""
+    meeting = db.query(Meeting).filter(
+        Meeting.id == meeting_id, Meeting.org_id == org_id
+    ).first()
+    if not meeting:
+        raise HTTPException(404, "Meeting not found")
+    if meeting.meeting_type != "one_on_one":
+        raise HTTPException(400, "Coaching notes only available for 1-on-1 meetings")
+    if role not in _PRIVILEGED_ROLES and meeting.host_id != user_id:
+        raise HTTPException(403, "Only the host can save coaching notes")
+
+    system = (
+        "You are Rafiki, an AI workplace coach assistant. "
+        "Generate structured coaching session notes. Be professional and actionable."
+    )
+    context = f"1-on-1 meeting: {meeting.title}\nDuration: {meeting.duration_minutes} mins"
+    if meeting.agenda:
+        context += f"\nAgenda:\n{meeting.agenda}"
+    if meeting.summary:
+        context += f"\nSummary:\n{meeting.summary}"
+    if meeting.action_items:
+        context += f"\nAction items:\n" + "\n".join(f"- {a}" for a in meeting.action_items)
+
+    notes = _claude(system, f"Generate coaching session notes for:\n{context}")
+
+    # Post to manager coaching endpoint internally
+    try:
+        from app.routers.manager import create_coaching_session
+        # Store notes on meeting for reference
+        meeting.summary = (meeting.summary or "") + f"\n\n--- Coaching Notes ---\n{notes}"
+        db.commit()
+    except Exception as e:
+        logger.warning("Could not auto-post coaching session: %s", e)
+
+    return {"ok": True, "notes": notes}
+
+
+# ── Standard CRUD (after AI endpoints) ──
 
 @router.get("/{meeting_id}", response_model=MeetingResponse)
 def get_meeting(
@@ -193,12 +427,10 @@ def get_meeting(
         Meeting.id == meeting_id, Meeting.org_id == org_id
     ).first()
     if not meeting:
-        raise HTTPException(status_code=404, detail="Meeting not found")
-
+        raise HTTPException(404, "Meeting not found")
     is_participant = meeting.participant_ids and user_id in meeting.participant_ids
     if role not in _PRIVILEGED_ROLES and meeting.host_id != user_id and not is_participant:
-        raise HTTPException(status_code=403, detail="Not authorized")
-
+        raise HTTPException(403, "Not authorized")
     return _to_response(meeting)
 
 
@@ -215,13 +447,11 @@ def update_meeting(
         Meeting.id == meeting_id, Meeting.org_id == org_id
     ).first()
     if not meeting:
-        raise HTTPException(status_code=404, detail="Meeting not found")
+        raise HTTPException(404, "Meeting not found")
     if role not in _PRIVILEGED_ROLES and meeting.host_id != user_id:
-        raise HTTPException(status_code=403, detail="Only the host can edit this meeting")
-
+        raise HTTPException(403, "Only the host can edit this meeting")
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(meeting, field, value)
-
     db.commit()
     db.refresh(meeting)
     return _to_response(meeting)
@@ -238,10 +468,9 @@ def start_meeting(
         Meeting.id == meeting_id, Meeting.org_id == org_id
     ).first()
     if not meeting:
-        raise HTTPException(status_code=404, detail="Meeting not found")
+        raise HTTPException(404, "Meeting not found")
     if meeting.host_id != user_id:
-        raise HTTPException(status_code=403, detail="Only the host can start this meeting")
-
+        raise HTTPException(403, "Only the host can start this meeting")
     meeting.started_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(meeting)
@@ -260,10 +489,9 @@ def end_meeting(
         Meeting.id == meeting_id, Meeting.org_id == org_id
     ).first()
     if not meeting:
-        raise HTTPException(status_code=404, detail="Meeting not found")
+        raise HTTPException(404, "Meeting not found")
     if role not in _PRIVILEGED_ROLES and meeting.host_id != user_id:
-        raise HTTPException(status_code=403, detail="Only the host can end this meeting")
-
+        raise HTTPException(403, "Only the host can end this meeting")
     meeting.ended_at = datetime.now(timezone.utc)
     meeting.is_active = False
     db.commit()
@@ -283,10 +511,9 @@ def delete_meeting(
         Meeting.id == meeting_id, Meeting.org_id == org_id
     ).first()
     if not meeting:
-        raise HTTPException(status_code=404, detail="Meeting not found")
+        raise HTTPException(404, "Meeting not found")
     if role not in _PRIVILEGED_ROLES and meeting.host_id != user_id:
-        raise HTTPException(status_code=403, detail="Only the host can delete this meeting")
-
+        raise HTTPException(403, "Only the host can delete this meeting")
     meeting.is_active = False
     db.commit()
     return {"ok": True, "message": "Meeting cancelled"}
