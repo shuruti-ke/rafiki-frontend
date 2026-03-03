@@ -34,6 +34,7 @@ import SuperAdminDashboard from "./pages/SuperAdminDashboard.jsx";
 import SuperAdminOrgDetail from "./pages/SuperAdminOrgDetail.jsx";
 import AuthGuard from "./components/AuthGuard.jsx";
 import "./App.css";
+import MeetingsPage from "./pages/Meetings.jsx";
 
 export default function App() {
   return (
@@ -59,6 +60,7 @@ export default function App() {
           <Route path="/my-documents" element={<MyDocumentsPage />} />
           <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/timesheet" element={<TimesheetPage />} />
+          <Route path="/meetings" element={<MeetingsPage />} />
         </Route>
 
         {/* Super Admin Portal */}
