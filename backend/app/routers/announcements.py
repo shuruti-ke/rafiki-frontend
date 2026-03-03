@@ -75,7 +75,7 @@ def list_announcements(
 
 @router.get("/{ann_id}", response_model=AnnouncementResponse)
 def get_announcement(
-    ann_id: int,
+    ann_id: UUID,
     db: Session = Depends(get_db),
     org_id: UUID = Depends(get_current_org_id),
     user_id: UUID = Depends(get_current_user_id),
@@ -107,7 +107,7 @@ def get_announcement(
 
 @router.put("/{ann_id}", response_model=AnnouncementResponse)
 def update_announcement(
-    ann_id: int,
+    ann_id: UUID,
     update: AnnouncementUpdate,
     db: Session = Depends(get_db),
     org_id: UUID = Depends(get_current_org_id),
@@ -142,7 +142,7 @@ def update_announcement(
 
 @router.delete("/{ann_id}")
 def delete_announcement(
-    ann_id: int,
+    ann_id: UUID,
     db: Session = Depends(get_db),
     org_id: UUID = Depends(get_current_org_id),
     user_id: UUID = Depends(get_current_user_id),
@@ -165,7 +165,7 @@ def delete_announcement(
 
 @router.post("/{ann_id}/publish", response_model=AnnouncementResponse)
 def publish_announcement(
-    ann_id: int,
+    ann_id: UUID,
     db: Session = Depends(get_db),
     org_id: UUID = Depends(get_current_org_id),
     user_id: UUID = Depends(get_current_user_id),
@@ -189,7 +189,7 @@ def publish_announcement(
 
 @router.get("/{ann_id}/reads", response_model=list[ReadReceiptResponse])
 def get_read_receipts(
-    ann_id: int,
+    ann_id: UUID,
     db: Session = Depends(get_db),
     org_id: UUID = Depends(get_current_org_id),
     role: str = Depends(require_admin),
@@ -211,7 +211,7 @@ def get_read_receipts(
 
 @router.post("/{ann_id}/assign-training", response_model=list[TrainingAssignmentResponse])
 def assign_training(
-    ann_id: int,
+    ann_id: UUID,
     data: TrainingAssignmentCreate,
     db: Session = Depends(get_db),
     org_id: UUID = Depends(get_current_org_id),
@@ -267,7 +267,7 @@ def assign_training(
 
 @router.get("/{ann_id}/training-status", response_model=list[TrainingAssignmentResponse])
 def get_training_status(
-    ann_id: int,
+    ann_id: UUID,
     db: Session = Depends(get_db),
     org_id: UUID = Depends(get_current_org_id),
     role: str = Depends(require_admin),
@@ -290,7 +290,7 @@ def get_training_status(
 
 @router.post("/{ann_id}/complete-training", response_model=TrainingAssignmentResponse)
 def complete_training(
-    ann_id: int,
+    ann_id: UUID,
     db: Session = Depends(get_db),
     org_id: UUID = Depends(get_current_org_id),
     user_id: UUID = Depends(get_current_user_id),
