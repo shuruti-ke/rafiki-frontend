@@ -186,9 +186,18 @@ def _estimate_tokens(text: str) -> int:
 
 def index_document(db: Session, document: Document):
     """Extract text, chunk it, and store chunks for full-text search."""
-    text = extract_text(document.file_path, document.mime_type)
+    # Try R2 download first (production), fall back to local filesystem
+    text = ""
+    try:
+        from app.services.file_storage import download_file_bytes
+        file_bytes = download_file_bytes(document.file_path)
+        text = extract_text_from_bytes(file_bytes, document.mime_type)
+    except Exception as e:
+        logger.debug("R2 download failed, trying local: %s", e)
+        text = extract_text(document.file_path, document.mime_type)
+
     if not text:
-        logger.warning("No text extracted from document %d", document.id)
+        logger.warning("No text extracted from document %s", document.id)
         return
 
     # Remove old chunks

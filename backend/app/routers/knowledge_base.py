@@ -184,3 +184,32 @@ def delete_document(
 
     log_action(db, org_id, user_id, "delete", "document", doc.id)
     return {"ok": True, "message": "Document archived"}
+
+
+@router.post("/reindex")
+def reindex_all_documents(
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    """Re-index all current documents that have no chunks (admin only)."""
+    docs = (
+        db.query(Document)
+        .filter(Document.org_id == org_id, Document.is_current == True)
+        .all()
+    )
+
+    results = {"total": len(docs), "indexed": 0, "failed": 0, "skipped": 0}
+    for doc in docs:
+        existing = db.query(DocumentChunk).filter(DocumentChunk.document_id == doc.id).count()
+        if existing > 0:
+            results["skipped"] += 1
+            continue
+        try:
+            index_document(db, doc)
+            results["indexed"] += 1
+        except Exception as e:
+            logger.error("Reindex failed for doc %s: %s", doc.id, e)
+            results["failed"] += 1
+
+    return results
