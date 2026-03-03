@@ -24,9 +24,12 @@ from app.services.audit import log_action
 
 _EXTRACTABLE_MIMES = {
     "application/pdf",
+    "application/msword",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "text/plain",
     "text/csv",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-excel",
 }
 
 
@@ -62,7 +65,6 @@ def reindex_employee_docs_text(
         .filter(
             EmployeeDocument.org_id == org_id,
             EmployeeDocument.extracted_text.is_(None),
-            EmployeeDocument.mime_type.in_(_EXTRACTABLE_MIMES),
         )
         .all()
     )
