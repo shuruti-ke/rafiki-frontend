@@ -13,6 +13,11 @@ export default function ObjectivesPage() {
   const [form, setForm] = useState({ title: "", description: "", target_date: "" });
   const [krDrafts, setKrDrafts] = useState([{ title: "", target_value: 100, current_value: 0, unit: "%" }]);
 
+  // Comments state
+  const [comments, setComments] = useState([]);
+  const [commentText, setCommentText] = useState("");
+  const [commentPosting, setCommentPosting] = useState(false);
+
   // Share state
   const [showShare, setShowShare] = useState(false);
   const [colleagues, setColleagues] = useState([]);
@@ -31,6 +36,11 @@ export default function ObjectivesPage() {
   };
 
   useEffect(() => { load(); }, [filter]);
+
+  useEffect(() => {
+    if (selected) loadComments(selected.id);
+    else setComments([]);
+  }, [selected?.id]);
 
   const handleCreate = async () => {
     const body = {
@@ -95,6 +105,25 @@ export default function ObjectivesPage() {
     if (colleagues.length === 0) {
       const res = await authFetch(`${API}/api/v1/messages/colleagues`);
       if (res.ok) setColleagues(await res.json());
+    }
+  };
+
+  const loadComments = async (objId) => {
+    const res = await authFetch(`${API}/api/v1/objectives/${objId}/comments`);
+    if (res.ok) setComments(await res.json());
+    else setComments([]);
+  };
+
+  const handlePostComment = async () => {
+    if (!commentText.trim() || !selected) return;
+    setCommentPosting(true);
+    const res = await authFetch(`${API}/api/v1/objectives/${selected.id}/comments`, {
+      method: "POST", body: JSON.stringify({ content: commentText }),
+    });
+    setCommentPosting(false);
+    if (res.ok) {
+      setCommentText("");
+      loadComments(selected.id);
     }
   };
 
@@ -308,6 +337,34 @@ export default function ObjectivesPage() {
               )}
             </div>
           )}
+
+          <div className="obj-comments">
+            <div className="obj-comments-header">Comments</div>
+            {comments.length === 0 && <div className="obj-comments-empty">No comments yet</div>}
+            <div className="obj-comments-list">
+              {comments.map(c => (
+                <div key={c.id} className="obj-comment">
+                  <div className="obj-comment-meta">
+                    <span className="obj-comment-author">{c.user_name}</span>
+                    <span className="obj-comment-time">{new Date(c.created_at).toLocaleString()}</span>
+                  </div>
+                  <div className="obj-comment-content">{c.content}</div>
+                </div>
+              ))}
+            </div>
+            <div className="obj-comment-input">
+              <textarea
+                value={commentText}
+                onChange={e => setCommentText(e.target.value)}
+                placeholder="Write a comment..."
+                rows={2}
+                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handlePostComment(); } }}
+              />
+              <button className="btn btnTiny btnPrimary" onClick={handlePostComment} disabled={!commentText.trim() || commentPosting}>
+                {commentPosting ? "Posting..." : "Post"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
