@@ -605,3 +605,270 @@
   .grid { grid-template-columns: 1fr; }
   .modal { padding: 24px 20px; }
 }
+
+/* ── AI Intelligence styles ── */
+
+.aiBadge {
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  background: linear-gradient(135deg, rgba(139,92,246,0.1) 0%, rgba(31,191,184,0.1) 100%);
+  color: var(--primary-purple);
+  margin-left: auto;
+}
+
+.agendaBtn {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius);
+  border: 1px solid var(--gray-200);
+  background: transparent;
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, border-color 0.2s;
+  flex-shrink: 0;
+}
+
+.agendaBtn:hover {
+  background: rgba(139,92,246,0.06);
+  border-color: var(--primary-purple);
+}
+
+/* Wide modal for post-meeting */
+.modalWide {
+  max-width: 640px;
+}
+
+.modalTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.postMeetingSubtitle {
+  font-size: 0.88rem;
+  color: var(--gray-500);
+  margin: -16px 0 16px;
+}
+
+/* Tabs */
+.tabRow {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--gray-100);
+  padding-bottom: 0;
+}
+
+.tab {
+  padding: 8px 16px;
+  border: none;
+  background: transparent;
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--gray-500);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.tab:hover { color: var(--primary-purple); }
+
+.tabActive {
+  color: var(--primary-purple);
+  border-bottom-color: var(--primary-purple);
+  font-weight: 600;
+}
+
+/* AI result box */
+.aiResult {
+  background: linear-gradient(135deg, rgba(139,92,246,0.04) 0%, rgba(31,191,184,0.04) 100%);
+  border: 1px solid rgba(139,92,246,0.15);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.aiResultLabel {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--primary-purple);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.aiResultText {
+  font-size: 0.95rem;
+  color: var(--gray-700);
+  line-height: 1.6;
+  margin: 0;
+}
+
+.agendaText,
+.coachingNotes {
+  font-size: 0.9rem;
+  color: var(--gray-700);
+  line-height: 1.7;
+  white-space: pre-wrap;
+  font-family: var(--font-body);
+  margin: 0;
+}
+
+.aiLoading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 32px;
+  color: var(--gray-500);
+  font-size: 0.95rem;
+}
+
+.aiEmpty {
+  text-align: center;
+  padding: 32px 16px;
+  color: var(--gray-500);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Action items */
+.actionHint {
+  font-size: 0.88rem;
+  color: var(--gray-500);
+  margin-bottom: 12px;
+}
+
+.actionList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.actionItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  border: 1.5px solid var(--gray-200);
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: var(--gray-700);
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.actionItem:hover { border-color: var(--primary-purple); }
+
+.actionItemSelected {
+  border-color: var(--primary-purple);
+  background: rgba(139,92,246,0.05);
+}
+
+.actionCheckbox {
+  margin-top: 2px;
+  accent-color: var(--primary-purple);
+  flex-shrink: 0;
+}
+
+.pushedSuccess {
+  text-align: center;
+  padding: 16px;
+  border-radius: var(--radius);
+  background: rgba(52,211,153,0.1);
+  color: #065f46;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+/* Wellbeing modal */
+.wellbeingHeader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-bottom: 24px;
+  gap: 8px;
+}
+
+.wellbeingLogo {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+}
+
+.wellbeingSubtitle {
+  font-size: 0.85rem;
+  color: var(--gray-500);
+  margin: 0;
+}
+
+.emojiRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.emojiBtn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 4px;
+  border-radius: var(--radius);
+  border: 1.5px solid var(--gray-200);
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.emojiBtn:hover {
+  border-color: var(--primary-purple);
+  background: rgba(139,92,246,0.04);
+}
+
+.emojiBtnActive {
+  border-color: var(--primary-purple);
+  background: rgba(139,92,246,0.08);
+}
+
+.emoji { font-size: 1.6rem; }
+
+.emojiLabel {
+  font-size: 0.65rem;
+  color: var(--gray-500);
+  text-align: center;
+  line-height: 1.2;
+}
+
+.wellbeingDone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 0 16px;
+}
+
+.wellbeingMessage {
+  font-size: 0.95rem;
+  color: var(--gray-700);
+  line-height: 1.6;
+  text-align: center;
+  background: linear-gradient(135deg, rgba(139,92,246,0.06) 0%, rgba(31,191,184,0.06) 100%);
+  border-radius: 12px;
+  padding: 16px;
+  margin: 0;
+}
