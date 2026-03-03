@@ -1,4 +1,5 @@
 # backend/app/routers/employee_docs.py
+import logging
 import uuid
 from datetime import datetime, timezone
 
@@ -22,6 +23,8 @@ from app.services.file_storage import save_upload, get_download_url, download_fi
 from app.services.document_processor import extract_text_from_bytes
 from app.services.audit import log_action
 
+logger = logging.getLogger(__name__)
+
 _EXTRACTABLE_MIMES = {
     "application/pdf",
     "application/msword",
@@ -33,7 +36,7 @@ _EXTRACTABLE_MIMES = {
 }
 
 
-def _try_extract_text(doc, logger=None):
+def _try_extract_text(doc, log=None):
     """Best-effort text extraction for a newly uploaded employee document."""
     if doc.mime_type not in _EXTRACTABLE_MIMES:
         return
@@ -43,10 +46,21 @@ def _try_extract_text(doc, logger=None):
         if text:
             doc.extracted_text = text
     except Exception as e:
-        if logger:
-            logger.warning("Text extraction failed for doc %s: %s", doc.id, e)
+        (log or logger).warning("Text extraction failed for doc %s: %s", doc.id, e)
+
 
 router = APIRouter(prefix="/api/v1/employee-docs", tags=["Employee Documents"])
+
+# Path B (DB as-is)
+_PRIVILEGED_ROLES = {"hr_admin", "super_admin"}
+
+
+def _now_utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _can_access_user_docs(current_user_id: uuid.UUID, target_user_id: uuid.UUID, role: str) -> bool:
+    return role in _PRIVILEGED_ROLES or current_user_id == target_user_id
 
 
 @router.post("/reindex-text")
@@ -84,21 +98,6 @@ def reindex_employee_docs_text(
     db.commit()
     return results
 
-# Path B (DB as-is)
-_PRIVILEGED_ROLES = {"hr_admin", "super_admin"}
-
-
-def _now_utc() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def _can_access_user_docs(current_user_id: uuid.UUID, target_user_id: uuid.UUID, role: str) -> bool:
-    """
-    - User can access their own docs
-    - HR Admin / Super Admin can access any user's docs
-    """
-    return role in _PRIVILEGED_ROLES or current_user_id == target_user_id
-
 
 # ---------------------------------------------------------------------
 # IMPORTANT: define /me routes BEFORE /{user_id} routes to avoid 422
@@ -110,11 +109,6 @@ def list_my_documents(
     org_id: uuid.UUID = Depends(get_current_org_id),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    """
-    Employee sees all documents that belong to them:
-    - HR uploaded (contract, job description, etc.)
-    - Employee uploaded (personal docs)
-    """
     return (
         db.query(EmployeeDocument)
         .filter(
@@ -136,10 +130,6 @@ def upload_my_document(
     org_id: uuid.UUID = Depends(get_current_org_id),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    """
-    Employee uploads a personal document for themselves.
-    visibility: 'private' (only self) or 'hr_visible' (HR admin can also see).
-    """
     if visibility not in ("private", "hr_visible"):
         visibility = "private"
 
@@ -164,20 +154,12 @@ def upload_my_document(
     db.refresh(doc)
 
     log_action(
-        db,
-        org_id,
-        current_user_id,
-        "upload",
-        "employee_document",
-        doc.id,
+        db, org_id, current_user_id, "upload", "employee_document", doc.id,
         {"user_id": str(current_user_id), "title": title, "doc_type": doc_type},
     )
     return doc
 
 
-# -------------------------------
-# ADDED: DELETE /me/{doc_id}
-# -------------------------------
 @router.delete("/me/{doc_id}")
 def delete_my_document(
     doc_id: uuid.UUID,
@@ -185,10 +167,6 @@ def delete_my_document(
     org_id: uuid.UUID = Depends(get_current_org_id),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    """
-    Employee deletes their own document using /me route.
-    This avoids frontend needing user_id (prevents 'undefined' user id issues).
-    """
     doc = (
         db.query(EmployeeDocument)
         .filter(
@@ -205,12 +183,7 @@ def delete_my_document(
     db.commit()
 
     log_action(
-        db,
-        org_id,
-        current_user_id,
-        "delete",
-        "employee_document",
-        doc_id,
+        db, org_id, current_user_id, "delete", "employee_document", doc_id,
         {"user_id": str(current_user_id)},
     )
     return {"ok": True, "message": "Document deleted"}
@@ -224,7 +197,6 @@ def update_my_document_visibility(
     org_id: uuid.UUID = Depends(get_current_org_id),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    """Employee updates visibility of their own document: 'private' or 'hr_visible'."""
     if visibility not in ("private", "hr_visible"):
         raise HTTPException(status_code=400, detail="visibility must be 'private' or 'hr_visible'")
 
@@ -254,13 +226,6 @@ def download_employee_doc(
     current_user_id: uuid.UUID = Depends(get_current_user_id),
     role: str = Depends(get_current_role),
 ):
-    """
-    Redirect to a presigned URL (R2) for downloading an employee document.
-
-    Access:
-      - Employee can download their own docs
-      - HR/Super can download any doc in org
-    """
     doc = (
         db.query(EmployeeDocument)
         .filter(EmployeeDocument.id == doc_id, EmployeeDocument.org_id == org_id)
@@ -276,8 +241,6 @@ def download_employee_doc(
     return {"url": presigned_url}
 
 
-# --- Employee Documents (HR uploads for a user OR user uploads for self via {user_id}) ---
-
 @router.post("/{user_id}/upload", response_model=EmployeeDocumentResponse)
 def upload_employee_doc(
     user_id: uuid.UUID,
@@ -289,13 +252,11 @@ def upload_employee_doc(
     current_user_id: uuid.UUID = Depends(get_current_user_id),
     role: str = Depends(get_current_role),
 ):
-    # Prevent IDOR
     if not _can_access_user_docs(current_user_id, user_id, role):
         raise HTTPException(status_code=403, detail="Not authorized to upload for this user")
 
     file_path, original_name, size = save_upload(file, subfolder="employee_docs")
 
-    # DB has no "domain" column (Path B)
     doc = EmployeeDocument(
         user_id=user_id,
         org_id=org_id,
@@ -314,12 +275,7 @@ def upload_employee_doc(
     db.refresh(doc)
 
     log_action(
-        db,
-        org_id,
-        current_user_id,
-        "upload",
-        "employee_document",
-        doc.id,
+        db, org_id, current_user_id, "upload", "employee_document", doc.id,
         {"user_id": str(user_id), "title": title, "doc_type": doc_type},
     )
     return doc
@@ -335,7 +291,6 @@ def list_employee_docs(
 ):
     is_owner_or_privileged = _can_access_user_docs(current_user_id, user_id, role)
 
-    # Docs shared to current user (active shares only)
     shared_doc_ids = (
         db.query(DocumentShare.document_id)
         .filter(
@@ -349,10 +304,8 @@ def list_employee_docs(
     q = db.query(EmployeeDocument).filter(EmployeeDocument.org_id == org_id)
 
     if role in _PRIVILEGED_ROLES:
-        # HR/Super sees all docs for that user
         q = q.filter(EmployeeDocument.user_id == user_id)
     elif is_owner_or_privileged:
-        # Owner sees own docs OR docs shared to them
         q = q.filter(
             or_(
                 EmployeeDocument.user_id == user_id,
@@ -360,7 +313,6 @@ def list_employee_docs(
             )
         )
     else:
-        # Non-owner/non-privileged sees only docs shared to them
         q = q.filter(EmployeeDocument.id.in_(shared_doc_ids))
 
     return q.order_by(EmployeeDocument.created_at.desc()).all()
@@ -377,7 +329,6 @@ def share_employee_doc(
     current_user_id: uuid.UUID = Depends(get_current_user_id),
     role: str = Depends(get_current_role),
 ):
-    # Owner or HR/Super can share
     if not _can_access_user_docs(current_user_id, user_id, role):
         raise HTTPException(status_code=403, detail="Not authorized to share for this user")
 
@@ -405,12 +356,7 @@ def share_employee_doc(
     db.refresh(share)
 
     log_action(
-        db,
-        org_id,
-        current_user_id,
-        "share",
-        "employee_document",
-        doc.id,
+        db, org_id, current_user_id, "share", "employee_document", doc.id,
         {"user_id": str(user_id), "shared_to": str(target_user_id), "permission": permission},
     )
     return {"ok": True, "message": "Document shared"}
@@ -426,7 +372,6 @@ def revoke_employee_doc_share(
     current_user_id: uuid.UUID = Depends(get_current_user_id),
     role: str = Depends(get_current_role),
 ):
-    # Owner or HR/Super can revoke
     if not _can_access_user_docs(current_user_id, user_id, role):
         raise HTTPException(status_code=403, detail="Not authorized to revoke for this user")
 
@@ -448,12 +393,7 @@ def revoke_employee_doc_share(
     db.commit()
 
     log_action(
-        db,
-        org_id,
-        current_user_id,
-        "revoke_share",
-        "employee_document",
-        doc_id,
+        db, org_id, current_user_id, "revoke_share", "employee_document", doc_id,
         {"user_id": str(user_id), "revoked_from": str(target_user_id)},
     )
     return {"ok": True, "message": "Share revoked"}
@@ -468,7 +408,6 @@ def delete_employee_doc(
     current_user_id: uuid.UUID = Depends(get_current_user_id),
     role: str = Depends(get_current_role),
 ):
-    # Hard delete (matches current DB behavior)
     if not _can_access_user_docs(current_user_id, user_id, role):
         raise HTTPException(status_code=403, detail="Not authorized to delete for this user")
 
@@ -525,12 +464,7 @@ def create_evaluation(
     db.refresh(ev)
 
     log_action(
-        db,
-        org_id,
-        current_user_id,
-        "create",
-        "evaluation",
-        ev.id,
+        db, org_id, current_user_id, "create", "evaluation", ev.id,
         {"user_id": str(user_id), "period": data.evaluation_period},
     )
     return ev
@@ -603,7 +537,6 @@ def create_disciplinary(
     current_user_id: uuid.UUID = Depends(get_current_user_id),
     role: str = Depends(get_current_role),
 ):
-    # Highly sensitive: HR/Super OR the user themselves
     if role not in _PRIVILEGED_ROLES and current_user_id != user_id:
         raise HTTPException(status_code=403, detail="Access denied to disciplinary records")
 
@@ -623,12 +556,7 @@ def create_disciplinary(
     db.refresh(record)
 
     log_action(
-        db,
-        org_id,
-        current_user_id,
-        "create",
-        "disciplinary_record",
-        record.id,
+        db, org_id, current_user_id, "create", "disciplinary_record", record.id,
         {"user_id": str(user_id), "type": data.record_type},
     )
     return record
