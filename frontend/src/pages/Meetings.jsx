@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import styles from './Meetings.module.css';
 
 const API = 'https://rafiki-backend.onrender.com/api/v1/meetings';
+const LOGO = '/Rafiki_logo_2.png';
 
 function getToken() {
   return localStorage.getItem('rafiki_token');
@@ -24,9 +25,96 @@ function formatDate(iso) {
   });
 }
 
+// ── Jitsi Room with Jaas JWT support ──
+function JitsiRoom({ meeting, onClose }) {
+  const [tokenData, setTokenData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    async function fetchToken() {
+      try {
+        const res = await fetch(`${API}/${meeting.id}/token`, {
+          method: 'POST',
+          headers: authHeaders(),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Failed to get meeting token');
+        setTokenData(data);
+      } catch (e) {
+        setError(e.message);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchToken();
+  }, [meeting.id]);
+
+  const buildIframeSrc = () => {
+    if (!tokenData) return null;
+    if (tokenData.jaas_configured && tokenData.token) {
+      const roomUrl = `https://8x8.vc/${tokenData.app_id}/${tokenData.room_name}`;
+      return `${roomUrl}?jwt=${tokenData.token}#config.prejoinPageEnabled=false&config.startWithAudioMuted=false&interfaceConfig.SHOW_JITSI_WATERMARK=false`;
+    }
+    return `${meeting.jitsi_url}#config.prejoinPageEnabled=false&config.startWithAudioMuted=false&interfaceConfig.SHOW_JITSI_WATERMARK=false`;
+  };
+
+  return (
+    <div className={styles.jitsiOverlay}>
+      {/* Header with logo */}
+      <div className={styles.jitsiHeader}>
+        <div className={styles.jitsiTitle}>
+          <img src={LOGO} alt="Rafiki" className={styles.jitsiLogo} />
+          <span className={styles.jitsiTitleText}>{meeting.title}</span>
+          {tokenData?.is_moderator && <span className={styles.moderatorBadge}>Moderator</span>}
+        </div>
+        <button className={styles.jitsiClose} onClick={onClose}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+          Leave Meeting
+        </button>
+      </div>
+
+      {/* Loading screen with logo */}
+      {loading && (
+        <div className={styles.jitsiLoading}>
+          <img src={LOGO} alt="Rafiki" className={styles.jitsiLoadingLogo} />
+          <div className={styles.jitsiLoadingText}>Preparing your secure meeting room...</div>
+          <div className={styles.jitsiSpinner} />
+        </div>
+      )}
+
+      {/* Error screen */}
+      {error && (
+        <div className={styles.jitsiError}>
+          <img src={LOGO} alt="Rafiki" className={styles.jitsiLoadingLogo} />
+          <p>Failed to join: {error}</p>
+          <button className={styles.scheduleBtn} onClick={onClose}>Go Back</button>
+        </div>
+      )}
+
+      {/* Iframe */}
+      {!loading && !error && (
+        <iframe
+          className={styles.jitsiFrame}
+          src={buildIframeSrc()}
+          allow="camera; microphone; display-capture; autoplay; clipboard-write"
+          allowFullScreen
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Meeting Card ──
 function MeetingCard({ meeting, onJoin, onDelete, currentUserId }) {
   const isHost = meeting.host_id === currentUserId;
-  const isPast = meeting.ended_at || (meeting.scheduled_at && new Date(meeting.scheduled_at) < new Date() && !meeting.started_at);
+  const isPast = meeting.ended_at || (
+    meeting.scheduled_at &&
+    new Date(meeting.scheduled_at) < new Date() &&
+    !meeting.started_at
+  );
 
   return (
     <div className={`${styles.card} ${isPast ? styles.cardPast : ''}`}>
@@ -40,25 +128,34 @@ function MeetingCard({ meeting, onJoin, onDelete, currentUserId }) {
       {meeting.description && <p className={styles.cardDesc}>{meeting.description}</p>}
       <div className={styles.cardMeta}>
         <span className={styles.metaItem}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+          </svg>
           {formatDate(meeting.scheduled_at)}
         </span>
         <span className={styles.metaItem}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
+          </svg>
           {meeting.duration_minutes} min
         </span>
       </div>
       <div className={styles.cardActions}>
-        <button
-          className={styles.joinBtn}
-          onClick={() => onJoin(meeting)}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+        <button className={styles.joinBtn} onClick={() => onJoin(meeting)}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <polygon points="23 7 16 12 23 17 23 7"/>
+            <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+          </svg>
           Join Meeting
         </button>
         {isHost && (
           <button className={styles.deleteBtn} onClick={() => onDelete(meeting.id)}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+              <path d="M10 11v6M14 11v6"/>
+            </svg>
             Cancel
           </button>
         )}
@@ -67,6 +164,7 @@ function MeetingCard({ meeting, onJoin, onDelete, currentUserId }) {
   );
 }
 
+// ── Schedule Modal ──
 function ScheduleModal({ onClose, onCreated }) {
   const [form, setForm] = useState({
     title: '',
@@ -110,7 +208,9 @@ function ScheduleModal({ onClose, onCreated }) {
         <div className={styles.modalHeader}>
           <h2 className={styles.modalTitle}>Schedule a Meeting</h2>
           <button className={styles.modalClose} onClick={onClose}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
           </button>
         </div>
 
@@ -150,9 +250,7 @@ function ScheduleModal({ onClose, onCreated }) {
             <input
               className={styles.input}
               type="number"
-              min={15}
-              max={480}
-              step={15}
+              min={15} max={480} step={15}
               value={form.duration_minutes}
               onChange={e => setForm(f => ({ ...f, duration_minutes: e.target.value }))}
             />
@@ -187,29 +285,7 @@ function ScheduleModal({ onClose, onCreated }) {
   );
 }
 
-function JitsiRoom({ meeting, onClose }) {
-  return (
-    <div className={styles.jitsiOverlay}>
-      <div className={styles.jitsiHeader}>
-        <div className={styles.jitsiTitle}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
-          {meeting.title}
-        </div>
-        <button className={styles.jitsiClose} onClick={onClose}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          Leave Meeting
-        </button>
-      </div>
-      <iframe
-        className={styles.jitsiFrame}
-        src={`${meeting.jitsi_url}#config.prejoinPageEnabled=false&config.startWithAudioMuted=false&config.startWithVideoMuted=false&userInfo.displayName=${encodeURIComponent('Rafiki User')}&interfaceConfig.SHOW_JITSI_WATERMARK=false&interfaceConfig.TOOLBAR_BUTTONS=["microphone","camera","desktop","chat","recording","participants-pane","hangup"]`}
-        allow="camera; microphone; display-capture; autoplay; clipboard-write"
-        allowFullScreen
-      />
-    </div>
-  );
-}
-
+// ── Main Page ──
 export default function Meetings() {
   const [meetings, setMeetings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -241,8 +317,6 @@ export default function Meetings() {
     setMeetings(m => m.filter(x => x.id !== id));
   };
 
-  const handleJoin = (meeting) => setActiveRoom(meeting);
-
   const handleInstantMeeting = async () => {
     const res = await fetch(API, {
       method: 'POST',
@@ -268,7 +342,12 @@ export default function Meetings() {
   });
 
   if (activeRoom) {
-    return <JitsiRoom meeting={activeRoom} onClose={() => { setActiveRoom(null); fetchMeetings(); }} />;
+    return (
+      <JitsiRoom
+        meeting={activeRoom}
+        onClose={() => { setActiveRoom(null); fetchMeetings(); }}
+      />
+    );
   }
 
   return (
@@ -280,18 +359,30 @@ export default function Meetings() {
         />
       )}
 
+      {/* Page header with logo */}
       <div className={styles.header}>
-        <div>
-          <h1 className={styles.pageTitle}>Meetings</h1>
-          <p className={styles.pageSubtitle}>Schedule and join video meetings with your team</p>
+        <div className={styles.headerLeft}>
+          <img src={LOGO} alt="Rafiki" className={styles.headerLogo} />
+          <div>
+            <h1 className={styles.pageTitle}>Meetings</h1>
+            <p className={styles.pageSubtitle}>Schedule and join secure video meetings with your team</p>
+          </div>
         </div>
         <div className={styles.headerActions}>
           <button className={styles.instantBtn} onClick={handleInstantMeeting}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polygon points="23 7 16 12 23 17 23 7"/>
+              <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+            </svg>
             Start Instant Meeting
           </button>
           <button className={styles.scheduleBtn} onClick={() => setShowModal(true)}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+              <line x1="16" y1="2" x2="16" y2="6"/>
+              <line x1="8" y1="2" x2="8" y2="6"/>
+              <line x1="3" y1="10" x2="21" y2="10"/>
+            </svg>
             Schedule Meeting
           </button>
         </div>
@@ -309,16 +400,17 @@ export default function Meetings() {
         ))}
       </div>
 
+      {/* Loading state with logo */}
       {loading ? (
         <div className={styles.empty}>
+          <img src={LOGO} alt="Rafiki" className={styles.emptyLogo} />
           <div className={styles.spinner} />
           <p>Loading meetings...</p>
         </div>
       ) : filtered.length === 0 ? (
+        /* Empty state with logo */
         <div className={styles.empty}>
-          <div className={styles.emptyIcon}>
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
-          </div>
+          <img src={LOGO} alt="Rafiki" className={styles.emptyLogo} />
           <h3>No {filter} meetings</h3>
           <p>Schedule a meeting or start an instant call with your team.</p>
           <button className={styles.scheduleBtn} onClick={() => setShowModal(true)}>
@@ -331,7 +423,7 @@ export default function Meetings() {
             <MeetingCard
               key={m.id}
               meeting={m}
-              onJoin={handleJoin}
+              onJoin={m => setActiveRoom(m)}
               onDelete={handleDelete}
               currentUserId={currentUserId}
             />
