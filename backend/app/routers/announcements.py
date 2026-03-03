@@ -39,6 +39,7 @@ def create_announcement(
         target_departments=data.target_departments,
         target_roles=data.target_roles,
         priority=data.priority,
+        published_at=datetime.now(timezone.utc),
         expires_at=data.expires_at,
         created_by=user_id,
     )
