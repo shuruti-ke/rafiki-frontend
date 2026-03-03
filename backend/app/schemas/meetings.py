@@ -38,7 +38,36 @@ class MeetingResponse(BaseModel):
     started_at: Optional[datetime]
     ended_at: Optional[datetime]
     recording_url: Optional[str]
+    agenda: Optional[str] = None
+    summary: Optional[str] = None
+    action_items: Optional[List[str]] = None
+    wellbeing_rating: Optional[int] = None
     created_at: datetime
 
     class Config:
         from_attributes = True
+
+
+class AgendaResponse(BaseModel):
+    meeting_id: uuid.UUID
+    agenda: str
+
+
+class SummaryRequest(BaseModel):
+    notes: Optional[str] = None  # optional transcript/notes paste from user
+
+
+class SummaryResponse(BaseModel):
+    meeting_id: uuid.UUID
+    summary: str
+    action_items: List[str]
+
+
+class WellbeingRequest(BaseModel):
+    rating: int  # 1-5
+    note: Optional[str] = None
+
+
+class PushObjectivesRequest(BaseModel):
+    action_items: List[str]
+    target_date: Optional[str] = None  # ISO date string e.g. "2026-03-31"
