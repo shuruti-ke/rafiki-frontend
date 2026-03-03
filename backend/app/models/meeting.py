@@ -33,5 +33,12 @@ class Meeting(Base):
     started_at = Column(DateTime(timezone=True), nullable=True)
     ended_at = Column(DateTime(timezone=True), nullable=True)
     recording_url = Column(String(1000), nullable=True)
+
+    # AI fields
+    agenda = Column(Text, nullable=True)
+    summary = Column(Text, nullable=True)
+    action_items = Column(ARRAY(String), nullable=True, default=list)
+    wellbeing_rating = Column(Integer, nullable=True)  # 1-5
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
