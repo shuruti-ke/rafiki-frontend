@@ -13,6 +13,7 @@ const links = [
   { to: "/objectives", label: "Objectives" },
   { to: "/calendar", label: "Calendar" },
   { to: "/timesheet", label: "Timesheets" },
+  { to: "/meetings", label: "Meetings" },
 ];
 
 const DAY_NAMES = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
