@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
+from uuid import UUID
 
 
 class AnnouncementCreate(BaseModel):
@@ -14,8 +15,8 @@ class AnnouncementCreate(BaseModel):
 
 
 class AnnouncementResponse(BaseModel):
-    id: int
-    org_id: int
+    id: UUID
+    org_id: UUID
     title: str
     content: str
     is_training: bool
@@ -24,10 +25,9 @@ class AnnouncementResponse(BaseModel):
     priority: str
     published_at: Optional[datetime] = None
     expires_at: Optional[datetime] = None
-    created_by: int
+    created_by: UUID
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-
     model_config = {"from_attributes": True}
 
 
@@ -42,26 +42,24 @@ class AnnouncementUpdate(BaseModel):
 
 
 class ReadReceiptResponse(BaseModel):
-    id: int
-    announcement_id: int
-    user_id: int
+    id: UUID
+    announcement_id: UUID
+    user_id: UUID
     read_at: Optional[datetime] = None
-
     model_config = {"from_attributes": True}
 
 
 class TrainingAssignmentCreate(BaseModel):
-    user_ids: list[int]
+    user_ids: list[UUID]
     due_date: Optional[datetime] = None
 
 
 class TrainingAssignmentResponse(BaseModel):
-    id: int
-    announcement_id: int
-    user_id: int
-    assigned_by: int
+    id: UUID
+    announcement_id: UUID
+    user_id: UUID
+    assigned_by: UUID
     due_date: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
-
     model_config = {"from_attributes": True}
