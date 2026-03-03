@@ -11,7 +11,7 @@ from typing import Optional, List
 from uuid import UUID
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.dependencies import get_current_user_id, get_current_org_id, get_current_role
+from app.dependencies import get_current_user_id, get_current_org_id
 from app.services.prompt import assemble_prompt
 from app.services.document_processor import extract_text_from_bytes
 
@@ -52,8 +52,7 @@ class ChatRequest(BaseModel):
     model: Optional[str] = None
     session_id: Optional[str] = None
     attachments: Optional[List[AttachmentData]] = None
-    # HR admins can set this to ask about a specific employee's documents
-    target_user_id: Optional[UUID] = None
+
 
 
 class ChatResponse(BaseModel):
@@ -152,7 +151,6 @@ def chat(
     db: Session = Depends(get_db),
     user_id: UUID = Depends(get_current_user_id),
     org_id: UUID = Depends(get_current_org_id),
-    user_role: str = Depends(get_current_role),
 ):
     try:
         project_files = _read_project_manifest()
@@ -200,24 +198,17 @@ def chat(
         if len(final_user_message) > MAX_USER_CHARS_HARD:
             final_user_message = final_user_message[:MAX_USER_CHARS_HARD] + "\n\n[TRUNCATED]"
 
-        # Only privileged roles may query another employee's documents
-        target_user_id = None
-        if req.target_user_id and user_role in _PRIVILEGED_ROLES:
-            target_user_id = req.target_user_id
-
-        # Build system prompt — now includes employee document context
+        # Build system prompt — employee doc context injected via user_context.py
         system_prompt = assemble_prompt(
             db=db,
             org_id=org_id,
             user_id=user_id,
             user_message=content,
-            target_user_id=target_user_id,
-            role=user_role,
         )
 
         logger.info(
-            "model=%s  user=%s  role=%s  msg_chars=%d  system_chars=%d",
-            chosen, user_id, user_role, len(final_user_message), len(system_prompt),
+            "model=%s  user=%s  msg_chars=%d  system_chars=%d",
+            chosen, user_id, len(final_user_message), len(system_prompt),
         )
 
         headers = {
@@ -294,4 +285,3 @@ def chat(
     except Exception:
         logger.error("CHAT 500 TRACEBACK:\n%s", traceback.format_exc())
         raise HTTPException(status_code=500, detail="Internal server error")
-
