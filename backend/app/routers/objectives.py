@@ -268,7 +268,7 @@ def list_comments(
     if not obj:
         raise HTTPException(404, "Objective not found in your org")
     rows = (
-        db.query(ObjectiveComment, User.full_name)
+        db.query(ObjectiveComment, User.name)
         .outerjoin(User, ObjectiveComment.user_id == User.user_id)
         .filter(ObjectiveComment.objective_id == objective_id)
         .order_by(ObjectiveComment.created_at.asc())
@@ -311,7 +311,7 @@ def add_comment(
         id=comment.id,
         objective_id=comment.objective_id,
         user_id=comment.user_id,
-        user_name=user.full_name if user else "Unknown",
+        user_name=user.name if user else "Unknown",
         content=comment.content,
         created_at=comment.created_at,
     )
