@@ -4,16 +4,36 @@ Rafiki@Work — User Context Aggregator Service (Intent-Driven)
 Two-phase context assembly:
   Phase 1 (always): Lightweight catalog — profile, data inventory, KB categories, memory
   Phase 2 (on-demand): Full data fetched only when user intent matches
+
+UUID SAFETY:
+  All org_id / user_id values coming from FastAPI dependencies are native uuid.UUID objects.
+  All model columns are UUID(as_uuid=True) — comparisons are native UUID == UUID, always safe.
+  _as_uuid() is used defensively at the top of every builder to normalise any edge cases.
+  GuidedPath uses integer FKs (legacy) — zlib CRC32 conversion is kept exactly as before.
+  str(user_id) is only used for the in-memory topic cache key (safe).
 """
 
 import logging
+import uuid
 from datetime import date, datetime, timedelta
-from uuid import UUID
 
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, func
 
 logger = logging.getLogger(__name__)
+
+
+# ══════════════════════════════════════
+# UUID SAFETY HELPER
+# ══════════════════════════════════════
+
+def _as_uuid(value) -> uuid.UUID:
+    """Coerce any UUID-like value to a native uuid.UUID. Raises ValueError on None."""
+    if value is None:
+        raise ValueError("Expected UUID, got None")
+    if isinstance(value, uuid.UUID):
+        return value
+    return uuid.UUID(str(value))
 
 
 # ══════════════════════════════════════
@@ -23,7 +43,13 @@ logger = logging.getLogger(__name__)
 INTENT_KEYWORDS = {
     "objectives": ["goal", "objective", "okr", "target", "kpi", "progress", "performance review", "key result"],
     "timesheets": ["hours", "timesheet", "time", "utilization", "project", "overtime", "workload", "logged"],
-    "documents": ["document", "contract", "certificate", "letter", "file", "upload", "attachment"],
+    "documents": [
+        "document", "contract", "certificate", "letter", "file", "upload", "attachment",
+        "offer letter", "employment", "agreement", "nda", "policy", "handbook",
+        "job description", "appraisal", "payslip doc", "tax", "id", "passport",
+        "read", "show me", "open", "summarize", "what does", "what is in",
+        "tell me about", "check my", "look at my", "review my",
+    ],
     "payroll": ["salary", "pay", "payslip", "compensation", "bonus", "deduction", "net pay", "gross", "wage"],
     "calendar": ["meeting", "calendar", "schedule", "event", "appointment", "deadline", "tomorrow", "this week", "next week", "today"],
     "announcements": ["announcement", "news", "update", "training", "notice", "policy change", "unread"],
@@ -32,22 +58,31 @@ INTENT_KEYWORDS = {
     "coaching": ["coaching", "report", "team member", "direct report", "mentoring", "one-on-one"],
 }
 
-# Default intents loaded when no specific intent is detected
 DEFAULT_INTENTS = {"objectives", "calendar"}
 
+_DOC_EXTENSIONS = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".csv"}
 
-def _detect_intents(user_message: str) -> set[str]:
-    """Detect which data domains the user is asking about via keyword matching."""
+
+def _detect_intents(user_message: str, user_doc_titles: list[str] = None) -> set[str]:
     if not user_message:
         return DEFAULT_INTENTS
 
     msg_lower = user_message.lower()
     matched = set()
+
     for intent, keywords in INTENT_KEYWORDS.items():
         if any(kw in msg_lower for kw in keywords):
             matched.add(intent)
 
-    # If nothing specific matched, load sensible defaults
+    if any(ext in msg_lower for ext in _DOC_EXTENSIONS):
+        matched.add("documents")
+
+    if user_doc_titles:
+        for title in user_doc_titles:
+            if title and title.lower() in msg_lower:
+                matched.add("documents")
+                break
+
     return matched if matched else DEFAULT_INTENTS
 
 
@@ -55,9 +90,7 @@ def _detect_intents(user_message: str) -> set[str]:
 # PHASE 1: ALWAYS-LOADED CONTEXT
 # ══════════════════════════════════════
 
-# ── 1. EMPLOYEE PROFILE ──
-
-def _build_employee_profile(db: Session, org_id, user_id) -> str:
+def _build_employee_profile(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) -> str:
     try:
         from app.models.user import User
         user = db.query(User).filter(User.user_id == user_id).first()
@@ -83,9 +116,13 @@ def _build_employee_profile(db: Session, org_id, user_id) -> str:
             except Exception:
                 pass
         if getattr(user, "manager_id", None):
-            mgr = db.query(User).filter(User.user_id == user.manager_id).first()
-            if mgr:
-                parts.append(f"  Reports to: {getattr(mgr, 'full_name', None) or 'their manager'}")
+            try:
+                mgr_uuid = _as_uuid(user.manager_id)
+                mgr = db.query(User).filter(User.user_id == mgr_uuid).first()
+                if mgr:
+                    parts.append(f"  Reports to: {getattr(mgr, 'full_name', None) or 'their manager'}")
+            except Exception:
+                pass
 
         return "\n".join(parts) if len(parts) > 1 else ""
     except Exception as e:
@@ -93,14 +130,10 @@ def _build_employee_profile(db: Session, org_id, user_id) -> str:
         return ""
 
 
-# ── 2. DATA INVENTORY (the "catalog card") ──
-
-def _build_data_inventory(db: Session, org_id, user_id) -> str:
-    """Quick count queries so Rafiki knows what data exists without loading it."""
+def _build_data_inventory(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) -> str:
     try:
         counts = {}
 
-        # Objectives
         try:
             from app.models.objective import Objective
             counts["Objectives"] = (
@@ -111,7 +144,6 @@ def _build_data_inventory(db: Session, org_id, user_id) -> str:
         except Exception:
             counts["Objectives"] = 0
 
-        # Timesheets (30 days)
         try:
             from app.models.timesheet import TimesheetEntry
             cutoff = date.today() - timedelta(days=30)
@@ -123,7 +155,6 @@ def _build_data_inventory(db: Session, org_id, user_id) -> str:
         except Exception:
             counts["Timesheet entries (30d)"] = 0
 
-        # Employee documents
         try:
             from app.models.employee_document import EmployeeDocument
             counts["Documents"] = (
@@ -134,7 +165,6 @@ def _build_data_inventory(db: Session, org_id, user_id) -> str:
         except Exception:
             counts["Documents"] = 0
 
-        # Payslips
         try:
             from app.models.payroll import Payslip
             counts["Payslips"] = (
@@ -145,7 +175,6 @@ def _build_data_inventory(db: Session, org_id, user_id) -> str:
         except Exception:
             counts["Payslips"] = 0
 
-        # Calendar events (next 7 days)
         try:
             from app.models.calendar_event import CalendarEvent
             now = datetime.utcnow()
@@ -163,11 +192,8 @@ def _build_data_inventory(db: Session, org_id, user_id) -> str:
         except Exception:
             counts["Calendar events (7d)"] = 0
 
-        # Announcements (unread)
         try:
             from app.models.announcement import Announcement, AnnouncementRead
-            from sqlalchemy import and_
-
             total_active = (
                 db.query(func.count(Announcement.id))
                 .filter(
@@ -191,7 +217,6 @@ def _build_data_inventory(db: Session, org_id, user_id) -> str:
         except Exception:
             counts["Announcements"] = 0
 
-        # Performance evaluations
         try:
             from app.models.performance import PerformanceEvaluation
             counts["Evaluations"] = (
@@ -202,12 +227,12 @@ def _build_data_inventory(db: Session, org_id, user_id) -> str:
         except Exception:
             counts["Evaluations"] = 0
 
-        # Guided path sessions
         try:
+            # GuidedPath uses integer PKs (legacy) — convert UUID → int via CRC32
             import zlib
             from app.models.guided_path import GuidedPathSession
-            int_org = zlib.crc32(org_id.bytes) & 0x7FFFFFFF if hasattr(org_id, 'bytes') else int(org_id)
-            int_user = zlib.crc32(user_id.bytes) & 0x7FFFFFFF if hasattr(user_id, 'bytes') else int(user_id)
+            int_org = zlib.crc32(org_id.bytes) & 0x7FFFFFFF
+            int_user = zlib.crc32(user_id.bytes) & 0x7FFFFFFF
             counts["Guided path sessions"] = (
                 db.query(func.count(GuidedPathSession.id))
                 .filter(GuidedPathSession.user_id == int_user, GuidedPathSession.org_id == int_org)
@@ -233,16 +258,13 @@ def _build_data_inventory(db: Session, org_id, user_id) -> str:
 # PHASE 2: ON-DEMAND CONTEXT BUILDERS
 # ══════════════════════════════════════
 
-# ── OBJECTIVES & KEY RESULTS ──
-
-def _build_objectives_context(db: Session, user_id) -> str:
+def _build_objectives_context(db: Session, user_id: uuid.UUID) -> str:
     try:
         from app.models.objective import Objective, KeyResult
 
         objectives = (
             db.query(Objective)
-            .filter(Objective.user_id == user_id)
-            .filter(Objective.status.in_(["active", "pending_review", "draft"]))
+            .filter(Objective.user_id == user_id, Objective.status.in_(["active", "pending_review", "draft"]))
             .order_by(desc(Objective.created_at))
             .limit(10)
             .all()
@@ -274,9 +296,7 @@ def _build_objectives_context(db: Session, user_id) -> str:
         return ""
 
 
-# ── TIMESHEET PATTERNS ──
-
-def _build_timesheet_context(db: Session, user_id) -> str:
+def _build_timesheet_context(db: Session, user_id: uuid.UUID) -> str:
     try:
         from app.models.timesheet import TimesheetEntry
 
@@ -313,7 +333,6 @@ def _build_timesheet_context(db: Session, user_id) -> str:
         if by_category:
             top_cats = sorted(by_category.items(), key=lambda x: -x[1])[:5]
             parts.append("  Time allocation: " + ", ".join(f"{c} ({h:.1f}h)" for c, h in top_cats))
-
             if total_hours > 0:
                 meeting_pct = by_category.get("Meetings", 0) / total_hours * 100
                 if meeting_pct > 40:
@@ -325,22 +344,51 @@ def _build_timesheet_context(db: Session, user_id) -> str:
         return ""
 
 
-# ── EMPLOYEE DOCUMENTS ──
-
-def _build_employee_docs_context(db: Session, org_id, user_id) -> str:
+def _build_employee_docs_context(
+    db: Session,
+    org_id: uuid.UUID,
+    user_id: uuid.UUID,
+    user_message: str = "",
+) -> str:
+    """
+    Every user sees their OWN documents — no role restriction.
+    Always injects metadata list. Injects extracted_text for relevant docs.
+    """
     try:
         from app.models.employee_document import EmployeeDocument
 
         docs = (
             db.query(EmployeeDocument)
-            .filter(EmployeeDocument.user_id == user_id, EmployeeDocument.org_id == org_id)
+            .filter(
+                EmployeeDocument.user_id == user_id,
+                EmployeeDocument.org_id == org_id,
+            )
             .order_by(desc(EmployeeDocument.created_at))
-            .limit(15)
+            .limit(20)
             .all()
         )
         if not docs:
             return ""
 
+        msg_lower = user_message.lower()
+
+        def _score(doc) -> int:
+            score = 0
+            name_lower = (doc.original_filename or "").lower().replace(".pdf", "").replace("_", " ")
+            title_lower = (doc.title or "").lower()
+            dtype_lower = (doc.doc_type or "").lower()
+            if name_lower and name_lower in msg_lower:
+                score += 10
+            if title_lower and title_lower in msg_lower:
+                score += 10
+            if dtype_lower and dtype_lower in msg_lower:
+                score += 5
+            return score
+
+        scored = sorted(docs, key=_score, reverse=True)
+        has_specific_match = _score(scored[0]) >= 5 if scored else False
+
+        # Metadata index — always shown
         parts = ["EMPLOYEE DOCUMENTS ON FILE:"]
         for d in docs:
             date_str = ""
@@ -349,30 +397,54 @@ def _build_employee_docs_context(db: Session, org_id, user_id) -> str:
                     date_str = f" — uploaded {d.created_at.strftime('%b %d, %Y')}"
                 except Exception:
                     pass
-            vis = f" ({d.visibility})" if getattr(d, "visibility", None) else ""
-            parts.append(f"  • [{d.doc_type}] {d.title} ({d.original_filename}){date_str}{vis}")
-            # Include extracted text content so Rafiki can actually read the document
-            if getattr(d, "extracted_text", None):
-                # Truncate very long docs to avoid blowing up context
-                text = d.extracted_text[:3000]
-                if len(d.extracted_text) > 3000:
-                    text += "\n    [... document truncated ...]"
-                parts.append(f"    CONTENT:\n    {text}")
+            has_text = " ✓" if d.extracted_text else " (no text extracted)"
+            vis = f" [{d.visibility}]" if getattr(d, "visibility", None) else ""
+            parts.append(f"  • [{d.doc_type}] {d.title} ({d.original_filename}){date_str}{vis}{has_text}")
+
+        # Inject extracted text for relevant docs
+        MAX_CHARS_PER_DOC = 5_000
+        MAX_TOTAL_CHARS = 15_000
+        total_chars = 0
+        content_parts = []
+
+        if has_specific_match:
+            candidates = [d for d in scored if _score(d) >= 5][:3]
+        else:
+            candidates = [d for d in scored if d.extracted_text][:3]
+
+        for doc in candidates:
+            if not doc.extracted_text:
+                continue
+            if total_chars >= MAX_TOTAL_CHARS:
+                break
+            snippet = doc.extracted_text[:MAX_CHARS_PER_DOC]
+            total_chars += len(snippet)
+            truncated = len(doc.extracted_text) > MAX_CHARS_PER_DOC
+            content_parts.append(
+                f"\n  ── DOCUMENT CONTENT: {doc.title or doc.original_filename} ──"
+                f"\n  Type: {doc.doc_type} | File: {doc.original_filename}"
+                f"\n{snippet}"
+                + ("\n  [...document truncated...]" if truncated else "")
+            )
+
+        if content_parts:
+            parts.append("\nDOCUMENT CONTENTS (read and answer directly from this text):")
+            parts.extend(content_parts)
+
         return "\n".join(parts)
     except Exception as e:
         logger.debug("Employee docs context build skipped: %s", e)
         return ""
 
 
-# ── GUIDED PATHS ──
-
-def _build_guided_paths_context(db: Session, org_id, user_id) -> str:
+def _build_guided_paths_context(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) -> str:
     try:
+        # GuidedPath uses integer PKs (legacy) — UUID → int via CRC32
         import zlib
         from app.models.guided_path import GuidedModule, GuidedPathSession
 
-        int_org = zlib.crc32(org_id.bytes) & 0x7FFFFFFF if hasattr(org_id, 'bytes') else int(org_id)
-        int_user = zlib.crc32(user_id.bytes) & 0x7FFFFFFF if hasattr(user_id, 'bytes') else int(user_id)
+        int_org = zlib.crc32(org_id.bytes) & 0x7FFFFFFF
+        int_user = zlib.crc32(user_id.bytes) & 0x7FFFFFFF
 
         sessions = (
             db.query(GuidedPathSession)
@@ -384,8 +456,10 @@ def _build_guided_paths_context(db: Session, org_id, user_id) -> str:
 
         modules = (
             db.query(GuidedModule)
-            .filter(GuidedModule.is_active == True)
-            .filter((GuidedModule.org_id == int_org) | (GuidedModule.org_id.is_(None)))
+            .filter(
+                GuidedModule.is_active == True,
+                (GuidedModule.org_id == int_org) | (GuidedModule.org_id.is_(None)),
+            )
             .all()
         )
 
@@ -397,7 +471,6 @@ def _build_guided_paths_context(db: Session, org_id, user_id) -> str:
         if sessions:
             mod_ids = list({s.module_id for s in sessions})
             mod_map = {m.id: m for m in db.query(GuidedModule).filter(GuidedModule.id.in_(mod_ids)).all()}
-
             parts.append("  Recent sessions:")
             for s in sessions:
                 mod = mod_map.get(s.module_id)
@@ -420,9 +493,7 @@ def _build_guided_paths_context(db: Session, org_id, user_id) -> str:
         return ""
 
 
-# ── PAYROLL / PAYSLIPS ──
-
-def _build_payroll_context(db: Session, org_id, user_id) -> str:
+def _build_payroll_context(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) -> str:
     try:
         from app.models.payroll import Payslip, PayrollBatch
 
@@ -436,7 +507,6 @@ def _build_payroll_context(db: Session, org_id, user_id) -> str:
         if not payslips:
             return ""
 
-        # Fetch batch info for period labels
         batch_ids = list({p.batch_id for p in payslips})
         batches = db.query(PayrollBatch).filter(PayrollBatch.batch_id.in_(batch_ids)).all()
         batch_map = {b.batch_id: b for b in batches}
@@ -450,16 +520,13 @@ def _build_payroll_context(db: Session, org_id, user_id) -> str:
                 period = f"{month_name} {batch.period_year}"
             else:
                 period = "Unknown period"
-            gross = p.gross_pay
-            deductions = p.total_deductions
-            net = p.net_pay
             line = f"  • {period}"
-            if gross is not None:
-                line += f" — Gross: {float(gross):,.2f}"
-            if deductions is not None:
-                line += f", Deductions: {float(deductions):,.2f}"
-            if net is not None:
-                line += f", Net: {float(net):,.2f}"
+            if p.gross_pay is not None:
+                line += f" — Gross: {float(p.gross_pay):,.2f}"
+            if p.total_deductions is not None:
+                line += f", Deductions: {float(p.total_deductions):,.2f}"
+            if p.net_pay is not None:
+                line += f", Net: {float(p.net_pay):,.2f}"
             parts.append(line)
         return "\n".join(parts)
     except Exception as e:
@@ -467,9 +534,7 @@ def _build_payroll_context(db: Session, org_id, user_id) -> str:
         return ""
 
 
-# ── CALENDAR EVENTS ──
-
-def _build_calendar_context(db: Session, org_id, user_id) -> str:
+def _build_calendar_context(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) -> str:
     try:
         from app.models.calendar_event import CalendarEvent
 
@@ -505,9 +570,7 @@ def _build_calendar_context(db: Session, org_id, user_id) -> str:
         return ""
 
 
-# ── ANNOUNCEMENTS ──
-
-def _build_announcements_context(db: Session, org_id, user_id) -> str:
+def _build_announcements_context(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) -> str:
     try:
         from app.models.announcement import Announcement, AnnouncementRead, TrainingAssignment
 
@@ -524,20 +587,22 @@ def _build_announcements_context(db: Session, org_id, user_id) -> str:
             .all()
         )
 
-        # Get user's read IDs
         read_ids = set()
         if announcements:
+            # announcement PKs are UUID — collect as uuid.UUID objects for safe set membership
             reads = (
                 db.query(AnnouncementRead.announcement_id)
                 .filter(AnnouncementRead.user_id == user_id)
                 .all()
             )
-            read_ids = {r[0] for r in reads}
+            read_ids = {r[0] for r in reads}  # r[0] is already uuid.UUID from UUID(as_uuid=True)
 
-        # Training assignments for this user
         training = (
             db.query(TrainingAssignment)
-            .filter(TrainingAssignment.user_id == user_id, TrainingAssignment.completed_at == None)
+            .filter(
+                TrainingAssignment.user_id == user_id,
+                TrainingAssignment.completed_at == None,
+            )
             .all()
         )
 
@@ -568,15 +633,16 @@ def _build_announcements_context(db: Session, org_id, user_id) -> str:
         return ""
 
 
-# ── PERFORMANCE EVALUATIONS ──
-
-def _build_performance_context(db: Session, org_id, user_id) -> str:
+def _build_performance_context(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) -> str:
     try:
         from app.models.performance import PerformanceEvaluation
 
         evals = (
             db.query(PerformanceEvaluation)
-            .filter(PerformanceEvaluation.user_id == user_id, PerformanceEvaluation.org_id == org_id)
+            .filter(
+                PerformanceEvaluation.user_id == user_id,
+                PerformanceEvaluation.org_id == org_id,
+            )
             .order_by(desc(PerformanceEvaluation.created_at))
             .limit(3)
             .all()
@@ -602,9 +668,7 @@ def _build_performance_context(db: Session, org_id, user_id) -> str:
         return ""
 
 
-# ── COACHING SESSIONS (managers only) ──
-
-def _build_coaching_context(db: Session, org_id, user_id) -> str:
+def _build_coaching_context(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) -> str:
     try:
         from app.models.user import User
 
@@ -637,10 +701,11 @@ def _build_coaching_context(db: Session, org_id, user_id) -> str:
 
 
 # ══════════════════════════════════════
-# KB CONTEXT (always runs, query-dependent)
+# KB CONTEXT
 # ══════════════════════════════════════
 
-def _build_kb_context(db: Session, org_id, user_message: str) -> str:
+def _build_kb_context(db: Session, org_id: uuid.UUID, user_message: str) -> str:
+    """Full-text search of org KB — available to ALL users."""
     if not user_message:
         return ""
     try:
@@ -660,7 +725,8 @@ def _build_kb_context(db: Session, org_id, user_message: str) -> str:
         return ""
 
 
-def _build_kb_categories_context(db: Session, org_id) -> str:
+def _build_kb_categories_context(db: Session, org_id: uuid.UUID) -> str:
+    """List all KB docs in this org — available to ALL users."""
     try:
         from app.models.document import Document
 
@@ -709,11 +775,11 @@ TOPIC_KEYWORDS = {
 
 def _detect_topics(message: str) -> list[str]:
     msg_lower = message.lower()
-    return [topic for topic, keywords in TOPIC_KEYWORDS.items() if any(kw in msg_lower for kw in keywords)]
+    return [t for t, kws in TOPIC_KEYWORDS.items() if any(kw in msg_lower for kw in kws)]
 
 
-def _update_and_build_memory(user_id, user_message: str) -> str:
-    uid = str(user_id)
+def _update_and_build_memory(user_id: uuid.UUID, user_message: str) -> str:
+    uid = str(user_id)  # string key for in-memory dict — safe
     topics = _detect_topics(user_message)
 
     if uid not in _user_topic_memory:
@@ -725,7 +791,7 @@ def _update_and_build_memory(user_id, user_message: str) -> str:
     if not history:
         return ""
 
-    freq = {}
+    freq: dict[str, int] = {}
     for t in history:
         freq[t] = freq.get(t, 0) + 1
 
@@ -746,7 +812,36 @@ def _update_and_build_memory(user_id, user_message: str) -> str:
 
 
 # ══════════════════════════════════════
-# MAIN AGGREGATOR (Intent-Driven)
+# HELPER: doc titles for intent detection
+# ══════════════════════════════════════
+
+def _get_user_doc_titles(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) -> list[str]:
+    """Cheaply fetch doc titles/filenames for smarter intent matching."""
+    try:
+        from app.models.employee_document import EmployeeDocument
+        rows = (
+            db.query(EmployeeDocument.title, EmployeeDocument.original_filename)
+            .filter(
+                EmployeeDocument.user_id == user_id,
+                EmployeeDocument.org_id == org_id,
+            )
+            .limit(50)
+            .all()
+        )
+        titles = []
+        for title, filename in rows:
+            if title:
+                titles.append(title.lower())
+            if filename:
+                titles.append(filename.lower())
+                titles.append(filename.lower().rsplit(".", 1)[0])
+        return titles
+    except Exception:
+        return []
+
+
+# ══════════════════════════════════════
+# MAIN AGGREGATOR
 # ══════════════════════════════════════
 
 def build_user_context(
@@ -755,85 +850,101 @@ def build_user_context(
     user_id=None,
     user_message: str = "",
 ) -> str:
-    """Build personalized context using intent-driven two-phase assembly."""
+    """
+    Build personalized context. Safe entry point — coerces org_id and user_id
+    to native uuid.UUID immediately so all downstream functions receive correct types.
+    """
+    # ── Normalise UUIDs at the boundary ──
+    try:
+        org_uuid = _as_uuid(org_id)
+    except Exception as e:
+        logger.error("build_user_context: invalid org_id=%r — %s", org_id, e)
+        return ""
+
+    user_uuid: uuid.UUID | None = None
+    if user_id is not None:
+        try:
+            user_uuid = _as_uuid(user_id)
+        except Exception as e:
+            logger.error("build_user_context: invalid user_id=%r — %s", user_id, e)
+            return ""
+
     sections = []
 
-    # ── PHASE 1: Always loaded (lightweight catalog) ──
-    if user_id:
-        profile = _build_employee_profile(db, org_id, user_id)
+    # ── PHASE 1: Always loaded ──
+    if user_uuid:
+        profile = _build_employee_profile(db, org_uuid, user_uuid)
         if profile:
             sections.append(profile)
 
-        inventory = _build_data_inventory(db, org_id, user_id)
+        inventory = _build_data_inventory(db, org_uuid, user_uuid)
         if inventory:
             sections.append(inventory)
 
-    # KB search (query-dependent, already selective)
-    kb_relevant = _build_kb_context(db, org_id, user_message)
+    # KB — org-wide, available to everyone
+    kb_relevant = _build_kb_context(db, org_uuid, user_message)
     if kb_relevant:
         sections.append(kb_relevant)
 
-    kb_categories = _build_kb_categories_context(db, org_id)
+    kb_categories = _build_kb_categories_context(db, org_uuid)
     if kb_categories:
         sections.append(kb_categories)
 
-    # ── PHASE 2: On-demand based on detected intent ──
-    if user_id:
-        intents = _detect_intents(user_message)
-        logger.debug("Detected intents for message: %s → %s", user_message[:80], intents)
+    # ── PHASE 2: On-demand ──
+    if user_uuid:
+        doc_titles = _get_user_doc_titles(db, org_uuid, user_uuid)
+        intents = _detect_intents(user_message, user_doc_titles=doc_titles)
+        logger.debug("Detected intents for '%s': %s", user_message[:80], intents)
 
         if "objectives" in intents:
-            ctx = _build_objectives_context(db, user_id)
+            ctx = _build_objectives_context(db, user_uuid)
             if ctx:
                 sections.append(ctx)
 
         if "timesheets" in intents:
-            ctx = _build_timesheet_context(db, user_id)
+            ctx = _build_timesheet_context(db, user_uuid)
             if ctx:
                 sections.append(ctx)
 
         if "documents" in intents:
-            ctx = _build_employee_docs_context(db, org_id, user_id)
+            ctx = _build_employee_docs_context(db, org_uuid, user_uuid, user_message)
             if ctx:
                 sections.append(ctx)
 
         if "payroll" in intents:
-            ctx = _build_payroll_context(db, org_id, user_id)
+            ctx = _build_payroll_context(db, org_uuid, user_uuid)
             if ctx:
                 sections.append(ctx)
 
         if "calendar" in intents:
-            ctx = _build_calendar_context(db, org_id, user_id)
+            ctx = _build_calendar_context(db, org_uuid, user_uuid)
             if ctx:
                 sections.append(ctx)
 
         if "announcements" in intents:
-            ctx = _build_announcements_context(db, org_id, user_id)
+            ctx = _build_announcements_context(db, org_uuid, user_uuid)
             if ctx:
                 sections.append(ctx)
 
         if "performance" in intents:
-            ctx = _build_performance_context(db, org_id, user_id)
+            ctx = _build_performance_context(db, org_uuid, user_uuid)
             if ctx:
                 sections.append(ctx)
 
         if "guided_paths" in intents:
-            ctx = _build_guided_paths_context(db, org_id, user_id)
+            ctx = _build_guided_paths_context(db, org_uuid, user_uuid)
             if ctx:
                 sections.append(ctx)
 
         if "coaching" in intents:
-            ctx = _build_coaching_context(db, org_id, user_id)
+            ctx = _build_coaching_context(db, org_uuid, user_uuid)
             if ctx:
                 sections.append(ctx)
 
     # ── ALWAYS: Interaction memory ──
-    if user_id and user_message:
-        memory = _update_and_build_memory(user_id, user_message)
+    if user_uuid and user_message:
+        memory = _update_and_build_memory(user_uuid, user_message)
         if memory:
             sections.append(memory)
 
-    if not sections:
-        return ""
-
-    return "\n\n".join(sections)
+    return "\n\n".join(sections) if sections else ""
