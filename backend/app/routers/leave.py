@@ -56,7 +56,18 @@ def _get_or_create_balance(db: Session, user_id, org_id, year: int, leave_type: 
         {"uid": str(user_id), "yr": year, "lt": leave_type}
     ).mappings().first()
     if row:
-        return dict(row)
+        existing = dict(row)
+        # If a row exists with 0 entitled days but policy now provides a value,
+        # update it so employees see correct balances (fixes "always zero" bug)
+        if float(existing["entitled_days"]) == 0 and entitled > 0:
+            db.execute(
+                text("""UPDATE leave_balances SET entitled_days = :ent
+                        WHERE user_id = :uid AND leave_year = :yr AND leave_type = :lt"""),
+                {"ent": entitled, "uid": str(user_id), "yr": year, "lt": leave_type}
+            )
+            db.commit()
+            existing["entitled_days"] = entitled
+        return existing
 
     # Create fresh balance for this year
     carry = 0.0
