@@ -199,11 +199,17 @@ def chat(
             final_user_message = final_user_message[:MAX_USER_CHARS_HARD] + "\n\n[TRUNCATED]"
 
         # Build system prompt — employee doc context injected via user_context.py
+        # Pass chat history so web search can use prior context for better queries
+        history_dicts = None
+        if req.history:
+            history_dicts = [{"role": h.role, "content": h.content} for h in req.history[-10:]]
+
         system_prompt = assemble_prompt(
             db=db,
             org_id=org_id,
             user_id=user_id,
             user_message=content,
+            chat_history=history_dicts,
         )
 
         logger.info(

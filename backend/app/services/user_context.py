@@ -814,10 +814,13 @@ def build_user_context(
     org_id,
     user_id=None,
     user_message: str = "",
+    chat_history: list[dict] | None = None,
 ) -> str:
     """
     Entry point. Coerces org_id and user_id to native uuid.UUID immediately.
     All users get their own docs + org KB + objectives etc. (intent-driven).
+    chat_history is a list of {"role": ..., "content": ...} dicts from the
+    conversation, used to enrich web search queries with prior context.
     """
     try:
         org_uuid = _as_uuid(org_id)
@@ -907,7 +910,7 @@ def build_user_context(
         if "web_search" in intents:
             try:
                 from app.services.web_search import search_web
-                web_results = search_web(user_message)
+                web_results = search_web(user_message, history=chat_history)
                 if web_results:
                     sections.append(
                         "WEB SEARCH RESULTS (real-time internet data):\n" + web_results

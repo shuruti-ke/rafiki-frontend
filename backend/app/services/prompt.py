@@ -73,6 +73,7 @@ def assemble_prompt(
     user_id=None,
     user_context: str = "",
     user_message: str | None = None,
+    chat_history: list[dict] | None = None,
 ) -> str:
     """Assemble the full system prompt with personalized user context."""
     parts = [RAFIKI_SYSTEM_PROMPT]
@@ -87,6 +88,7 @@ def assemble_prompt(
                 org_id=org_id,
                 user_id=user_id,
                 user_message=user_message or "",
+                chat_history=chat_history,
             )
             if rich_context:
                 parts.append(
