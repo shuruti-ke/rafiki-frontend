@@ -21,6 +21,7 @@ router = APIRouter(prefix="/api/v1", tags=["Chat"])
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929").strip()
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "").strip()
 
 BACKEND_DIR = Path(__file__).parent.parent.parent
 TEXT_DIR = BACKEND_DIR / "uploads" / "text"
@@ -31,9 +32,152 @@ MAX_TOTAL_CONTEXT_CHARS = 20000
 
 _PRIVILEGED_ROLES = {"hr_admin", "super_admin"}
 
+def _should_search(message: str, chat_history: list | None = None) -> bool:
+    """
+    Use Claude to intelligently decide if a web search is needed.
+    Returns True if the message requires real-time, factual, or external information
+    that Claude wouldn't reliably know — regardless of topic.
+    Falls back to False if the classifier call fails.
+    """
+    if not TAVILY_API_KEY or not ANTHROPIC_API_KEY:
+        return False
+
+    # Skip search for very short conversational messages
+    if len(message.strip()) < 8:
+        return False
+
+    # Build recent context for the classifier
+    history_snippet = ""
+    if chat_history:
+        recent = chat_history[-3:]
+        history_snippet = "\n".join(
+            f"{m['role'].upper()}: {m['content'][:120]}" for m in recent
+        )
+
+    classifier_prompt = (
+        "You are a search intent classifier. "
+        "Decide if the user's message requires a real-time web search to answer accurately.\n\n"
+        "Answer YES if the message asks about:\n"
+        "- Current prices, rates, costs, availability\n"
+        "- Specific real-world places (hotels, restaurants, hospitals, offices, etc.)\n"
+        "- Recent news, events, or announcements\n"
+        "- Contact details, addresses, phone numbers\n"
+        "- Weather, transport, schedules\n"
+        "- Any factual information that changes over time or requires local knowledge\n"
+        "- Recommendations for specific real-world services or products\n"
+        "- Any question where making up an answer could mislead the user\n\n"
+        "Answer NO if the message is:\n"
+        "- Casual conversation or greetings\n"
+        "- Questions about the user's own data (timesheets, objectives, documents)\n"
+        "- General wellbeing, emotional support, or career advice\n"
+        "- Workplace policy questions answerable from internal documents\n"
+        "- Generic how-to questions Claude can answer from training\n\n"
+        f"Recent conversation context:\n{history_snippet}\n\n"
+        f"User message: {message}\n\n"
+        "Reply with ONLY the single word YES or NO."
+    )
+
+    try:
+        resp = httpx.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "Content-Type": "application/json",
+                "x-api-key": ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01",
+            },
+            json={
+                "model": "claude-haiku-4-5-20251001",
+                "max_tokens": 5,
+                "messages": [{"role": "user", "content": classifier_prompt}],
+            },
+            timeout=8,
+        )
+        if resp.status_code == 200:
+            result = resp.json()
+            text = ""
+            for block in result.get("content", []):
+                if block.get("type") == "text":
+                    text += block.get("text", "")
+            decision = text.strip().upper()
+            logger.info("Search classifier decision: %s for: %.80s", decision, message)
+            return decision.startswith("YES")
+    except Exception as e:
+        logger.warning("Search classifier failed: %s", e)
+
+    return False
+
+
+def _tavily_search(query: str, max_results: int = 5) -> str:
+    """Call Tavily search API and return formatted results string."""
+    if not TAVILY_API_KEY:
+        return ""
+    try:
+        resp = httpx.post(
+            "https://api.tavily.com/search",
+            json={
+                "api_key": TAVILY_API_KEY,
+                "query": query,
+                "search_depth": "basic",
+                "max_results": max_results,
+                "include_answer": True,
+                "include_raw_content": False,
+            },
+            timeout=15,
+        )
+        if resp.status_code != 200:
+            logger.warning("Tavily returned %d: %s", resp.status_code, resp.text[:200])
+            return ""
+
+        data = resp.json()
+        parts = []
+
+        # Include Tavily's own answer summary if present
+        if data.get("answer"):
+            parts.append(f"SUMMARY: {data['answer']}\n")
+
+        for i, result in enumerate(data.get("results", []), 1):
+            title = result.get("title", "")
+            url = result.get("url", "")
+            snippet = result.get("content", "")[:600]
+            parts.append(f"[{i}] {title}\nURL: {url}\n{snippet}\n")
+
+        if not parts:
+            return ""
+
+        return (
+            "\n══════════════════════════════════════\n"
+            "WEB SEARCH RESULTS (use these for accurate, factual answers):\n"
+            "══════════════════════════════════════\n"
+            + "\n".join(parts)
+            + "\nSOURCE: Tavily real-time web search\n"
+            "══════════════════════════════════════\n"
+        )
+    except Exception as e:
+        logger.warning("Tavily search failed: %s", e)
+        return ""
+
+
+def _build_search_query(message: str, chat_history: list | None) -> str:
+    """Build a clean search query from the user message + recent context."""
+    # Use last assistant message for context if relevant
+    context = ""
+    if chat_history:
+        for msg in reversed(chat_history[-4:]):
+            if msg.get("role") == "user":
+                context = msg.get("content", "")[:100]
+                break
+    # Keep query focused — strip conversational filler
+    query = message.strip()
+    # Add East Africa context if location not specified but seems relevant
+    location_words = ["mombasa", "nairobi", "kenya", "uganda", "tanzania", "rwanda", "east africa"]
+    if not any(w in query.lower() for w in location_words):
+        if any(w in query.lower() for w in ["hotel", "restaurant", "hospital", "clinic", "price"]):
+            query += " Kenya East Africa"
+    return query[:300]
+
 
 class HistoryMessage(BaseModel):
-    role: str  # "user" or "assistant"
+    role: str
     content: str
 
 
@@ -52,7 +196,6 @@ class ChatRequest(BaseModel):
     model: Optional[str] = None
     session_id: Optional[str] = None
     attachments: Optional[List[AttachmentData]] = None
-
 
 
 class ChatResponse(BaseModel):
@@ -198,12 +341,22 @@ def chat(
         if len(final_user_message) > MAX_USER_CHARS_HARD:
             final_user_message = final_user_message[:MAX_USER_CHARS_HARD] + "\n\n[TRUNCATED]"
 
-        # Build system prompt — employee doc context injected via user_context.py
-        # Pass chat history so web search can use prior context for better queries
         history_dicts = None
         if req.history:
             history_dicts = [{"role": h.role, "content": h.content} for h in req.history[-10:]]
 
+        # ── Tavily web search (runs before prompt assembly) ──
+        web_search_context = ""
+        if _should_search(content, history_dicts):
+            search_query = _build_search_query(content, history_dicts)
+            logger.info("Tavily search triggered for: %s", search_query[:100])
+            web_search_context = _tavily_search(search_query)
+            if web_search_context:
+                logger.info("Tavily returned %d chars of results", len(web_search_context))
+            else:
+                logger.warning("Tavily search returned no results for: %s", search_query[:100])
+
+        # ── Assemble system prompt ──
         system_prompt = assemble_prompt(
             db=db,
             org_id=org_id,
@@ -212,9 +365,14 @@ def chat(
             chat_history=history_dicts,
         )
 
+        # Inject web search results into system prompt if available
+        if web_search_context:
+            system_prompt = system_prompt + "\n" + web_search_context
+
         logger.info(
-            "model=%s  user=%s  msg_chars=%d  system_chars=%d",
+            "model=%s  user=%s  msg_chars=%d  system_chars=%d  web_search=%s",
             chosen, user_id, len(final_user_message), len(system_prompt),
+            "yes" if web_search_context else "no",
         )
 
         headers = {
