@@ -2,321 +2,281 @@ import { useState, useEffect } from "react";
 import { API, authFetch } from "../api.js";
 import "./AdminManagerConfig.css";
 
-const LEVELS = ["L1", "L2", "L3", "L4"];
-const LEVEL_DESC = {
-  L1: "Direct reports only",
-  L2: "Department-wide",
-  L3: "Multi-department",
-  L4: "Org aggregates only",
-};
-const DATA_TYPES = ["profile", "objectives", "evaluations", "disciplinary"];
-const FEATURES = ["coaching_ai", "pip_tools", "dev_plans", "toolkit"];
-
 export default function AdminManagerConfig() {
-  const [configs, setConfigs] = useState([]);
   const [employees, setEmployees] = useState([]);
-  const [audit, setAudit] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState("managers");
+  const [loading, setLoading]     = useState(true);
+  const [saving, setSaving]       = useState(null); // user_id being saved
+  const [search, setSearch]       = useState("");
+  const [filterMgr, setFilterMgr] = useState("all");
+  const [toast, setToast]         = useState(null);
 
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({
-    user_id: "",
-    manager_level: "L1",
-    allowed_data_types: ["profile", "objectives", "evaluations"],
-    allowed_features: ["coaching_ai"],
-  });
-  const [formError, setFormError] = useState("");
-  const [saving, setSaving] = useState(false);
+  const showToast = (msg, ok = true) => {
+    setToast({ msg, ok });
+    setTimeout(() => setToast(null), 3000);
+  };
 
-  useEffect(() => {
-    loadConfigs();
-    loadEmployees();
-  }, []);
-
-  function loadConfigs() {
+  const load = async () => {
     setLoading(true);
-    authFetch(`${API}/api/v1/manager/admin/configs`)
-      .then((r) => r.json())
-      .then((data) => setConfigs(Array.isArray(data) ? data : []))
-      .catch(() => setConfigs([]))
-      .finally(() => setLoading(false));
-  }
-
-  function loadEmployees() {
-    authFetch(`${API}/api/v1/employees/`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (!Array.isArray(data)) { setEmployees([]); return; }
-        // API returns [{user: {...}, profile: {...}}, ...] — flatten to flat objects
-        const flat = data.map((e) => {
-          const u = e.user || e;
-          const p = e.profile || {};
-          return {
-            user_id: u.user_id,
-            full_name: u.name || p.full_name || u.email,
-            email: u.email,
-            job_title: p.job_title || u.job_title,
-          };
-        });
-        setEmployees(flat);
-      })
-      .catch(() => setEmployees([]));
-  }
-
-  function loadAudit() {
-    authFetch(`${API}/api/v1/manager/admin/audit`)
-      .then((r) => r.json())
-      .then((data) => setAudit(Array.isArray(data) ? data : []))
-      .catch(() => setAudit([]));
-  }
-
-  function switchTab(t) {
-    setTab(t);
-    if (t === "audit" && audit.length === 0) loadAudit();
-  }
-
-  async function handleCreate() {
-    setFormError("");
-    if (!form.user_id) { setFormError("Please select an employee"); return; }
-    setSaving(true);
     try {
-      const r = await authFetch(`${API}/api/v1/manager/admin/configs`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_id: form.user_id,
-          manager_level: form.manager_level,
-          allowed_data_types: form.allowed_data_types,
-          allowed_features: form.allowed_features,
-        }),
+      const r = await authFetch(`${API}/api/v1/employees/`);
+      if (r.ok) setEmployees(await r.json());
+    } catch {}
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, []);
+
+  // All users who are managers or hr_admin
+  const managers = employees.filter(e =>
+    ["manager","hr_admin","super_admin"].includes(e.user?.role)
+  );
+
+  // Promote/demote role
+  const setRole = async (emp, newRole) => {
+    const uid = emp.user?.user_id;
+    setSaving(uid);
+    try {
+      const r = await authFetch(`${API}/api/v1/employees/${uid}`, {
+        method: "PUT",
+        body: JSON.stringify({ role: newRole }),
       });
-      if (!r.ok) {
-        const err = await r.json().catch(() => ({}));
-        throw new Error(err.detail || `Error ${r.status}`);
+      if (r.ok) {
+        showToast(`${emp.user?.name || emp.user?.email} set to ${newRole}`);
+        await load();
+      } else {
+        const d = await r.json();
+        showToast(d.detail || "Failed to update role", false);
       }
-      setShowForm(false);
-      setForm({ user_id: "", manager_level: "L1", allowed_data_types: ["profile", "objectives", "evaluations"], allowed_features: ["coaching_ai"] });
-      loadConfigs();
-    } catch (e) {
-      setFormError(e.message);
-    } finally {
-      setSaving(false);
-    }
-  }
+    } catch { showToast("Network error", false); }
+    setSaving(null);
+  };
 
-  async function handleDelete(configId) {
-    if (!confirm("Revoke this manager's access?")) return;
-    await authFetch(`${API}/api/v1/manager/admin/configs/${configId}`, { method: "DELETE" });
-    loadConfigs();
-  }
+  // Assign manager_id
+  const assignManager = async (emp, managerId) => {
+    const uid = emp.user?.user_id;
+    setSaving(uid);
+    try {
+      const r = await authFetch(`${API}/api/v1/employees/${uid}`, {
+        method: "PUT",
+        body: JSON.stringify({ manager_id: managerId || null }),
+      });
+      if (r.ok) {
+        const mgrName = managerId
+          ? employees.find(e => e.user?.user_id === managerId)?.user?.name || "manager"
+          : "unassigned";
+        showToast(`${emp.user?.name || emp.user?.email} assigned to ${mgrName}`);
+        await load();
+      } else {
+        const d = await r.json();
+        showToast(d.detail || "Failed to assign", false);
+      }
+    } catch { showToast("Network error", false); }
+    setSaving(null);
+  };
 
-  async function handleToggleActive(config) {
-    await authFetch(`${API}/api/v1/manager/admin/configs/${config.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ is_active: !config.is_active }),
-    });
-    loadConfigs();
-  }
+  // Filter employees
+  const filtered = employees.filter(e => {
+    const name = (e.user?.name || e.user?.email || "").toLowerCase();
+    const dept = (e.user?.department || e.profile?.department || "").toLowerCase();
+    const q = search.toLowerCase();
+    if (q && !name.includes(q) && !dept.includes(q)) return false;
+    if (filterMgr === "unassigned" && e.user?.manager_id) return false;
+    if (filterMgr === "assigned"   && !e.user?.manager_id) return false;
+    if (filterMgr === "managers"   && !["manager","hr_admin","super_admin"].includes(e.user?.role)) return false;
+    return true;
+  });
 
-  async function seedToolkit() {
-    const r = await authFetch(`${API}/api/v1/manager/admin/seed-toolkit`, { method: "POST" });
-    const data = await r.json();
-    alert(`Seeded ${data.modules_created ?? 0} toolkit modules`);
-  }
+  const getManagerName = (mgr_id) => {
+    const m = employees.find(e => e.user?.user_id === mgr_id);
+    return m ? (m.user?.name || m.user?.email) : "—";
+  };
 
-  function toggleArrayItem(arr, item) {
-    return arr.includes(item) ? arr.filter((x) => x !== item) : [...arr, item];
-  }
+  const initial = (emp) => (emp.user?.name || emp.user?.email || "?")[0].toUpperCase();
 
-  // Build a map of user_id → name for display in config cards
-  const empMap = {};
-  employees.forEach((e) => { empMap[e.user_id] = e.full_name || e.email || e.user_id; });
-
-  // Employees not yet assigned as managers
-  const assignedIds = new Set(configs.map((c) => c.user_id));
-  const available = employees.filter((e) => !assignedIds.has(e.user_id));
+  const ROLE_BADGE = {
+    user:        { label: "Employee",   bg: "#EDE9FE", color: "#6D28D9" },
+    manager:     { label: "Manager",    bg: "#DBEAFE", color: "#1D4ED8" },
+    hr_admin:    { label: "HR Admin",   bg: "#D1FAE5", color: "#065F46" },
+    super_admin: { label: "Super Admin",bg: "#FEF3C7", color: "#92400E" },
+  };
 
   return (
-    <div className="amc">
-      <h1 className="amc-title">Manager Configuration</h1>
-      <p className="amc-sub">
-        Assign manager roles to employees and configure what data and features they can access.
-      </p>
-
-      <div className="amc-tabs">
-        <button className={`mgr-tab ${tab === "managers" ? "active" : ""}`} onClick={() => switchTab("managers")}>
-          Managers ({configs.length})
-        </button>
-        <button className={`mgr-tab ${tab === "audit" ? "active" : ""}`} onClick={() => switchTab("audit")}>
-          Audit Trail
-        </button>
-        <button className="btn btnTiny" style={{ marginLeft: "auto" }} onClick={seedToolkit}>
-          Seed Default Toolkit
-        </button>
-      </div>
-
-      {tab === "managers" && (
-        <>
-          <div className="amc-actions">
-            <button className="btn btnPrimary" onClick={() => { setShowForm(!showForm); setFormError(""); }}>
-              {showForm ? "Cancel" : "+ Assign Manager"}
-            </button>
-          </div>
-
-          {showForm && (
-            <div className="amc-form">
-              <div className="amc-form-row">
-                <label>Select Employee</label>
-                {available.length === 0 ? (
-                  <p className="amc-empty" style={{ padding: "8px 0" }}>All employees are already assigned as managers.</p>
-                ) : (
-                  <select
-                    className="mgr-form-select"
-                    value={form.user_id}
-                    onChange={(e) => setForm({ ...form, user_id: e.target.value })}
-                  >
-                    <option value="">— Select an employee —</option>
-                    {available.map((emp) => (
-                      <option key={emp.user_id} value={emp.user_id}>
-                        {emp.full_name || emp.email} {emp.job_title ? `· ${emp.job_title}` : ""}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
-
-              <div className="amc-form-row">
-                <label>Manager Level</label>
-                <div className="amc-chip-group">
-                  {LEVELS.map((l) => (
-                    <button
-                      key={l}
-                      className={`mgr-filter-chip ${form.manager_level === l ? "active" : ""}`}
-                      onClick={() => setForm({ ...form, manager_level: l })}
-                    >
-                      {l}
-                    </button>
-                  ))}
-                </div>
-                <div className="amc-level-help">
-                  {LEVEL_DESC[form.manager_level]}
-                </div>
-              </div>
-
-              <div className="amc-form-row">
-                <label>Data Access</label>
-                <div className="amc-chip-group">
-                  {DATA_TYPES.map((dt) => (
-                    <button
-                      key={dt}
-                      className={`mgr-filter-chip ${form.allowed_data_types.includes(dt) ? "active" : ""}`}
-                      onClick={() => setForm({ ...form, allowed_data_types: toggleArrayItem(form.allowed_data_types, dt) })}
-                    >
-                      {dt.replace(/_/g, " ")}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="amc-form-row">
-                <label>Features</label>
-                <div className="amc-chip-group">
-                  {FEATURES.map((f) => (
-                    <button
-                      key={f}
-                      className={`mgr-filter-chip ${form.allowed_features.includes(f) ? "active" : ""}`}
-                      onClick={() => setForm({ ...form, allowed_features: toggleArrayItem(form.allowed_features, f) })}
-                    >
-                      {f.replace(/_/g, " ")}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {formError && <div className="mgr-coaching-error">{formError}</div>}
-
-              <button className="btn btnPrimary" onClick={handleCreate} disabled={saving || !form.user_id}>
-                {saving ? "Saving…" : "Save Manager Config"}
-              </button>
-            </div>
-          )}
-
-          {loading ? (
-            <p className="mgr-loading">Loading...</p>
-          ) : configs.length === 0 ? (
-            <p className="amc-empty">No managers configured yet.</p>
-          ) : (
-            <div className="amc-list">
-              {configs.map((c) => (
-                <div key={c.id} className={`amc-card ${!c.is_active ? "inactive" : ""}`}>
-                  <div className="amc-card-header">
-                    <div className="amc-card-name">
-                      <strong>{empMap[c.user_id] || c.user_id}</strong>
-                    </div>
-                    <div className="amc-card-badges">
-                      <span className="mgr-rating-badge">{c.manager_level}</span>
-                      <span className={`amc-status ${c.is_active ? "active" : "inactive"}`}>
-                        {c.is_active ? "Active" : "Inactive"}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="amc-card-details">
-                    <div className="amc-detail-row">
-                      <span className="amc-detail-label">Data:</span>
-                      {(c.allowed_data_types || []).map(d => d.replace(/_/g, " ")).join(", ") || "none"}
-                    </div>
-                    <div className="amc-detail-row">
-                      <span className="amc-detail-label">Features:</span>
-                      {(c.allowed_features || []).map(f => f.replace(/_/g, " ")).join(", ") || "none"}
-                    </div>
-                  </div>
-                  <div className="amc-card-actions">
-                    <button className="btn btnTiny" onClick={() => handleToggleActive(c)}>
-                      {c.is_active ? "Deactivate" : "Activate"}
-                    </button>
-                    <button className="btn btnTiny" style={{ color: "var(--danger, #ef4444)" }} onClick={() => handleDelete(c.id)}>
-                      Revoke
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </>
+    <div className="mgrcfg-page">
+      {toast && (
+        <div className={`mgrcfg-toast${toast.ok ? "" : " mgrcfg-toast--err"}`}>
+          {toast.ok ? "✓" : "✗"} {toast.msg}
+        </div>
       )}
 
-      {tab === "audit" && (
-        <div className="amc-audit">
-          {audit.length === 0 ? (
-            <p className="amc-empty">No manager audit entries yet.</p>
-          ) : (
-            <table className="amc-audit-table">
-              <thead>
-                <tr>
-                  <th>Time</th>
-                  <th>User</th>
-                  <th>Action</th>
-                  <th>Resource</th>
-                  <th>Details</th>
-                </tr>
-              </thead>
-              <tbody>
-                {audit.map((e) => (
-                  <tr key={e.id}>
-                    <td>{e.created_at ? new Date(e.created_at).toLocaleString() : ""}</td>
-                    <td>{empMap[e.user_id] || e.user_id}</td>
-                    <td>{e.action}</td>
-                    <td>{e.resource_type}{e.resource_id ? ` #${e.resource_id}` : ""}</td>
-                    <td className="amc-audit-details">
-                      {e.details ? JSON.stringify(e.details) : ""}
+      <div className="mgrcfg-header">
+        <div>
+          <h1>Manager Configuration</h1>
+          <p>Assign employees to managers and manage roles</p>
+        </div>
+        <div className="mgrcfg-stats">
+          <div className="mgrcfg-stat">
+            <span className="mgrcfg-stat-num">{managers.length}</span>
+            <span className="mgrcfg-stat-lbl">Managers</span>
+          </div>
+          <div className="mgrcfg-stat">
+            <span className="mgrcfg-stat-num">
+              {employees.filter(e => e.user?.manager_id).length}
+            </span>
+            <span className="mgrcfg-stat-lbl">Assigned</span>
+          </div>
+          <div className="mgrcfg-stat">
+            <span className="mgrcfg-stat-num" style={{color:"#f59e0b"}}>
+              {employees.filter(e => !e.user?.manager_id && e.user?.role === "user").length}
+            </span>
+            <span className="mgrcfg-stat-lbl">Unassigned</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Managers overview strip */}
+      {managers.length > 0 && (
+        <div className="mgrcfg-mgr-strip">
+          <div className="mgrcfg-strip-title">Active Managers</div>
+          <div className="mgrcfg-mgr-cards">
+            {managers.map(m => {
+              const reports = employees.filter(e => e.user?.manager_id === m.user?.user_id);
+              return (
+                <div key={m.user?.user_id} className="mgrcfg-mgr-card">
+                  <div className="mgrcfg-mgr-av">{initial(m)}</div>
+                  <div className="mgrcfg-mgr-info">
+                    <div className="mgrcfg-mgr-name">{m.user?.name || m.user?.email}</div>
+                    <div className="mgrcfg-mgr-dept">{m.user?.department || m.profile?.department || "—"}</div>
+                  </div>
+                  <div className="mgrcfg-mgr-reports">{reports.length} reports</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Filters */}
+      <div className="mgrcfg-filters">
+        <input
+          className="mgrcfg-search"
+          placeholder="Search employees…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+        <div className="mgrcfg-filter-tabs">
+          {[["all","All"],["unassigned","Unassigned"],["assigned","Assigned"],["managers","Managers"]].map(([v,l]) => (
+            <button key={v}
+              className={`mgrcfg-filter-tab${filterMgr===v?" mgrcfg-filter-tab--active":""}`}
+              onClick={() => setFilterMgr(v)}>
+              {l}
+              {v === "unassigned" && employees.filter(e=>!e.user?.manager_id&&e.user?.role==="user").length > 0 && (
+                <span className="mgrcfg-filter-badge">
+                  {employees.filter(e=>!e.user?.manager_id&&e.user?.role==="user").length}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Employee table */}
+      {loading ? (
+        <div className="mgrcfg-loading">Loading employees…</div>
+      ) : (
+        <div className="mgrcfg-table-wrap">
+          <table className="mgrcfg-table">
+            <thead>
+              <tr>
+                <th>Employee</th>
+                <th>Department</th>
+                <th>Role</th>
+                <th>Assigned Manager</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length === 0 && (
+                <tr><td colSpan={5} className="mgrcfg-empty">No employees found</td></tr>
+              )}
+              {filtered.map(emp => {
+                const uid   = emp.user?.user_id;
+                const role  = emp.user?.role || "user";
+                const badge = ROLE_BADGE[role] || ROLE_BADGE.user;
+                const isBusy = saving === uid;
+                const currentMgrId = emp.user?.manager_id;
+
+                return (
+                  <tr key={uid} className={isBusy ? "mgrcfg-row--saving" : ""}>
+                    {/* Employee */}
+                    <td>
+                      <div className="mgrcfg-emp-cell">
+                        <div className="mgrcfg-emp-av">{initial(emp)}</div>
+                        <div>
+                          <div className="mgrcfg-emp-name">{emp.user?.name || emp.user?.email}</div>
+                          <div className="mgrcfg-emp-email">{emp.user?.email}</div>
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* Department */}
+                    <td className="mgrcfg-dept">
+                      {emp.user?.department || emp.profile?.department || "—"}
+                    </td>
+
+                    {/* Role badge + toggle */}
+                    <td>
+                      <div className="mgrcfg-role-cell">
+                        <span className="mgrcfg-role-badge" style={{background:badge.bg,color:badge.color}}>
+                          {badge.label}
+                        </span>
+                        {role === "user" ? (
+                          <button className="mgrcfg-action-btn mgrcfg-action-btn--promote"
+                            onClick={() => setRole(emp, "manager")} disabled={isBusy}>
+                            {isBusy ? "…" : "Make Manager"}
+                          </button>
+                        ) : role === "manager" ? (
+                          <button className="mgrcfg-action-btn mgrcfg-action-btn--demote"
+                            onClick={() => setRole(emp, "user")} disabled={isBusy}>
+                            {isBusy ? "…" : "Remove Manager"}
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
+
+                    {/* Assign manager dropdown */}
+                    <td>
+                      <select
+                        className={`mgrcfg-select${!currentMgrId ? " mgrcfg-select--unset" : ""}`}
+                        value={currentMgrId || ""}
+                        onChange={e => assignManager(emp, e.target.value || null)}
+                        disabled={isBusy || uid === currentMgrId}
+                      >
+                        <option value="">— Unassigned —</option>
+                        {managers
+                          .filter(m => m.user?.user_id !== uid) // can't be own manager
+                          .map(m => (
+                            <option key={m.user?.user_id} value={m.user?.user_id}>
+                              {m.user?.name || m.user?.email}
+                            </option>
+                          ))
+                        }
+                      </select>
+                    </td>
+
+                    {/* Actions */}
+                    <td>
+                      {currentMgrId && (
+                        <button className="mgrcfg-action-btn mgrcfg-action-btn--unassign"
+                          onClick={() => assignManager(emp, null)} disabled={isBusy}>
+                          {isBusy ? "…" : "Unassign"}
+                        </button>
+                      )}
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
