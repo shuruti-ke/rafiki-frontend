@@ -234,9 +234,9 @@ DEFAULT_POLICY = {
 
 
 def _get_user_gender(db: Session, user_id) -> Optional[str]:
-    """Return the gender stored on the user profile, or None."""
+    """Return the gender stored on employee_profiles, or None."""
     row = db.execute(
-        text("SELECT gender FROM users_legacy WHERE user_id = :uid"),
+        text("SELECT gender FROM employee_profiles WHERE user_id = :uid LIMIT 1"),
         {"uid": str(user_id)}
     ).first()
     if row and row[0]:

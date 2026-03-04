@@ -138,6 +138,7 @@ def _profile_dict(p: Optional[EmployeeProfile]) -> Optional[dict]:
         "emergency_contact_relationship": p.emergency_contact_relationship,
 
         "notes": p.notes,
+        "gender": getattr(p, "gender", None),
 
         "created_at": p.created_at.isoformat() if p.created_at else None,
         "updated_at": p.updated_at.isoformat() if p.updated_at else None,
@@ -204,6 +205,7 @@ class EmployeeCreateRequest(BaseModel):
     emergency_contact_relationship: Optional[str] = None
 
     notes: Optional[str] = None
+    gender: Optional[str] = None  # 'male' | 'female' | 'other'
 
     temporary_password: Optional[str] = None
 
@@ -218,6 +220,7 @@ class EmployeeUpdateRequest(BaseModel):
     job_title: Optional[str] = None
     manager_id: Optional[str] = None
     is_active: Optional[bool] = None
+    gender: Optional[str] = None  # 'male' | 'female' | 'other' — used for leave entitlements
 
     # employee_profiles fields
     employment_number: Optional[str] = None
@@ -366,6 +369,7 @@ def create_employee(
 
         notes=body.notes,
         initial_password=temp_pw,
+        gender=body.gender or None,
     )
     db.add(p)
 
@@ -674,7 +678,7 @@ def update_employee(
         "terms_of_service_title", "terms_of_service_text",
         "address_line1", "address_line2", "city", "state", "postal_code", "country",
         "emergency_contact_name", "emergency_contact_phone", "emergency_contact_relationship",
-        "notes",
+        "notes", "gender",
     ]:
         val = getattr(body, field, None)
         if val is not None:
