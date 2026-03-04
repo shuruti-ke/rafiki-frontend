@@ -54,6 +54,14 @@ INTENT_KEYWORDS = {
     "performance": ["evaluation", "review", "rating", "strengths", "improvement", "feedback", "appraisal", "performance eval"],
     "guided_paths": ["guided", "module", "wellness", "breathing", "burnout", "stress path", "mindfulness session"],
     "coaching": ["coaching", "report", "team member", "direct report", "mentoring", "one-on-one"],
+    "web_search": [
+        "hotel", "hotels", "restaurant", "restaurants", "flight", "flights",
+        "price", "prices", "cost", "how much", "where can i", "recommend",
+        "book", "booking", "nearby", "location", "directions", "weather",
+        "news", "latest", "current", "today's", "search for", "look up",
+        "find me", "what is the", "who is", "compare", "best",
+        "shop", "buy", "store", "market", "rate", "exchange rate",
+    ],
 }
 
 DEFAULT_INTENTS = {"objectives", "calendar"}
@@ -895,6 +903,18 @@ def build_user_context(
             ctx = _build_coaching_context(db, org_uuid, user_uuid)
             if ctx:
                 sections.append(ctx)
+
+        if "web_search" in intents:
+            try:
+                from app.services.web_search import search_web
+                web_results = search_web(user_message)
+                if web_results:
+                    sections.append(
+                        "WEB SEARCH RESULTS (real-time internet data):\n" + web_results
+                    )
+                    logger.info("Web search triggered for: %s", user_message[:80])
+            except Exception as e:
+                logger.debug("Web search skipped: %s", e)
 
     if user_uuid and user_message:
         memory = _update_and_build_memory(user_uuid, user_message)
