@@ -693,10 +693,31 @@ def update_employee(
     if body.terms_of_service_signed_at is not None:
         p.terms_of_service_signed_at = _parse_dt(body.terms_of_service_signed_at)
 
+    # Flush ORM changes first, then apply gender via raw SQL
+    # (guards against gender not being a declared SQLAlchemy column yet)
+    db.flush()
+    if body.gender is not None:
+        from sqlalchemy import text as _text
+        db.execute(
+            _text("UPDATE employee_profiles SET gender = :g WHERE user_id = :uid AND org_id = :org"),
+            {"g": body.gender or None, "uid": str(user_id), "org": str(org_id)}
+        )
+
     db.commit()
     db.refresh(u)
     db.refresh(p)
-    return _combined(u, p)
+
+    # Re-read gender from DB since ORM model may not have the column mapped
+    from sqlalchemy import text as _text2
+    row = db.execute(
+        _text2("SELECT gender FROM employee_profiles WHERE user_id = :uid AND org_id = :org"),
+        {"uid": str(user_id), "org": str(org_id)}
+    ).first()
+    result = _combined(u, p)
+    if row:
+        result["profile"] = result.get("profile") or {}
+        result["profile"]["gender"] = row[0]
+    return result
 
 
 @router.patch("/{user_id}")
