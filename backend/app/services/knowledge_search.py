@@ -11,28 +11,54 @@ def search_chunks(db: Session, org_id: int, query: str, limit: int = 5) -> list[
     if not query or not query.strip():
         return []
 
-    # Try full-text search first
+    # Try full-text search first (OR-style so partial matches still rank)
     results = _fts_search(db, org_id, query, limit)
 
-    # Fallback to ILIKE if no FTS results
+    # Fallback to ILIKE keyword search if no FTS results
     if not results:
         results = _ilike_search(db, org_id, query, limit)
 
+    logger.debug("KB search for '%s': %d chunks found", query[:60], len(results))
     return results
 
 
+# Stop-words to strip from ILIKE keyword searches
+_STOP_WORDS = {
+    "i", "me", "my", "the", "a", "an", "is", "are", "was", "were", "do", "does",
+    "did", "have", "has", "had", "can", "could", "will", "would", "should",
+    "how", "what", "when", "where", "who", "which", "many", "much", "in", "on",
+    "at", "to", "for", "of", "and", "or", "but", "not", "this", "that", "it",
+    "be", "been", "being", "am", "your", "our", "their", "its", "with",
+}
+
+
 def _fts_search(db: Session, org_id: int, query: str, limit: int) -> list[dict]:
+    # Build an OR-style tsquery so chunks matching ANY keyword are returned,
+    # ranked by how many keywords match. This replaces the old AND-style
+    # plainto_tsquery which required ALL words to be present in a chunk.
+    words = [w for w in query.lower().split() if w.isalpha() and w not in _STOP_WORDS]
+    if not words:
+        or_query = query
+    else:
+        # " | " is the OR operator in tsquery syntax
+        or_query = " | ".join(words[:8])
+
     sql = sa_text("""
         SELECT dc.id, dc.document_id, dc.chunk_index, dc.content, dc.token_count,
-               ts_rank(to_tsvector('english', dc.content), plainto_tsquery('english', :query)) AS rank
+               ts_rank(to_tsvector('english', dc.content),
+                       to_tsquery('english', :or_query)) AS rank
         FROM document_chunks dc
         WHERE dc.org_id = :org_id
-          AND to_tsvector('english', dc.content) @@ plainto_tsquery('english', :query)
+          AND to_tsvector('english', dc.content) @@ to_tsquery('english', :or_query)
         ORDER BY rank DESC
         LIMIT :limit
     """)
 
-    rows = db.execute(sql, {"org_id": org_id, "query": query, "limit": limit}).fetchall()
+    rows = db.execute(sql, {
+        "org_id": org_id,
+        "or_query": or_query,
+        "limit": limit,
+    }).fetchall()
 
     return [
         {
@@ -48,10 +74,17 @@ def _fts_search(db: Session, org_id: int, query: str, limit: int) -> list[dict]:
 
 
 def _ilike_search(db: Session, org_id: int, query: str, limit: int) -> list[dict]:
-    pattern = f"%{query}%"
+    # Extract meaningful keywords and search for ANY of them individually
+    words = [w for w in query.lower().split() if len(w) >= 3 and w not in _STOP_WORDS]
+    if not words:
+        words = [query.strip()]
+
+    from sqlalchemy import or_
+    conditions = [DocumentChunk.content.ilike(f"%{w}%") for w in words[:6]]
+
     chunks = (
         db.query(DocumentChunk)
-        .filter(DocumentChunk.org_id == org_id, DocumentChunk.content.ilike(pattern))
+        .filter(DocumentChunk.org_id == org_id, or_(*conditions))
         .limit(limit)
         .all()
     )
