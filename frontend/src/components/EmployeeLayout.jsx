@@ -596,6 +596,10 @@ export default function EmployeeLayout() {
   const navigate = useNavigate();
   const location = useLocation();
 
+  const role = localStorage.getItem("rafiki_role") || "";
+  const isManager = role === "manager" || role === "hr_admin" || role === "super_admin";
+  const isAdmin   = role === "hr_admin" || role === "super_admin";
+
   const handleLogout = () => {
     localStorage.removeItem("rafiki_token");
     localStorage.removeItem("rafiki_role");
@@ -618,6 +622,16 @@ export default function EmployeeLayout() {
           </NavLink>
         ))}
         <div className="emp-nav-spacer" />
+        {isManager && (
+          <NavLink to="/manager" className="emp-nav-link emp-nav-link--portal">
+            Manager Portal
+          </NavLink>
+        )}
+        {isAdmin && (
+          <NavLink to="/admin" className="emp-nav-link emp-nav-link--portal">
+            HR Admin
+          </NavLink>
+        )}
         <button onClick={handleLogout} className="emp-nav-logout">
           Logout
         </button>
