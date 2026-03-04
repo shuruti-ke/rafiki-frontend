@@ -23,6 +23,8 @@ services:
         sync: false
       - key: JWT_SECRET
         sync: false
+      - key: TAVILY_API_KEY
+        sync: false
       - key: PYTHON_VERSION
         value: "3.12.0"
 
