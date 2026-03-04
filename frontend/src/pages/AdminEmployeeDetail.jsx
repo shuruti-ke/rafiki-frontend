@@ -88,7 +88,7 @@ export default function AdminEmployeeDetail() {
       if (res.ok) {
         setSaveMsg("✅ Profile updated successfully.");
         setEditMode(false);
-        fetchEmployee();
+        await fetchEmployee();   // re-fetch so gender & leave balances update immediately
       } else {
         setSaveErr(data.detail || "Failed to save.");
       }
