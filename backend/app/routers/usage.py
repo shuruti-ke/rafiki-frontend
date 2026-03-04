@@ -110,9 +110,18 @@ def admin_usage_report(
 
     # ── Employees ──
     User = m["User"]
-    total_employees = db.query(func.count(User.user_id)).filter(
-        User.org_id == org_id, User.is_active == True
-    ).scalar() or 0
+    try:
+        total_employees = db.query(func.count(User.user_id)).filter(
+            User.org_id == org_id, User.is_active == True
+        ).scalar() or 0
+    except Exception:
+        # Fallback: count all users in org
+        try:
+            total_employees = db.query(func.count(User.user_id)).filter(
+                User.org_id == org_id
+            ).scalar() or 0
+        except Exception:
+            total_employees = 0
     result["employees"] = {"total_active": total_employees}
 
     # ── Chat ──
