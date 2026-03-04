@@ -3,6 +3,8 @@ import "./ManagerLayout.css";
 
 export default function ManagerLayout() {
   const navigate = useNavigate();
+  const userRole = localStorage.getItem("rafiki_role") || "";
+  const isAdmin = ["hr_admin", "super_admin"].includes(userRole);
 
   const handleLogout = () => {
     localStorage.removeItem("rafiki_token");
@@ -47,9 +49,11 @@ export default function ManagerLayout() {
           <NavLink to="/" className="mgr-nav-link">
             Back to Chat
           </NavLink>
-          <NavLink to="/admin" className="mgr-nav-link">
-            HR Portal
-          </NavLink>
+          {isAdmin && (
+            <NavLink to="/admin" className="mgr-nav-link">
+              HR Portal
+            </NavLink>
+          )}
           <button onClick={handleLogout} className="mgr-nav-link" style={{ background: "none", border: "none", cursor: "pointer", textAlign: "left", width: "100%", font: "inherit" }}>
             Logout
           </button>
