@@ -574,8 +574,7 @@ def review_application(
         _get_or_create_balance(db, row["user_id"], org_id, yr, row["leave_type"], entitled, policy)
         db.execute(
             text("""UPDATE leave_balances SET
-                    used_days = used_days + :days, updated_at = now()
-                    WHERE user_id = :uid AND leave_year = :yr AND leave_type = :lt"""),
+                    used_days = used_days + :days WHERE user_id = :uid AND leave_year = :yr AND leave_type = :lt"""),
             {"days": float(row["working_days"]), "uid": str(row["user_id"]),
              "yr": yr, "lt": row["leave_type"]}
         )
