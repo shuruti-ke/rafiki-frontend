@@ -590,6 +590,8 @@ export default function EmployeeLayout() {
   const navigate = useNavigate();
   const location = useLocation();
 
+  const userRole = localStorage.getItem("rafiki_role") || "";
+
   const handleLogout = () => {
     localStorage.removeItem("rafiki_token");
     localStorage.removeItem("rafiki_role");
@@ -611,6 +613,11 @@ export default function EmployeeLayout() {
             {l.label}
           </NavLink>
         ))}
+        {["manager", "hr_admin", "super_admin"].includes(userRole) && (
+          <NavLink to="/manager" className={({ isActive }) => `emp-nav-link emp-nav-link--manager${isActive ? " active" : ""}`}>
+            Manager Portal
+          </NavLink>
+        )}
         <div className="emp-nav-spacer" />
         <button onClick={handleLogout} className="emp-nav-logout">
           Logout
