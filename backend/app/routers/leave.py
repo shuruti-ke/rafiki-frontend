@@ -485,7 +485,7 @@ def get_all_applications(
 ):
     """HR admin: get all leave applications for the org with employee info."""
     q = """
-        SELECT la.*, u.full_name, u.email, u.department
+        SELECT la.*, u.name AS full_name, u.email, u.department
         FROM leave_applications la
         LEFT JOIN users_legacy u ON u.user_id = la.user_id
         WHERE la.org_id = :org
