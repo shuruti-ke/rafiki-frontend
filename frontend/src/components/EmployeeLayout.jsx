@@ -11,7 +11,6 @@ const links = [
   { to: "/announcements", label: "Announcements" },
   { to: "/guided-paths", label: "Guided Paths" },
   { to: "/objectives", label: "Objectives" },
-  { to: "/leave", label: "Leave" },
   { to: "/calendar", label: "Calendar" },
   { to: "/timesheet", label: "Timesheets" },
   { to: "/meetings", label: "Meetings" },
@@ -136,7 +135,108 @@ function PayrollApprovalBlock({ payload, onAction }) {
   );
 }
 
+/* ─── Objective Review in Messages ─── */
+function ObjectiveReviewBlock({ payload, onAction }) {
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(null);
+  const [notes, setNotes] = useState("");
+  const [showRevise, setShowRevise] = useState(false);
+
+  async function handleApprove() {
+    setBusy(true);
+    try {
+      const r = await authFetch(`${API}${payload.approve_endpoint}`, {
+        method: "POST",
+        body: JSON.stringify({ review_status: "approved", review_notes: notes }),
+      });
+      const data = await r.json();
+      if (r.ok) { setDone("approved"); onAction && onAction(); }
+      else setDone("error:" + (data.detail || "Failed"));
+    } catch { setDone("error:Network error"); }
+    finally { setBusy(false); }
+  }
+
+  async function handleRevise() {
+    setBusy(true);
+    try {
+      const r = await authFetch(`${API}${payload.reject_endpoint}`, {
+        method: "POST",
+        body: JSON.stringify({ review_status: "needs_revision", review_notes: notes }),
+      });
+      const data = await r.json();
+      if (r.ok) { setDone("needs_revision"); onAction && onAction(); }
+      else setDone("error:" + (data.detail || "Failed"));
+    } catch { setDone("error:Network error"); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div style={{ background: "rgba(123,47,190,0.08)", borderRadius: 8, padding: "10px 12px", marginTop: 4, fontSize: "0.8rem" }}>
+      <div style={{ fontWeight: 700, marginBottom: 4, color: "var(--text)" }}>📋 Objective Review Request</div>
+      <div style={{ fontWeight: 600, marginBottom: 2 }}>{payload.title}</div>
+      {payload.description && <div style={{ color: "var(--muted)", marginBottom: 4 }}>{payload.description}</div>}
+      <div style={{ color: "var(--muted)", fontSize: "0.75rem", marginBottom: 2 }}>
+        From: {payload.submitter_name || "Employee"}
+        {payload.target_date ? ` · Due: ${payload.target_date}` : ""}
+      </div>
+      {payload.key_results_summary && (
+        <div style={{ color: "var(--muted)", fontSize: "0.75rem", marginBottom: 6 }}>
+          {payload.key_results_summary}
+        </div>
+      )}
+      {payload.progress != null && (
+        <div style={{ marginBottom: 6 }}>
+          <div style={{ height: 4, background: "rgba(255,255,255,0.1)", borderRadius: 2, overflow: "hidden" }}>
+            <div style={{ height: "100%", width: `${payload.progress}%`, background: "#00C9B1", borderRadius: 2 }} />
+          </div>
+          <div style={{ fontSize: "0.72rem", color: "var(--muted)", marginTop: 2 }}>{payload.progress}% complete</div>
+        </div>
+      )}
+
+      {done === "approved" && <div style={{ color: "#34d399", marginTop: 4, fontWeight: 600 }}>✓ Approved</div>}
+      {done === "needs_revision" && <div style={{ color: "#f59e0b", marginTop: 4, fontWeight: 600 }}>↩ Sent back for revision</div>}
+      {done?.startsWith("error:") && <div style={{ color: "#f87171", marginTop: 4 }}>{done.slice(6)}</div>}
+
+      {!done && (
+        <div style={{ marginTop: 8 }}>
+          <textarea
+            style={{ width: "100%", padding: "4px 6px", borderRadius: 4, border: "1px solid var(--border)", background: "rgba(255,255,255,0.06)", color: "var(--text)", fontSize: "0.75rem", marginBottom: 6, resize: "none", fontFamily: "inherit" }}
+            rows={2}
+            placeholder="Review notes (optional)"
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+          />
+          <div style={{ display: "flex", gap: 6 }}>
+            <button className="btn btnPrimary btnTiny" onClick={handleApprove} disabled={busy}>
+              {busy ? "…" : "Approve"}
+            </button>
+            <button className="btn btnGhost btnTiny" onClick={handleRevise} disabled={busy}>
+              {busy ? "…" : "Needs Revision"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SidebarMessageContent({ content, onAction }) {
+  // Handle [[OBJECTIVE_REVIEW]]...[[/OBJECTIVE_REVIEW]]
+  const objStart = content.indexOf("[[OBJECTIVE_REVIEW]]");
+  if (objStart !== -1) {
+    const objEnd = content.indexOf("[[/OBJECTIVE_REVIEW]]", objStart);
+    const jsonStr = content.slice(objStart + "[[OBJECTIVE_REVIEW]]".length, objEnd === -1 ? undefined : objEnd);
+    let payload = {};
+    try { payload = JSON.parse(jsonStr); } catch { /* fallback */ }
+    return (
+      <div>
+        {objStart > 0 && <div style={{ whiteSpace: "pre-wrap", marginBottom: 4 }}>{content.slice(0, objStart)}</div>}
+        <ObjectiveReviewBlock payload={payload} onAction={onAction} />
+      </div>
+    );
+  }
+
+  // Handle [[PAYROLL_APPROVAL]]...[[/PAYROLL_APPROVAL]]
   const marker = "[[PAYROLL_APPROVAL]]";
   const endMarker = "[[/PAYROLL_APPROVAL]]";
   const start = content.indexOf(marker);
