@@ -1,3 +1,4 @@
+// frontend/src/components/AdminLayout.jsx
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import "./AdminLayout.css";
 
@@ -25,6 +26,9 @@ export default function AdminLayout() {
         <nav className="admin-nav">
           <NavLink to="/admin" end className={({ isActive }) => `admin-nav-link ${isActive ? "active" : ""}`}>
             Dashboard
+          </NavLink>
+          <NavLink to="/admin/usage-report" className={({ isActive }) => `admin-nav-link ${isActive ? "active" : ""}`}>
+            Usage Report
           </NavLink>
           <NavLink to="/admin/knowledge-base" className={({ isActive }) => `admin-nav-link ${isActive ? "active" : ""}`}>
             Knowledge Base
@@ -62,7 +66,8 @@ export default function AdminLayout() {
           <NavLink to="/" className="admin-nav-link">
             Back to Chat
           </NavLink>
-          <button onClick={handleLogout} className="admin-nav-link" style={{ background: "none", border: "none", cursor: "pointer", textAlign: "left", width: "100%", font: "inherit" }}>
+          <button onClick={handleLogout} className="admin-nav-link"
+            style={{ background: "none", border: "none", cursor: "pointer", textAlign: "left", width: "100%", font: "inherit" }}>
             Logout
           </button>
         </div>
