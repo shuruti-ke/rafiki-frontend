@@ -78,12 +78,10 @@ def _ensure_direct_conversation(
     a_convos = (
         db.query(ConversationParticipant.conversation_id)
         .filter(ConversationParticipant.user_id == user_a)
-        .subquery()
     )
     b_convos = (
         db.query(ConversationParticipant.conversation_id)
         .filter(ConversationParticipant.user_id == user_b)
-        .subquery()
     )
 
     convo = (
@@ -292,7 +290,6 @@ def list_conversations(
     convo_ids = (
         db.query(ConversationParticipant.conversation_id)
         .filter(ConversationParticipant.user_id == user_id)
-        .subquery()
     )
 
     convos = (
@@ -319,7 +316,6 @@ def get_unread_count(
     convo_ids = (
         db.query(ConversationParticipant.conversation_id)
         .filter(ConversationParticipant.user_id == user_id)
-        .subquery()
     )
     convos = (
         db.query(DmConversation)
@@ -463,7 +459,6 @@ def pending_approvals(
     convo_ids = (
         db.query(ConversationParticipant.conversation_id)
         .filter(ConversationParticipant.user_id == user_id)
-        .subquery()
     )
 
     # Pull latest 50 messages and filter ones containing our marker
@@ -586,7 +581,6 @@ def list_system_inbox(
     convo_ids = (
         db.query(ConversationParticipant.conversation_id)
         .filter(ConversationParticipant.user_id == user_id)
-        .subquery()
     )
 
     # If message_type exists, prefer filtering on it. Otherwise just show latest messages.
