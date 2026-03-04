@@ -65,11 +65,15 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    authFetch(`${API}/api/v1/employees/analytics`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => setData(d))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    Promise.allSettled([
+      authFetch(`${API}/api/v1/employees/analytics`).then(r => r.ok ? r.json() : null),
+      authFetch(`${API}/api/v1/employees/`).then(r => r.ok ? r.json() : []),
+    ]).then(([analyticsR, empListR]) => {
+      const analytics = analyticsR.status === "fulfilled" ? analyticsR.value : null;
+      const empList = empListR.status === "fulfilled" ? empListR.value : [];
+      const empCount = Array.isArray(empList) ? empList.length : (empList?.total ?? null);
+      setData({ ...analytics, _empCount: empCount });
+    }).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
   if (loading) return <div className="adash-loading">Loading analytics...</div>;
@@ -90,7 +94,7 @@ export default function AdminDashboard() {
       {/* KPI Cards */}
       <div className="adash-kpis">
         <div className="adash-kpi" style={{ "--kpi-color": "#8b5cf6" }}>
-          <div className="adash-kpi-value">{emp?.total ?? "—"}</div>
+          <div className="adash-kpi-value">{emp?.total ?? data?._empCount ?? "—"}</div>
           <div className="adash-kpi-label">Total Employees</div>
         </div>
         <div className="adash-kpi" style={{ "--kpi-color": "#3b82f6" }}>
