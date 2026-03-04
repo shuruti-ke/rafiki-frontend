@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { API, authFetch } from "../api.js";
 import "./MessagesPage.css";
 
-// ── Payroll approval block renderer ──────────────────────────
+// ── Payroll approval block renderer ─────────────────────────
 function PayrollApprovalBlock({ payload, onAction }) {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(null);
