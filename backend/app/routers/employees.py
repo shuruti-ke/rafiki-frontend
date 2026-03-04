@@ -699,6 +699,18 @@ def update_employee(
     return _combined(u, p)
 
 
+@router.patch("/{user_id}")
+def patch_employee(
+    user_id: uuid.UUID,
+    body: EmployeeUpdateRequest,
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    _role: str = Depends(require_admin),
+):
+    """PATCH alias for PUT — supports partial updates including gender."""
+    return update_employee(user_id, body, db, org_id, _role)
+
+
 @router.post("/{user_id}/deactivate")
 def deactivate_employee(
     user_id: uuid.UUID,
