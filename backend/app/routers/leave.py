@@ -221,6 +221,43 @@ def upsert_leave_policy(
 # BALANCE ENDPOINTS
 # ══════════════════════════════════════════════════════════════
 
+DEFAULT_POLICY = {
+    "annual_leave_days": 21,
+    "sick_leave_days": 10,
+    "maternity_leave_days": 90,
+    "paternity_leave_days": 14,
+    "carry_over_days": 0,
+    "carry_over_expiry_months": 3,
+    "carry_over_policy": "none",
+    "other_leave": [],
+}
+
+
+def _get_user_gender(db: Session, user_id) -> Optional[str]:
+    """Return the gender stored on the user profile, or None."""
+    row = db.execute(
+        text("SELECT gender FROM users_legacy WHERE user_id = :uid"),
+        {"uid": str(user_id)}
+    ).first()
+    if row and row[0]:
+        return str(row[0]).lower()
+    return None
+
+
+def _gender_leave_types(gender: Optional[str]) -> List[str]:
+    """Return the base leave types appropriate for the user's gender.
+    - male   → annual, sick, paternity
+    - female → annual, sick, maternity
+    - other/None → annual, sick, maternity, paternity (show all, let employee choose)
+    """
+    if gender == "male":
+        return ["annual", "sick", "paternity"]
+    if gender == "female":
+        return ["annual", "sick", "maternity"]
+    # unset or 'other' — show everything
+    return ["annual", "sick", "maternity", "paternity"]
+
+
 @router.get("/balance")
 def get_my_balance(
     year: Optional[int] = None,
@@ -230,21 +267,22 @@ def get_my_balance(
 ):
     """Get current user's leave balance for the given year (defaults to current year)."""
     yr = year or date.today().year
-    policy = _get_policy(db, org_id)
+    policy = _get_policy(db, org_id) or DEFAULT_POLICY
 
-    leave_types = ["annual", "sick", "maternity", "paternity"]
-    if policy:
-        for item in (policy.get("other_leave") or []):
-            if isinstance(item, dict) and item.get("name"):
-                leave_types.append(item["name"].lower())
+    gender = _get_user_gender(db, user_id)
+    leave_types = _gender_leave_types(gender)
+
+    # Append any custom leave types from policy
+    for item in (policy.get("other_leave") or []):
+        if isinstance(item, dict) and item.get("name"):
+            leave_types.append(item["name"].lower())
 
     balances = []
     for lt in leave_types:
-        entitled = _entitled_for_type(policy, lt) if policy else 0.0
+        entitled = _entitled_for_type(policy, lt)
         bal = _get_or_create_balance(db, user_id, org_id, yr, lt, entitled, policy)
         available = float(bal["entitled_days"]) + float(bal["carried_over_days"]) - float(bal["used_days"])
 
-        # Check if carried over days have expired
         carry_expired = False
         if bal.get("carry_over_expiry") and date.today() > bal["carry_over_expiry"]:
             carry_expired = True
@@ -258,13 +296,16 @@ def get_my_balance(
             "carry_over_expiry": str(bal["carry_over_expiry"]) if bal.get("carry_over_expiry") else None,
             "carry_over_expired": carry_expired,
             "available_days": max(0.0, available),
+            "gender_context": gender,
         })
 
     return {
         "year": yr,
         "user_id": str(user_id),
+        "gender": gender,
         "balances": balances,
         "policy": policy,
+        "policy_is_default": _get_policy(db, org_id) is None,
     }
 
 
@@ -283,16 +324,17 @@ def get_user_balance(
         raise HTTPException(status_code=400, detail="Invalid user_id")
 
     yr = year or date.today().year
-    policy = _get_policy(db, org_id)
-    leave_types = ["annual", "sick", "maternity", "paternity"]
-    if policy:
-        for item in (policy.get("other_leave") or []):
-            if isinstance(item, dict) and item.get("name"):
-                leave_types.append(item["name"].lower())
+    policy = _get_policy(db, org_id) or DEFAULT_POLICY
+
+    gender = _get_user_gender(db, target_uid)
+    leave_types = _gender_leave_types(gender)
+    for item in (policy.get("other_leave") or []):
+        if isinstance(item, dict) and item.get("name"):
+            leave_types.append(item["name"].lower())
 
     balances = []
     for lt in leave_types:
-        entitled = _entitled_for_type(policy, lt) if policy else 0.0
+        entitled = _entitled_for_type(policy, lt)
         bal = _get_or_create_balance(db, target_uid, org_id, yr, lt, entitled, policy)
         available = float(bal["entitled_days"]) + float(bal["carried_over_days"]) - float(bal["used_days"])
         carry_expired = False
@@ -308,7 +350,7 @@ def get_user_balance(
             "carry_over_expired": carry_expired,
             "available_days": max(0.0, available),
         })
-    return {"year": yr, "user_id": user_id_param, "balances": balances, "policy": policy}
+    return {"year": yr, "user_id": user_id_param, "gender": gender, "balances": balances, "policy": policy}
 
 
 # ══════════════════════════════════════════════════════════════
@@ -334,9 +376,9 @@ def apply_for_leave(
         raise HTTPException(status_code=400, detail="No working days in selected range")
 
     # Check balance
-    policy = _get_policy(db, org_id)
+    policy = _get_policy(db, org_id) or DEFAULT_POLICY
     yr = data.start_date.year
-    entitled = _entitled_for_type(policy, data.leave_type) if policy else 0.0
+    entitled = _entitled_for_type(policy, data.leave_type)
     bal = _get_or_create_balance(db, user_id, org_id, yr, data.leave_type, entitled, policy)
     available = float(bal["entitled_days"]) + float(bal["carried_over_days"]) - float(bal["used_days"])
     if bal.get("carry_over_expiry") and date.today() > bal["carry_over_expiry"]:
