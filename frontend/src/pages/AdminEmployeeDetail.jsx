@@ -30,12 +30,12 @@ export default function AdminEmployeeDetail() {
   const [editMode, setEditMode] = useState(false);
 
   const [form, setForm] = useState({
-    full_name: "",
+    name: "",
     job_title: "",
     department: "",
     phone: "",
     gender: "",
-    location: "",
+    city: "",
   });
 
   const fetchEmployee = useCallback(async () => {
@@ -47,15 +47,18 @@ export default function AdminEmployeeDetail() {
       ]);
       if (empRes.ok) {
         const data = await empRes.json();
-        const emp = data.employee || data;
-        setEmployee(emp);
+        // backend returns { user: {...}, profile: {...} }
+        const user = data.user || data;
+        const profile = data.profile || {};
+        const merged = { ...user, ...profile, name: user.name || profile.name || "" };
+        setEmployee(merged);
         setForm({
-          full_name: emp.full_name || "",
-          job_title: emp.job_title || "",
-          department: emp.department || "",
-          phone: emp.phone || "",
-          gender: emp.gender || "",
-          location: emp.location || "",
+          name: merged.name || "",
+          job_title: merged.job_title || "",
+          department: merged.department || "",
+          phone: merged.phone || "",
+          gender: merged.gender || "",
+          city: merged.city || "",
         });
       }
       if (balRes.ok) {
@@ -72,7 +75,14 @@ export default function AdminEmployeeDetail() {
     try {
       const res = await authFetch(`${API}/api/v1/employees/${userId}`, {
         method: "PATCH",
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          name: form.name || null,
+          job_title: form.job_title || null,
+          department: form.department || null,
+          phone: form.phone || null,
+          gender: form.gender || null,
+          city: form.city || null,
+        }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -100,7 +110,7 @@ export default function AdminEmployeeDetail() {
     </div>
   );
 
-  const genderLabel = GENDER_OPTIONS.find(g => g.value === (employee.gender || ""))?.label || "Not specified";
+  const genderLabel = GENDER_OPTIONS.find(g => g.value === (employee.gender || ""))?.label || "— Not specified —";
 
   return (
     <div className="emp-detail-page">
@@ -111,10 +121,10 @@ export default function AdminEmployeeDetail() {
         </button>
         <div className="emp-detail-title-row">
           <div className="emp-detail-avatar">
-            {(employee.full_name || employee.email || "?")[0].toUpperCase()}
+            {(employee.name || employee.email || "?")[0].toUpperCase()}
           </div>
           <div>
-            <h1>{employee.full_name || employee.email}</h1>
+            <h1>{employee.name || employee.email}</h1>
             <div className="emp-detail-meta">
               {employee.job_title && <span>{employee.job_title}</span>}
               {employee.department && <span>· {employee.department}</span>}
@@ -144,7 +154,7 @@ export default function AdminEmployeeDetail() {
             <div className="emp-form-grid">
               <div className="emp-form-field">
                 <label>Full Name</label>
-                <input value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} />
+                <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
               </div>
               <div className="emp-form-field">
                 <label>Job Title</label>
@@ -159,8 +169,8 @@ export default function AdminEmployeeDetail() {
                 <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
               </div>
               <div className="emp-form-field">
-                <label>Location / Office</label>
-                <input value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} />
+                <label>City / Office</label>
+                <input value={form.city} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} />
               </div>
 
               {/* Gender — critical for leave entitlements */}
@@ -205,10 +215,11 @@ export default function AdminEmployeeDetail() {
             <div className="emp-profile-grid">
               {[
                 { label: "Email", value: employee.email },
+              { label: "Full Name", value: employee.name || "—" },
                 { label: "Phone", value: employee.phone || "—" },
                 { label: "Department", value: employee.department || "—" },
                 { label: "Job Title", value: employee.job_title || "—" },
-                { label: "Location", value: employee.location || "—" },
+                { label: "City / Office", value: employee.city || "—" },
                 { label: "Role", value: employee.role?.replace("_", " ") || "—" },
                 {
                   label: "Gender",
