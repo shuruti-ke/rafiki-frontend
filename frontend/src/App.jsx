@@ -14,6 +14,7 @@ import AdminOrgConfig from "./pages/AdminOrgConfig.jsx";
 import AdminManagerConfig from "./pages/AdminManagerConfig.jsx";
 import AdminPayroll from "./pages/AdminPayroll.jsx";
 import AdminUsageReport from "./pages/AdminUsageReport.jsx";
+import AdminLeave from "./pages/AdminLeave.jsx";
 import EmployeeKnowledgeBase from "./pages/EmployeeKnowledgeBase.jsx";
 import EmployeeAnnouncements from "./pages/EmployeeAnnouncements.jsx";
 import GuidedPathExplore from "./pages/GuidedPathExplore.jsx";
@@ -24,6 +25,7 @@ import CalendarPage from "./pages/CalendarPage.jsx";
 import TimesheetPage from "./pages/TimesheetPage.jsx";
 import EmployeeDashboard from "./pages/EmployeeDashboard.jsx";
 import PersonalUsageReport from "./pages/PersonalUsageReport.jsx";
+import LeaveApplication from "./pages/LeaveApplication.jsx";
 import ManagerLayout from "./components/ManagerLayout.jsx";
 import ManagerDashboard from "./pages/ManagerDashboard.jsx";
 import ManagerTeam from "./pages/ManagerTeam.jsx";
@@ -65,6 +67,7 @@ export default function App() {
           <Route path="/timesheet" element={<TimesheetPage />} />
           <Route path="/meetings" element={<MeetingsPage />} />
           <Route path="/my-report" element={<PersonalUsageReport />} />
+          <Route path="/leave" element={<LeaveApplication />} />
         </Route>
 
         {/* Super Admin Portal */}
@@ -109,6 +112,7 @@ export default function App() {
           <Route path="payroll" element={<AdminPayroll />} />
           <Route path="calendar" element={<CalendarPage />} />
           <Route path="timesheets" element={<TimesheetPage />} />
+          <Route path="leave" element={<AdminLeave />} />
         </Route>
       </Routes>
     </BrowserRouter>
