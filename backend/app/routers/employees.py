@@ -624,7 +624,19 @@ def get_employee(
         raise HTTPException(status_code=404, detail="Employee not found")
 
     p = _get_profile(db, org_id, user_id)
-    return _combined(u, p)
+    result = _combined(u, p)
+
+    # Read gender via raw SQL — guards against ORM model not having column mapped
+    from sqlalchemy import text as _text
+    row = db.execute(
+        _text("SELECT gender FROM employee_profiles WHERE user_id = :uid AND org_id = :org"),
+        {"uid": str(user_id), "org": str(org_id)}
+    ).first()
+    if row:
+        result["profile"] = result.get("profile") or {}
+        result["profile"]["gender"] = row[0]
+
+    return result
 
 
 @router.put("/{user_id}")
