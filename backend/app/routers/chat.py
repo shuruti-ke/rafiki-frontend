@@ -14,6 +14,8 @@ from app.database import get_db
 from app.dependencies import get_current_user_id, get_current_org_id
 from app.services.prompt import assemble_prompt
 from app.services.document_processor import extract_text_from_bytes
+from app.services.crisis_detector import quick_safety_screen, analyze_safety, get_safety_prompt_injection, analyze_sentiment_background
+from app.services.helpline_directory import get_helplines, format_helplines_for_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -370,6 +372,25 @@ def chat(
         if web_search_context:
             system_prompt = system_prompt + "\n" + web_search_context
 
+        # ── Crisis detection (safety layer) ──
+        crisis_result = None
+        screen_level = quick_safety_screen(content)
+        if screen_level != "none":
+            crisis_result = analyze_safety(content, history_dicts)
+            if crisis_result["recommended_action"] in ("safety_check", "crisis_response"):
+                # Get org crisis config for custom helplines
+                try:
+                    from app.models.wellbeing import OrgCrisisConfig
+                    org_config = db.query(OrgCrisisConfig).filter(OrgCrisisConfig.org_id == org_id).first()
+                    config_dict = {"custom_helplines": org_config.custom_helplines} if org_config else None
+                except Exception:
+                    config_dict = None
+                helplines = get_helplines(country_code=None, org_config=config_dict)
+                helplines_text = format_helplines_for_prompt(helplines)
+                safety_injection = get_safety_prompt_injection(crisis_result["risk_level"], helplines_text)
+                if safety_injection:
+                    system_prompt = safety_injection + "\n\n" + system_prompt
+
         logger.info(
             "model=%s  user=%s  msg_chars=%d  system_chars=%d  web_search=%s",
             chosen, user_id, len(final_user_message), len(system_prompt),
@@ -420,6 +441,41 @@ def chat(
                 reply_text += block.get("text", "")
         reply_text = reply_text.strip() or "..."
 
+        # ── Create crisis alert if crisis was detected ──
+        if crisis_result and crisis_result["risk_level"] in ("high", "critical"):
+            try:
+                from app.models.wellbeing import CrisisAlert
+                from app.database import SessionLocal as _CrisisSessionLocal
+
+                crisis_db = _CrisisSessionLocal()
+                try:
+                    import uuid as _uuid_mod
+                    session_uuid = None
+                    if req.session_id:
+                        try:
+                            session_uuid = _uuid_mod.UUID(str(req.session_id))
+                        except ValueError:
+                            pass
+                    alert = CrisisAlert(
+                        user_id=user_id,
+                        org_id=org_id,
+                        session_id=session_uuid,
+                        risk_level=crisis_result["risk_level"],
+                        trigger_text=content[:500],
+                        detected_patterns=crisis_result.get("detected_patterns"),
+                        status="open",
+                    )
+                    crisis_db.add(alert)
+                    crisis_db.commit()
+                    logger.warning("CRISIS ALERT created: user=%s level=%s", user_id, crisis_result["risk_level"])
+                except Exception as e:
+                    logger.error("Failed to create crisis alert: %s", e)
+                    crisis_db.rollback()
+                finally:
+                    crisis_db.close()
+            except Exception as e:
+                logger.error("Crisis alert session error: %s", e)
+
         # ── Persist chat messages using a FRESH db session ──
         # The main db session may be in a failed transaction state from
         # context-building queries, so we use a separate session for persistence.
@@ -462,6 +518,18 @@ def chat(
                 persist_db.close()
         except Exception as e:
             logger.error("Failed to create persist session: %s", e)
+
+        # ── Background sentiment/stress analysis (fire-and-forget) ──
+        try:
+            analyze_sentiment_background(
+                user_message=content,
+                assistant_reply=reply_text,
+                user_id=user_id,
+                org_id=org_id,
+                session_id=session_id_out,
+            )
+        except Exception as e:
+            logger.warning("Failed to launch background sentiment analysis: %s", e)
 
         return ChatResponse(reply=reply_text, session_id=session_id_out)
 
