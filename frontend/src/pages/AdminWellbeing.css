@@ -1,0 +1,436 @@
+/* ── Wellbeing Dashboard ── */
+.wb-wrap { max-width: 960px; }
+
+.wb-header { margin-bottom: 24px; }
+.wb-header h1 { font-weight: 800; font-size: 22px; margin: 0 0 4px; }
+.wb-header p { color: var(--muted); font-size: 14px; margin: 0; }
+
+/* KPI Cards — reuse adash pattern */
+.wb-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 28px;
+}
+
+.wb-kpi {
+  background: var(--card, #fff);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 14px 14px;
+  position: relative;
+  overflow: hidden;
+}
+
+.wb-kpi::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: var(--kpi-color, var(--accent));
+}
+
+.wb-kpi-value {
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1.1;
+  margin-bottom: 2px;
+}
+
+.wb-kpi-label {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* ── Panels ── */
+.wb-panels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.wb-panel {
+  background: var(--card, #fff);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+}
+
+.wb-panel.full {
+  grid-column: 1 / -1;
+}
+
+.wb-panel-title {
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── Alerts Table ── */
+.wb-alerts-filters {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.wb-filter-btn {
+  padding: 4px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.wb-filter-btn.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.wb-alert-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  margin-bottom: 4px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.wb-alert-row:hover {
+  background: rgba(139, 92, 246, 0.06);
+}
+
+.wb-alert-row.critical { border-left: 3px solid #ef4444; }
+.wb-alert-row.high { border-left: 3px solid #f97316; }
+.wb-alert-row.medium { border-left: 3px solid #eab308; }
+.wb-alert-row.low { border-left: 3px solid #94a3b8; }
+
+.wb-alert-name {
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 120px;
+}
+
+.wb-alert-dept {
+  font-size: 11px;
+  color: var(--muted);
+  min-width: 80px;
+}
+
+.wb-risk-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+}
+
+.wb-risk-badge.critical { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+.wb-risk-badge.high { background: rgba(249, 115, 22, 0.15); color: #f97316; }
+.wb-risk-badge.medium { background: rgba(234, 179, 8, 0.15); color: #eab308; }
+.wb-risk-badge.low { background: rgba(148, 163, 184, 0.15); color: #94a3b8; }
+
+.wb-alert-excerpt {
+  font-size: 11px;
+  color: var(--muted);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-alert-time {
+  font-size: 11px;
+  color: var(--muted);
+  min-width: 70px;
+  text-align: right;
+}
+
+.wb-status-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.wb-status-badge.open { background: rgba(239, 68, 68, 0.12); color: #ef4444; }
+.wb-status-badge.acknowledged { background: rgba(59, 130, 246, 0.12); color: #3b82f6; }
+.wb-status-badge.resolved { background: rgba(52, 211, 153, 0.12); color: #34d399; }
+
+/* ── Alert Detail Expand ── */
+.wb-alert-detail {
+  padding: 12px 14px;
+  margin: 0 0 8px 0;
+  background: rgba(139, 92, 246, 0.03);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.wb-alert-detail-text {
+  font-size: 12px;
+  color: var(--text);
+  margin-bottom: 10px;
+  line-height: 1.5;
+}
+
+.wb-alert-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.wb-btn {
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.wb-btn:hover { border-color: var(--accent); }
+
+.wb-btn.primary {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.wb-btn.primary:hover { opacity: 0.9; }
+
+.wb-resolve-input {
+  flex: 1;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--panel, #1a1a2e);
+  color: var(--text);
+  font-size: 12px;
+}
+
+/* ── Bar Chart (reusable) ── */
+.wb-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.wb-bar-label {
+  font-size: 11px;
+  width: 120px;
+  flex-shrink: 0;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.wb-bar-track {
+  flex: 1;
+  height: 18px;
+  background: rgba(139, 92, 246, 0.06);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.wb-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  min-width: 2px;
+  transition: width 0.4s ease;
+}
+
+.wb-bar-value {
+  font-size: 11px;
+  font-weight: 600;
+  width: 40px;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+/* ── Segmented Bar ── */
+.wb-seg {
+  display: flex;
+  height: 24px;
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.wb-seg-part {
+  height: 100%;
+  min-width: 2px;
+  transition: width 0.4s ease;
+}
+
+.wb-seg-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.wb-seg-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+}
+
+.wb-seg-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+/* ── Collapsible Config ── */
+.wb-config-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  margin-bottom: 12px;
+  user-select: none;
+}
+
+.wb-config-toggle h3 {
+  font-size: 14px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.wb-config-arrow {
+  transition: transform 0.2s;
+  font-size: 12px;
+}
+
+.wb-config-arrow.open { transform: rotate(90deg); }
+
+.wb-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.wb-toggle-label { font-size: 13px; }
+
+.wb-toggle {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  background: var(--border);
+  border-radius: 11px;
+  cursor: pointer;
+  transition: background 0.2s;
+  border: none;
+}
+
+.wb-toggle.on { background: var(--accent); }
+
+.wb-toggle::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+
+.wb-toggle.on::after { transform: translateX(18px); }
+
+.wb-contact-list {
+  margin-top: 12px;
+}
+
+.wb-contact-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 80px 32px;
+  gap: 6px;
+  margin-bottom: 6px;
+  align-items: center;
+}
+
+.wb-contact-input {
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--panel, #1a1a2e);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.wb-remove-btn {
+  background: none;
+  border: none;
+  color: #ef4444;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 4px;
+}
+
+.wb-add-btn {
+  font-size: 12px;
+  color: var(--accent);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 0;
+  margin-top: 4px;
+}
+
+.wb-add-btn:hover { text-decoration: underline; }
+
+/* ── Loading ── */
+.wb-loading {
+  text-align: center;
+  color: var(--muted);
+  padding: 40px 0;
+  font-size: 13px;
+}
+
+.wb-empty {
+  text-align: center;
+  color: var(--muted);
+  padding: 20px 0;
+  font-size: 12px;
+}
+
+/* ── Pulsing dot for critical alerts ── */
+@keyframes wb-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.wb-pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ef4444;
+  animation: wb-pulse 1.5s ease-in-out infinite;
+  display: inline-block;
+}
+
+@media (max-width: 700px) {
+  .wb-panels { grid-template-columns: 1fr; }
+  .wb-kpis { grid-template-columns: repeat(2, 1fr); }
+}
