@@ -31,7 +31,7 @@ def _normalize_origin(o: str) -> str:
 
 CORS_ORIGINS_ENV = os.getenv(
     "CORS_ORIGINS",
-    "https://rafiki-frontend-five.vercel.app,http://localhost:5173,http://localhost:5174,http://localhost:3000",
+    "https://rafikihr.com,https://www.rafikihr.com,https://rafiki-frontend-five.vercel.app,http://localhost:5173,http://localhost:5174,http://localhost:3000",
 )
 
 ALLOWED_ORIGINS = [_normalize_origin(o) for o in CORS_ORIGINS_ENV.split(",") if o.strip()]
