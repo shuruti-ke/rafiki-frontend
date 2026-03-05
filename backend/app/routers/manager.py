@@ -54,40 +54,85 @@ def get_team(
     org_id: uuid.UUID = Depends(get_current_org_id),
     _role: str = Depends(require_manager),
 ):
-    """Get direct reports / team members for a manager.
+    """Get direct reports / team members for a manager."""
+    from app.models.user import User
+    from app.models.objective import Objective
 
-    Currently returns mock team data — will resolve from OrgMember.reports_to
-    when that model exists.
-    """
     config = get_manager_config(db, user_id, org_id)
     if not config:
         raise HTTPException(status_code=403, detail="No active manager configuration found")
 
-    # For now, return employees with evaluations in this org as proxy team members
-    # In production, this resolves through OrgMember.reports_to
-    eval_users = (
-        db.query(
-            PerformanceEvaluation.user_id,
-            sa_func.max(PerformanceEvaluation.overall_rating).label("last_rating"),
-            sa_func.count(PerformanceEvaluation.id).label("eval_count"),
-        )
+    # Primary: employees whose manager_id points to this manager
+    direct_reports = (
+        db.query(User)
         .filter(
-            PerformanceEvaluation.org_id == org_id,
-            PerformanceEvaluation.user_id != user_id,  # exclude self
+            User.manager_id == user_id,
+            User.org_id == org_id,
+            User.is_active == True,
         )
-        .group_by(PerformanceEvaluation.user_id)
         .all()
     )
 
+    # Fallback: if no direct reports via manager_id, check department scope
+    if not direct_reports and config.department_scope:
+        direct_reports = (
+            db.query(User)
+            .filter(
+                User.org_id == org_id,
+                User.department.in_(config.department_scope),
+                User.user_id != user_id,
+                User.is_active == True,
+            )
+            .all()
+        )
+
+    # Build user_id list for batch queries
+    member_ids = [u.user_id for u in direct_reports]
+
+    # Batch-load latest evaluation ratings
+    eval_map = {}
+    if member_ids:
+        eval_rows = (
+            db.query(
+                PerformanceEvaluation.user_id,
+                sa_func.max(PerformanceEvaluation.overall_rating).label("last_rating"),
+            )
+            .filter(
+                PerformanceEvaluation.org_id == org_id,
+                PerformanceEvaluation.user_id.in_(member_ids),
+            )
+            .group_by(PerformanceEvaluation.user_id)
+            .all()
+        )
+        eval_map = {row.user_id: row.last_rating for row in eval_rows}
+
+    # Batch-load objective counts
+    obj_map = {}
+    if member_ids:
+        obj_rows = (
+            db.query(
+                Objective.user_id,
+                sa_func.count(Objective.id).label("obj_count"),
+            )
+            .filter(
+                Objective.user_id.in_(member_ids),
+                Objective.status.in_(["active", "pending_review", "draft"]),
+            )
+            .group_by(Objective.user_id)
+            .all()
+        )
+        obj_map = {row.user_id: row.obj_count for row in obj_rows}
+
     team = []
-    for row in eval_users:
+    for u in direct_reports:
         team.append(TeamMemberResponse(
-            user_id=row.user_id,
-            name=f"Employee #{row.user_id}",  # Placeholder until User model exists
-            job_title=None,
-            department=None,
-            objectives_count=0,
-            last_evaluation_rating=row.last_rating,
+            user_id=u.user_id,
+            name=u.name or u.email or f"Employee #{u.user_id}",
+            email=u.email,
+            job_title=u.job_title,
+            department=u.department,
+            objectives_count=obj_map.get(u.user_id, 0),
+            last_evaluation_rating=eval_map.get(u.user_id),
         ))
 
     log_action(db, org_id, user_id, "view", "manager_team", details={"team_size": len(team)})
@@ -116,10 +161,16 @@ def get_team_member_profile(
         .first()
     )
 
+    from app.models.user import User
+    user = db.query(User).filter(User.user_id == member_id).first()
+
     log_action(db, org_id, user_id, "view", "employee_profile", member_id)
     return TeamMemberResponse(
         user_id=member_id,
-        name=f"Employee #{member_id}",
+        name=user.name if user else f"Employee #{member_id}",
+        email=user.email if user else None,
+        job_title=user.job_title if user else None,
+        department=user.department if user else None,
         last_evaluation_rating=latest_eval.overall_rating if latest_eval else None,
     )
 
@@ -179,13 +230,17 @@ def create_coaching_session(
     if not can_use_feature(db, user_id, org_id, "coaching_ai"):
         raise HTTPException(status_code=403, detail="Coaching AI feature not enabled for your role")
 
+    from app.models.user import User
+    emp = db.query(User).filter(User.user_id == data.employee_member_id).first()
+    emp_name = emp.name if emp else f"Employee #{data.employee_member_id}"
+
     result = generate_coaching_plan(
         db=db,
         manager_id=user_id,
         employee_user_id=data.employee_member_id,
         org_id=org_id,
         concern=data.concern,
-        employee_name=f"Employee #{data.employee_member_id}",
+        employee_name=emp_name,
     )
 
     log_action(
@@ -291,25 +346,51 @@ def get_dashboard(
     if not config:
         return ManagerDashboardData()
 
-    # Team size (employees with evaluations in org, excluding self)
+    from app.models.user import User
+
+    # Team size — direct reports via manager_id
     team_count = (
-        db.query(sa_func.count(sa_func.distinct(PerformanceEvaluation.user_id)))
+        db.query(sa_func.count(User.user_id))
         .filter(
-            PerformanceEvaluation.org_id == org_id,
-            PerformanceEvaluation.user_id != user_id,
+            User.manager_id == user_id,
+            User.org_id == org_id,
+            User.is_active == True,
         )
         .scalar() or 0
     )
 
-    # Average performance rating
-    avg_rating = (
-        db.query(sa_func.avg(PerformanceEvaluation.overall_rating))
-        .filter(
-            PerformanceEvaluation.org_id == org_id,
-            PerformanceEvaluation.user_id != user_id,
+    # Fallback to department scope if no direct reports
+    if team_count == 0 and config.department_scope:
+        team_count = (
+            db.query(sa_func.count(User.user_id))
+            .filter(
+                User.org_id == org_id,
+                User.department.in_(config.department_scope),
+                User.user_id != user_id,
+                User.is_active == True,
+            )
+            .scalar() or 0
         )
-        .scalar() or 0.0
+
+    # Get direct report IDs for evaluation query
+    member_ids = [
+        uid for (uid,) in
+        db.query(User.user_id).filter(
+            User.manager_id == user_id,
+            User.org_id == org_id,
+            User.is_active == True,
+        ).all()
+    ]
+
+    # Average performance rating for team members
+    avg_query = db.query(sa_func.avg(PerformanceEvaluation.overall_rating)).filter(
+        PerformanceEvaluation.org_id == org_id,
     )
+    if member_ids:
+        avg_query = avg_query.filter(PerformanceEvaluation.user_id.in_(member_ids))
+    else:
+        avg_query = avg_query.filter(PerformanceEvaluation.user_id != user_id)
+    avg_rating = avg_query.scalar() or 0.0
 
     # Coaching sessions count
     coaching_count = (

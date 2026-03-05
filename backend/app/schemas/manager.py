@@ -125,6 +125,6 @@ class ToolkitModuleResponse(BaseModel):
 
 class ManagerDashboardData(BaseModel):
     team_size: int = 0
-    active_objectives: int = 0
-    pending_evaluations: int = 0
-    recent_coaching_sessions: int = 0
+    avg_performance_rating: float = 0.0
+    coaching_sessions_count: int = 0
+    recent_sessions: list = []
