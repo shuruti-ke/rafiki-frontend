@@ -144,12 +144,18 @@ export default function ChatPage() {
       const data = await res.json();
       setMsgs((m) => [...m, { role: "rafiki", text: data.reply ?? "..." }]);
 
-      // Store session id from response
+      // Store session id from response and refresh sidebar
       if (data.session_id && !sessionId) {
         setSessionId(data.session_id);
+        // Optimistically add the new session to the sidebar immediately
+        const title = trimmed.slice(0, 50) || "New Chat";
+        setSessions(prev => {
+          if (prev.some(s => s.id === data.session_id)) return prev;
+          return [{ id: data.session_id, title, updated_at: new Date().toISOString() }, ...prev];
+        });
       }
-      // Refresh sidebar
-      loadSessions();
+      // Also refresh from server to sync
+      await loadSessions();
     } catch {
       setMsgs((m) => [
         ...m,
