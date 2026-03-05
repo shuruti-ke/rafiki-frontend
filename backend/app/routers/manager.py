@@ -414,11 +414,44 @@ def get_dashboard(
         .all()
     )
 
+    # Timesheet status for direct reports (current week)
+    timesheet_status = []
+    if member_ids:
+        from datetime import datetime as _dt, timedelta as _td
+        from app.models.timesheet import TimesheetEntry
+        today = _dt.utcnow().date()
+        week_start = today - _td(days=today.weekday())
+        week_end = week_start + _td(days=6)
+
+        ts_rows = (
+            db.query(TimesheetEntry.user_id, sa_func.sum(TimesheetEntry.hours))
+            .filter(
+                TimesheetEntry.org_id == org_id,
+                TimesheetEntry.user_id.in_(member_ids),
+                TimesheetEntry.date >= week_start,
+                TimesheetEntry.date <= week_end,
+                TimesheetEntry.status.in_(["submitted", "approved"]),
+            )
+            .group_by(TimesheetEntry.user_id)
+            .all()
+        )
+        ts_map = {row[0]: float(row[1] or 0) for row in ts_rows}
+
+        members = db.query(User).filter(User.user_id.in_(member_ids)).all()
+        for m in members:
+            timesheet_status.append({
+                "user_id": str(m.user_id),
+                "name": m.name or m.email or f"Employee #{m.user_id}",
+                "submitted": m.user_id in ts_map,
+                "hours": round(ts_map.get(m.user_id, 0), 1),
+            })
+
     return ManagerDashboardData(
         team_size=team_count,
         avg_performance_rating=round(float(avg_rating), 1),
         coaching_sessions_count=coaching_count,
         recent_sessions=recent,
+        timesheet_status=timesheet_status,
     )
 
 

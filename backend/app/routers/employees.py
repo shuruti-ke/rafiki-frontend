@@ -6,7 +6,7 @@ import json
 import os
 import uuid
 import secrets
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
@@ -609,6 +609,54 @@ def employee_analytics(
         result["announcements"] = {"total": total_ann, "recent_count": recent_ann}
     except Exception:
         result["announcements"] = None
+
+    # ── Timesheet Submissions (current week Mon-Sun) ──
+    try:
+        today = now.date()
+        week_start = today - timedelta(days=today.weekday())  # Monday
+        week_end = week_start + timedelta(days=6)  # Sunday
+
+        active_users = db.query(User).filter(
+            User.org_id == org_id,
+            User.is_active == True,
+        ).all()
+
+        # Get all timesheet entries for this week with submitted/approved status
+        week_entries = (
+            db.query(TimesheetEntry.user_id, func.sum(TimesheetEntry.hours))
+            .filter(
+                TimesheetEntry.org_id == org_id,
+                TimesheetEntry.date >= week_start,
+                TimesheetEntry.date <= week_end,
+                TimesheetEntry.status.in_(["submitted", "approved"]),
+            )
+            .group_by(TimesheetEntry.user_id)
+            .all()
+        )
+        submitted_map = {row[0]: float(row[1] or 0) for row in week_entries}
+
+        staff = []
+        submitted_count = 0
+        for u in active_users:
+            has_submitted = u.user_id in submitted_map
+            hours = submitted_map.get(u.user_id, 0)
+            if has_submitted:
+                submitted_count += 1
+            staff.append({
+                "user_id": str(u.user_id),
+                "name": u.name or u.email or "Unknown",
+                "department": getattr(u, "department", None),
+                "submitted": has_submitted,
+                "hours_this_week": round(hours, 1),
+            })
+
+        result["timesheet_submissions"] = {
+            "submitted_count": submitted_count,
+            "not_submitted_count": len(active_users) - submitted_count,
+            "staff": staff,
+        }
+    except Exception:
+        result["timesheet_submissions"] = None
 
     return result
 

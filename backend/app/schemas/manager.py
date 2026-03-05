@@ -128,3 +128,4 @@ class ManagerDashboardData(BaseModel):
     avg_performance_rating: float = 0.0
     coaching_sessions_count: int = 0
     recent_sessions: list = []
+    timesheet_status: list = []

@@ -83,6 +83,7 @@ export default function AdminDashboard() {
   const obj = data?.objectives;
   const docs = data?.documents;
   const ann = data?.announcements;
+  const tsSub = data?.timesheet_submissions;
 
   return (
     <div className="adash-wrap">
@@ -145,6 +146,36 @@ export default function AdminDashboard() {
           </div>
         )}
       </div>
+
+      {/* Timesheet Submissions */}
+      {tsSub && (
+        <div className="adash-charts" style={{ marginTop: 24 }}>
+          <div className="adash-chart" style={{ gridColumn: "1 / -1" }}>
+            <div className="adash-chart-title">
+              Timesheet Submissions (This Week)
+              <span style={{ fontWeight: 400, fontSize: 13, marginLeft: 12, color: "var(--muted)" }}>
+                {tsSub.submitted_count} submitted · {tsSub.not_submitted_count} pending
+              </span>
+            </div>
+            {tsSub.staff && tsSub.staff.length > 0 && (
+              <div style={{ display: "grid", gap: 4, marginTop: 8, maxHeight: 260, overflowY: "auto" }}>
+                {tsSub.staff
+                  .sort((a, b) => a.submitted - b.submitted)
+                  .map((s) => (
+                    <div key={s.user_id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 8px", borderRadius: 6, background: s.submitted ? "rgba(52,211,153,0.08)" : "rgba(248,113,113,0.08)" }}>
+                      <span style={{ fontSize: 13 }}>
+                        <span style={{ color: s.submitted ? "#34d399" : "#f87171", marginRight: 8 }}>{s.submitted ? "\u2713" : "\u2717"}</span>
+                        {s.name}
+                        {s.department && <span style={{ color: "var(--muted)", fontSize: 11, marginLeft: 8 }}>{s.department}</span>}
+                      </span>
+                      <span style={{ fontSize: 12, color: "var(--muted)" }}>{s.hours_this_week}h</span>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Quick Links */}
       <div className="adash-links">

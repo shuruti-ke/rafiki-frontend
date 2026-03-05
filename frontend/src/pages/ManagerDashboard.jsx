@@ -65,6 +65,28 @@ export default function ManagerDashboard() {
         </Link>
       </div>
 
+      {/* Team Timesheet Status */}
+      {d.timesheet_status && d.timesheet_status.length > 0 && (
+        <>
+          <h2 className="mgr-section-title">Team Timesheet Status</h2>
+          <div className="mgr-dash-sessions">
+            {d.timesheet_status.map((m) => (
+              <div key={m.user_id} className="mgr-session-row">
+                <div className="mgr-session-info">
+                  <strong>{m.name}</strong>
+                  <span className="mgr-session-concern">{m.hours}h this week</span>
+                </div>
+                <div className="mgr-session-meta">
+                  <span className={`mgr-outcome ${m.submitted ? "mgr-outcome-improved" : "mgr-outcome-worse"}`}>
+                    {m.submitted ? "Submitted" : "Not submitted"}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
       {/* Recent coaching sessions */}
       {d.recent_sessions && d.recent_sessions.length > 0 && (
         <>
