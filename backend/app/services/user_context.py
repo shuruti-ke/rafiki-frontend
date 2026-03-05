@@ -481,6 +481,7 @@ def _build_guided_paths_context(db: Session, org_id: uuid.UUID, user_id: uuid.UU
 def _build_payroll_context(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) -> str:
     try:
         from app.models.payroll import Payslip, PayrollBatch
+        from app.models.employee_document import EmployeeDocument
 
         payslips = (
             db.query(Payslip)
@@ -496,7 +497,15 @@ def _build_payroll_context(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) -
         batches = db.query(PayrollBatch).filter(PayrollBatch.batch_id.in_(batch_ids)).all()
         batch_map = {b.batch_id: b for b in batches}
 
+        # Fetch linked documents for full payslip content
+        doc_ids = [p.document_id for p in payslips if p.document_id]
+        doc_map = {}
+        if doc_ids:
+            docs = db.query(EmployeeDocument).filter(EmployeeDocument.id.in_(doc_ids)).all()
+            doc_map = {d.id: d for d in docs}
+
         parts = ["RECENT PAYSLIPS:"]
+        parts.append("  (ONLY quote figures that appear below. If a breakdown is not shown, say so.)")
         for p in payslips:
             batch = batch_map.get(p.batch_id)
             if batch:
@@ -512,6 +521,17 @@ def _build_payroll_context(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) -
             if p.net_pay is not None:
                 line += f", Net: {float(p.net_pay):,.2f}"
             parts.append(line)
+
+            # Include the actual payslip document text if available
+            doc = doc_map.get(p.document_id)
+            if doc and doc.extracted_text:
+                snippet = doc.extracted_text[:6000]
+                truncated = len(doc.extracted_text) > 6000
+                parts.append(f"\n  ── PAYSLIP DOCUMENT CONTENT ({period}) ──")
+                parts.append(snippet)
+                if truncated:
+                    parts.append("  [...document truncated...]")
+
         return "\n".join(parts)
     except Exception as e:
         logger.debug("Payroll context build skipped: %s", e)
