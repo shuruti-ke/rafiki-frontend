@@ -429,18 +429,28 @@ def chat(
                 db.add(session)
                 db.flush()
                 session_id_out = str(session.id)
+                logger.info("Created new chat session %s for user %s", session_id_out, user_id)
             else:
                 session = db.query(ChatSession).filter(ChatSession.id == req.session_id).first()
                 if session:
                     from sqlalchemy.sql import func
                     session.updated_at = func.now()
+                else:
+                    # Session ID was sent but doesn't exist — create a new one
+                    logger.warning("Session %s not found, creating new session", req.session_id)
+                    title = content[:50].strip() or "New Chat"
+                    session = ChatSession(user_id=user_id, org_id=org_id, title=title)
+                    db.add(session)
+                    db.flush()
+                    session_id_out = str(session.id)
 
             if session_id_out:
                 db.add(ChatMessage(session_id=session_id_out, role="user", content=content))
                 db.add(ChatMessage(session_id=session_id_out, role="assistant", content=reply_text))
                 db.commit()
+                logger.info("Persisted 2 messages to session %s", session_id_out)
         except Exception as e:
-            logger.warning("Failed to persist chat message: %s", e)
+            logger.error("Failed to persist chat message: %s — %s", e, traceback.format_exc())
             db.rollback()
 
         return ChatResponse(reply=reply_text, session_id=session_id_out)

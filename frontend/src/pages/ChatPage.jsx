@@ -23,7 +23,9 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [msgs, setMsgs] = useState([GREETING]);
   const [loading, setLoading] = useState(false);
-  const [sessionId, setSessionId] = useState(null);
+  const [sessionId, _setSessionId] = useState(null);
+  const sessionIdRef = useRef(null);
+  const setSessionId = (id) => { sessionIdRef.current = id; _setSessionId(id); };
   const [sessions, setSessions] = useState([]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [attachments, setAttachments] = useState([]);
@@ -69,6 +71,7 @@ export default function ChatPage() {
     setInput("");
     setAttachments([]);
   }
+
 
   async function deleteSession(e, id) {
     e.stopPropagation();
@@ -133,7 +136,7 @@ export default function ChatPage() {
         }));
 
       const body = { message: trimmed || "Please review the attached file(s).", history };
-      if (sessionId) body.session_id = sessionId;
+      if (sessionIdRef.current) body.session_id = sessionIdRef.current;
       if (currentAttachments.length) body.attachments = currentAttachments;
 
       const res = await authFetch(`${API}/api/v1/chat`, {
@@ -145,7 +148,7 @@ export default function ChatPage() {
       setMsgs((m) => [...m, { role: "rafiki", text: data.reply ?? "..." }]);
 
       // Store session id from response and refresh sidebar
-      if (data.session_id && !sessionId) {
+      if (data.session_id && !sessionIdRef.current) {
         setSessionId(data.session_id);
         // Optimistically add the new session to the sidebar immediately
         const title = trimmed.slice(0, 50) || "New Chat";
