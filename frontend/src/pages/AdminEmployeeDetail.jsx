@@ -37,6 +37,11 @@ export default function AdminEmployeeDetail() {
     gender: "",
     city: "",
   });
+  const [creds, setCreds] = useState(null);
+  const [credsLoading, setCredsLoading] = useState(false);
+  const [credsVisible, setCredsVisible] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetMsg, setResetMsg] = useState(null);
 
   const fetchEmployee = useCallback(async () => {
     setLoading(true);
@@ -94,6 +99,36 @@ export default function AdminEmployeeDetail() {
       }
     } catch { setSaveErr("Network error."); }
     setSaving(false);
+  };
+
+  const fetchCredentials = async () => {
+    setCredsLoading(true);
+    try {
+      const res = await authFetch(`${API}/api/v1/employees/${userId}/credentials`);
+      if (res.ok) {
+        const data = await res.json();
+        setCreds(data);
+        setCredsVisible(true);
+      }
+    } catch { /* ignore */ }
+    setCredsLoading(false);
+  };
+
+  const handleResetPassword = async () => {
+    if (!confirm("Generate a new temporary password for this employee? They will need to use the new password to log in.")) return;
+    setResetLoading(true);
+    setResetMsg(null);
+    try {
+      const res = await authFetch(`${API}/api/v1/employees/${userId}/reset-password`, { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        setResetMsg({ type: "ok", text: `New password: ${data.temporary_password}` });
+        setCreds(prev => prev ? { ...prev, initial_password: data.temporary_password } : prev);
+      } else {
+        setResetMsg({ type: "err", text: data.detail || "Failed to reset password" });
+      }
+    } catch { setResetMsg({ type: "err", text: "Network error" }); }
+    setResetLoading(false);
   };
 
   if (loading) return (
@@ -240,6 +275,62 @@ export default function AdminEmployeeDetail() {
               ))}
             </div>
           )}
+        </div>
+
+        {/* Login Credentials Card */}
+        <div className="emp-detail-card">
+          <div className="emp-card-title">Login Credentials</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div className="emp-profile-grid">
+              <div className="emp-profile-row">
+                <span className="emp-profile-label">Email</span>
+                <span className="emp-profile-value">{employee.email}</span>
+              </div>
+              <div className="emp-profile-row">
+                <span className="emp-profile-label">Initial Password</span>
+                <span className="emp-profile-value">
+                  {credsVisible && creds?.initial_password
+                    ? creds.initial_password
+                    : creds && !creds.initial_password
+                    ? "— not stored —"
+                    : "••••••••"}
+                </span>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {!credsVisible ? (
+                <button
+                  className="emp-edit-btn"
+                  onClick={fetchCredentials}
+                  disabled={credsLoading}
+                  style={{ fontSize: 13 }}
+                >
+                  {credsLoading ? "Loading…" : "Show Password"}
+                </button>
+              ) : (
+                <button
+                  className="emp-edit-btn"
+                  onClick={() => setCredsVisible(false)}
+                  style={{ fontSize: 13 }}
+                >
+                  Hide Password
+                </button>
+              )}
+              <button
+                className="emp-edit-btn"
+                onClick={handleResetPassword}
+                disabled={resetLoading}
+                style={{ fontSize: 13, background: "rgba(248,113,113,0.1)", color: "#f87171" }}
+              >
+                {resetLoading ? "Resetting…" : "Reset Password"}
+              </button>
+            </div>
+            {resetMsg && (
+              <div className={`emp-alert ${resetMsg.type === "ok" ? "emp-alert--success" : "emp-alert--error"}`}>
+                {resetMsg.text}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Leave Balance Card */}
