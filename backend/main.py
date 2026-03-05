@@ -75,6 +75,7 @@ from app.routers.timesheets import router as ts_router
 from app.routers.chat_sessions import router as chat_sessions_router
 from app.routers.leave import router as leave_router
 from app.routers.meetings import router as meetings_router
+from app.routers.usage import router as usage_router
 
 app.include_router(auth_router)
 app.include_router(kb_router)
@@ -95,6 +96,7 @@ app.include_router(employees_router)
 app.include_router(ts_router)
 app.include_router(chat_sessions_router)
 app.include_router(meetings_router)
+app.include_router(usage_router)
 
 @app.get("/__routes")
 def __routes():
