@@ -15,6 +15,7 @@ const links = [
   { to: "/timesheet", label: "Timesheets" },
   { to: "/meetings", label: "Meetings" },
   { to: "/my-report", label: "My Report" },
+  { to: "/leave", label: "Leave" },
 ];
 
 const DAY_NAMES = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
@@ -136,12 +137,12 @@ function PayrollApprovalBlock({ payload, onAction }) {
   );
 }
 
-/* ─── Objective Review Block ─── */
+/* ─── Objective Review in Messages ─── */
 function ObjectiveReviewBlock({ payload, onAction }) {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(null);
   const [notes, setNotes] = useState("");
-  const [showReject, setShowReject] = useState(false);
+  const [showRevise, setShowRevise] = useState(false);
 
   async function handleApprove() {
     setBusy(true);
@@ -157,7 +158,7 @@ function ObjectiveReviewBlock({ payload, onAction }) {
     finally { setBusy(false); }
   }
 
-  async function handleReject() {
+  async function handleRevise() {
     setBusy(true);
     try {
       const r = await authFetch(`${API}${payload.reject_endpoint}`, {
@@ -172,28 +173,38 @@ function ObjectiveReviewBlock({ payload, onAction }) {
   }
 
   return (
-    <div style={{ background: "rgba(139,92,246,0.08)", borderRadius: 8, padding: "10px 12px", marginTop: 4, fontSize: "0.8rem" }}>
-      <div style={{ fontWeight: 600, marginBottom: 4 }}>📋 Objective Review Request</div>
-      <div style={{ fontWeight: 500, marginBottom: 2 }}>{payload.title}</div>
-      <div style={{ color: "var(--muted)", marginBottom: 2 }}>Submitted by: {payload.submitter_name}</div>
-      <div style={{ color: "var(--muted)", marginBottom: 2 }}>Progress: {payload.progress}%</div>
+    <div style={{ background: "rgba(123,47,190,0.08)", borderRadius: 8, padding: "10px 12px", marginTop: 4, fontSize: "0.8rem" }}>
+      <div style={{ fontWeight: 700, marginBottom: 4, color: "var(--text)" }}>📋 Objective Review Request</div>
+      <div style={{ fontWeight: 600, marginBottom: 2 }}>{payload.title}</div>
+      {payload.description && <div style={{ color: "var(--muted)", marginBottom: 4 }}>{payload.description}</div>}
+      <div style={{ color: "var(--muted)", fontSize: "0.75rem", marginBottom: 2 }}>
+        From: {payload.submitter_name || "Employee"}
+        {payload.target_date ? ` · Due: ${payload.target_date}` : ""}
+      </div>
       {payload.key_results_summary && (
-        <div style={{ color: "var(--muted)", marginBottom: 4, fontSize: "0.75rem" }}>
-          Key Results: {payload.key_results_summary}
+        <div style={{ color: "var(--muted)", fontSize: "0.75rem", marginBottom: 6 }}>
+          {payload.key_results_summary}
         </div>
       )}
-      {payload.description && (
-        <div style={{ color: "var(--muted)", marginBottom: 4, fontSize: "0.75rem" }}>{payload.description}</div>
+      {payload.progress != null && (
+        <div style={{ marginBottom: 6 }}>
+          <div style={{ height: 4, background: "rgba(255,255,255,0.1)", borderRadius: 2, overflow: "hidden" }}>
+            <div style={{ height: "100%", width: `${payload.progress}%`, background: "#00C9B1", borderRadius: 2 }} />
+          </div>
+          <div style={{ fontSize: "0.72rem", color: "var(--muted)", marginTop: 2 }}>{payload.progress}% complete</div>
+        </div>
       )}
-      {done === "approved" && <div style={{ color: "#34d399", marginTop: 4 }}>✅ Approved</div>}
-      {done === "needs_revision" && <div style={{ color: "#fbbf24", marginTop: 4 }}>🔄 Sent back for revision</div>}
+
+      {done === "approved" && <div style={{ color: "#34d399", marginTop: 4, fontWeight: 600 }}>✓ Approved</div>}
+      {done === "needs_revision" && <div style={{ color: "#f59e0b", marginTop: 4, fontWeight: 600 }}>↩ Sent back for revision</div>}
       {done?.startsWith("error:") && <div style={{ color: "#f87171", marginTop: 4 }}>{done.slice(6)}</div>}
+
       {!done && (
-        <>
+        <div style={{ marginTop: 8 }}>
           <textarea
-            style={{ width: "100%", padding: "4px 6px", borderRadius: 4, border: "1px solid var(--border)", background: "rgba(255,255,255,0.05)", color: "var(--text)", fontSize: "0.75rem", marginBottom: 6, resize: "vertical", boxSizing: "border-box" }}
-            placeholder="Review notes (optional)..."
+            style={{ width: "100%", padding: "4px 6px", borderRadius: 4, border: "1px solid var(--border)", background: "rgba(255,255,255,0.06)", color: "var(--text)", fontSize: "0.75rem", marginBottom: 6, resize: "none", fontFamily: "inherit" }}
             rows={2}
+            placeholder="Review notes (optional)"
             value={notes}
             onChange={e => setNotes(e.target.value)}
           />
@@ -201,36 +212,33 @@ function ObjectiveReviewBlock({ payload, onAction }) {
             <button className="btn btnPrimary btnTiny" onClick={handleApprove} disabled={busy}>
               {busy ? "…" : "Approve"}
             </button>
-            <button className="btn btnGhost btnTiny" onClick={handleReject} disabled={busy}>
+            <button className="btn btnGhost btnTiny" onClick={handleRevise} disabled={busy}>
               {busy ? "…" : "Needs Revision"}
             </button>
           </div>
-        </>
+        </div>
       )}
     </div>
   );
 }
 
 function SidebarMessageContent({ content, onAction }) {
-  // Handle Objective Review blocks
-  const objMarker = "[[OBJECTIVE_REVIEW]]";
-  const objEndMarker = "[[/OBJECTIVE_REVIEW]]";
-  const objStart = content.indexOf(objMarker);
+  // Handle [[OBJECTIVE_REVIEW]]...[[/OBJECTIVE_REVIEW]]
+  const objStart = content.indexOf("[[OBJECTIVE_REVIEW]]");
   if (objStart !== -1) {
-    const objEnd = content.indexOf(objEndMarker, objStart);
-    const jsonStr = content.slice(objStart + objMarker.length, objEnd === -1 ? undefined : objEnd);
+    const objEnd = content.indexOf("[[/OBJECTIVE_REVIEW]]", objStart);
+    const jsonStr = content.slice(objStart + "[[OBJECTIVE_REVIEW]]".length, objEnd === -1 ? undefined : objEnd);
     let payload = {};
     try { payload = JSON.parse(jsonStr); } catch { /* fallback */ }
-    const preText = content.slice(0, objStart).trim();
     return (
       <div>
-        {preText && <div style={{ whiteSpace: "pre-wrap", marginBottom: 6, fontSize: "0.8rem", color: "var(--muted)" }}>{preText}</div>}
+        {objStart > 0 && <div style={{ whiteSpace: "pre-wrap", marginBottom: 4 }}>{content.slice(0, objStart)}</div>}
         <ObjectiveReviewBlock payload={payload} onAction={onAction} />
       </div>
     );
   }
 
-  // Handle Payroll Approval blocks
+  // Handle [[PAYROLL_APPROVAL]]...[[/PAYROLL_APPROVAL]]
   const marker = "[[PAYROLL_APPROVAL]]";
   const endMarker = "[[/PAYROLL_APPROVAL]]";
   const start = content.indexOf(marker);
@@ -590,6 +598,10 @@ export default function EmployeeLayout() {
   const navigate = useNavigate();
   const location = useLocation();
 
+  const role = localStorage.getItem("rafiki_role") || "";
+  const isManager = role === "manager" || role === "hr_admin" || role === "super_admin";
+  const isAdmin   = role === "hr_admin" || role === "super_admin";
+
   const handleLogout = () => {
     localStorage.removeItem("rafiki_token");
     localStorage.removeItem("rafiki_role");
@@ -612,6 +624,16 @@ export default function EmployeeLayout() {
           </NavLink>
         ))}
         <div className="emp-nav-spacer" />
+        {isManager && (
+          <NavLink to="/manager" className="emp-nav-link emp-nav-link--portal">
+            Manager Portal
+          </NavLink>
+        )}
+        {isAdmin && (
+          <NavLink to="/admin" className="emp-nav-link emp-nav-link--portal">
+            HR Admin
+          </NavLink>
+        )}
         <button onClick={handleLogout} className="emp-nav-logout">
           Logout
         </button>

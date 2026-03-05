@@ -32,6 +32,7 @@ MAX_TOTAL_CONTEXT_CHARS = 20000
 
 _PRIVILEGED_ROLES = {"hr_admin", "super_admin"}
 
+
 def _should_search(message: str, chat_history: list | None = None) -> bool:
     """
     Use Claude to intelligently decide if a web search is needed.
@@ -175,7 +176,6 @@ def _build_search_query(message: str, chat_history: list | None) -> str:
             query += " Kenya East Africa"
     return query[:300]
 
-
 class HistoryMessage(BaseModel):
     role: str
     content: str
@@ -196,6 +196,7 @@ class ChatRequest(BaseModel):
     model: Optional[str] = None
     session_id: Optional[str] = None
     attachments: Optional[List[AttachmentData]] = None
+
 
 
 class ChatResponse(BaseModel):

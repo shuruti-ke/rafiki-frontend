@@ -1,3 +1,4 @@
+// frontend/src/App.jsx
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import LandingPage from "./pages/LandingPage.jsx";
 import ChatPage from "./pages/ChatPage.jsx";
@@ -12,6 +13,8 @@ import AdminGuidedPaths from "./pages/AdminGuidedPaths.jsx";
 import AdminOrgConfig from "./pages/AdminOrgConfig.jsx";
 import AdminManagerConfig from "./pages/AdminManagerConfig.jsx";
 import AdminPayroll from "./pages/AdminPayroll.jsx";
+import AdminUsageReport from "./pages/AdminUsageReport.jsx";
+import AdminLeave from "./pages/AdminLeave.jsx";
 import EmployeeKnowledgeBase from "./pages/EmployeeKnowledgeBase.jsx";
 import EmployeeAnnouncements from "./pages/EmployeeAnnouncements.jsx";
 import GuidedPathExplore from "./pages/GuidedPathExplore.jsx";
@@ -21,6 +24,8 @@ import MyDocumentsPage from "./pages/MyDocumentsPage.jsx";
 import CalendarPage from "./pages/CalendarPage.jsx";
 import TimesheetPage from "./pages/TimesheetPage.jsx";
 import EmployeeDashboard from "./pages/EmployeeDashboard.jsx";
+import PersonalUsageReport from "./pages/PersonalUsageReport.jsx";
+import LeaveApplication from "./pages/LeaveApplication.jsx";
 import ManagerLayout from "./components/ManagerLayout.jsx";
 import ManagerDashboard from "./pages/ManagerDashboard.jsx";
 import ManagerTeam from "./pages/ManagerTeam.jsx";
@@ -33,8 +38,8 @@ import SuperAdminLayout from "./components/SuperAdminLayout.jsx";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard.jsx";
 import SuperAdminOrgDetail from "./pages/SuperAdminOrgDetail.jsx";
 import AuthGuard from "./components/AuthGuard.jsx";
-import "./App.css";
 import MeetingsPage from "./pages/Meetings.jsx";
+import "./App.css";
 
 export default function App() {
   return (
@@ -48,7 +53,7 @@ export default function App() {
         {/* Landing page */}
         <Route path="/" element={<LandingPage />} />
 
-        {/* Employee pages — shared layout with nav */}
+        {/* Employee pages */}
         <Route element={<EmployeeLayout />}>
           <Route path="/dashboard" element={<EmployeeDashboard />} />
           <Route path="/chat" element={<ChatPage />} />
@@ -61,6 +66,8 @@ export default function App() {
           <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/timesheet" element={<TimesheetPage />} />
           <Route path="/meetings" element={<MeetingsPage />} />
+          <Route path="/my-report" element={<PersonalUsageReport />} />
+          <Route path="/leave" element={<LeaveApplication />} />
         </Route>
 
         {/* Super Admin Portal */}
@@ -94,6 +101,7 @@ export default function App() {
           </AuthGuard>
         }>
           <Route index element={<AdminDashboard />} />
+          <Route path="usage-report" element={<AdminUsageReport />} />
           <Route path="knowledge-base" element={<AdminKnowledgeBase />} />
           <Route path="announcements" element={<AdminAnnouncements />} />
           <Route path="employees" element={<AdminEmployees />} />
@@ -104,6 +112,7 @@ export default function App() {
           <Route path="payroll" element={<AdminPayroll />} />
           <Route path="calendar" element={<CalendarPage />} />
           <Route path="timesheets" element={<TimesheetPage />} />
+          <Route path="leave" element={<AdminLeave />} />
         </Route>
       </Routes>
     </BrowserRouter>

@@ -907,17 +907,7 @@ def build_user_context(
             if ctx:
                 sections.append(ctx)
 
-        if "web_search" in intents:
-            try:
-                from app.services.web_search import search_web
-                web_results = search_web(user_message, history=chat_history)
-                if web_results:
-                    sections.append(
-                        "WEB SEARCH RESULTS (real-time internet data):\n" + web_results
-                    )
-                    logger.info("Web search triggered for: %s", user_message[:80])
-            except Exception as e:
-                logger.debug("Web search skipped: %s", e)
+
 
     if user_uuid and user_message:
         memory = _update_and_build_memory(user_uuid, user_message)
