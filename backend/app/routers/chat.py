@@ -420,38 +420,48 @@ def chat(
                 reply_text += block.get("text", "")
         reply_text = reply_text.strip() or "..."
 
+        # ── Persist chat messages using a FRESH db session ──
+        # The main db session may be in a failed transaction state from
+        # context-building queries, so we use a separate session for persistence.
         session_id_out = req.session_id
         try:
             from app.models.chat_session import ChatSession, ChatMessage
-            if not req.session_id:
-                title = content[:50].strip() or "New Chat"
-                session = ChatSession(user_id=user_id, org_id=org_id, title=title)
-                db.add(session)
-                db.flush()
-                session_id_out = str(session.id)
-                logger.info("Created new chat session %s for user %s", session_id_out, user_id)
-            else:
-                session = db.query(ChatSession).filter(ChatSession.id == req.session_id).first()
-                if session:
-                    from sqlalchemy.sql import func
-                    session.updated_at = func.now()
-                else:
-                    # Session ID was sent but doesn't exist — create a new one
-                    logger.warning("Session %s not found, creating new session", req.session_id)
+            from app.database import SessionLocal
+
+            persist_db = SessionLocal()
+            try:
+                if not req.session_id:
                     title = content[:50].strip() or "New Chat"
                     session = ChatSession(user_id=user_id, org_id=org_id, title=title)
-                    db.add(session)
-                    db.flush()
+                    persist_db.add(session)
+                    persist_db.flush()
                     session_id_out = str(session.id)
+                    logger.info("Created new chat session %s for user %s", session_id_out, user_id)
+                else:
+                    session = persist_db.query(ChatSession).filter(ChatSession.id == req.session_id).first()
+                    if session:
+                        from sqlalchemy.sql import func
+                        session.updated_at = func.now()
+                    else:
+                        logger.warning("Session %s not found, creating new session", req.session_id)
+                        title = content[:50].strip() or "New Chat"
+                        session = ChatSession(user_id=user_id, org_id=org_id, title=title)
+                        persist_db.add(session)
+                        persist_db.flush()
+                        session_id_out = str(session.id)
 
-            if session_id_out:
-                db.add(ChatMessage(session_id=session_id_out, role="user", content=content))
-                db.add(ChatMessage(session_id=session_id_out, role="assistant", content=reply_text))
-                db.commit()
-                logger.info("Persisted 2 messages to session %s", session_id_out)
+                if session_id_out:
+                    persist_db.add(ChatMessage(session_id=session_id_out, role="user", content=content))
+                    persist_db.add(ChatMessage(session_id=session_id_out, role="assistant", content=reply_text))
+                    persist_db.commit()
+                    logger.info("Persisted 2 messages to session %s", session_id_out)
+            except Exception as e:
+                logger.error("Failed to persist chat message: %s — %s", e, traceback.format_exc())
+                persist_db.rollback()
+            finally:
+                persist_db.close()
         except Exception as e:
-            logger.error("Failed to persist chat message: %s — %s", e, traceback.format_exc())
-            db.rollback()
+            logger.error("Failed to create persist session: %s", e)
 
         return ChatResponse(reply=reply_text, session_id=session_id_out)
 
