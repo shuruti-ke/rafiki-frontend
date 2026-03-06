@@ -17,9 +17,9 @@ depends_on = None
 
 
 def upgrade():
-    # Convert the column from enum to varchar
+    # Convert the column from enum to varchar (table is "orgs", not "organizations")
     op.execute(
-        "ALTER TABLE organizations "
+        "ALTER TABLE orgs "
         "ALTER COLUMN industry TYPE VARCHAR(255) USING industry::text"
     )
     # Drop the enum type if it exists
@@ -34,6 +34,6 @@ def downgrade():
         "'ngo','manufacturing','retail','hospitality','agriculture','other')"
     )
     op.execute(
-        "ALTER TABLE organizations "
+        "ALTER TABLE orgs "
         "ALTER COLUMN industry TYPE industry_enum USING industry::industry_enum"
     )
