@@ -269,7 +269,7 @@ export default function LandingPage() {
             <Link to="/login" className="landing-hero__btn-outline">
               Login
             </Link>
-            <Link to="/login?demo=true" className="landing-hero__btn-admin">
+            <Link to="/demo/employee" className="landing-hero__btn-admin">
               Try Demo
             </Link>
           </div>
@@ -473,7 +473,7 @@ export default function LandingPage() {
           <Link to="/login" className="landing-cta-banner__btn">
             Get Started
           </Link>
-          <Link to="/login?demo=true" className="landing-cta-banner__btn landing-cta-banner__btn--outline">
+          <Link to="/demo/employee" className="landing-cta-banner__btn landing-cta-banner__btn--outline">
             Try Demo
           </Link>
         </div>

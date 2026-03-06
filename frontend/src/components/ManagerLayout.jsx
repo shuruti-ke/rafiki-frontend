@@ -46,7 +46,7 @@ export default function ManagerLayout() {
         </nav>
 
         <div className="mgr-nav-footer">
-          <NavLink to="/" className="mgr-nav-link">
+          <NavLink to="/chat" className="mgr-nav-link">
             Back to Chat
           </NavLink>
           {isAdmin && (

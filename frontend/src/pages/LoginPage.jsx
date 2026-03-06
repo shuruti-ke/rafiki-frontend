@@ -1,12 +1,11 @@
-import { useState, useEffect } from "react";
-import { useNavigate, useSearchParams, Link } from "react-router-dom";
+import { useState } from "react";
+import { useNavigate, Link } from "react-router-dom";
 import "./LoginPage.css";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
 
   const [step, setStep] = useState(1);
   const [code, setCode] = useState("");
@@ -16,16 +15,6 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [demoLoading, setDemoLoading] = useState("");
-
-  // Auto-scroll to demo section if ?demo=true
-  useEffect(() => {
-    if (searchParams.get("demo") === "true") {
-      setTimeout(() => {
-        document.getElementById("demo-section")?.scrollIntoView({ behavior: "smooth" });
-      }, 300);
-    }
-  }, [searchParams]);
 
   const handleVerifyCode = async (e) => {
     e.preventDefault();
@@ -76,31 +65,6 @@ export default function LoginPage() {
     }
   };
 
-  const handleDemoLogin = async (role) => {
-    setDemoLoading(role);
-    setError("");
-    try {
-      const res = await fetch(`${API}/auth/demo-login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Demo login failed");
-
-      localStorage.setItem("rafiki_token", data.access_token);
-      localStorage.setItem("rafiki_role", data.user.role);
-      localStorage.setItem("rafiki_user", JSON.stringify(data.user));
-
-      if (data.user.role === "hr_admin") navigate("/admin", { replace: true });
-      else navigate("/chat", { replace: true });
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setDemoLoading("");
-    }
-  };
-
   const resetCode = () => {
     setStep(1);
     setOrgName("");
@@ -129,7 +93,7 @@ export default function LoginPage() {
                 required
               />
             </div>
-            {error && !demoLoading && <div className="login-error">{error}</div>}
+            {error && <div className="login-error">{error}</div>}
             <button className="login-btn" type="submit" disabled={loading}>
               {loading ? "Verifying..." : "Continue"}
             </button>
@@ -160,36 +124,12 @@ export default function LoginPage() {
                 required
               />
             </div>
-            {error && !demoLoading && <div className="login-error">{error}</div>}
+            {error && <div className="login-error">{error}</div>}
             <button className="login-btn" type="submit" disabled={loading}>
               {loading ? "Signing in..." : "Sign In"}
             </button>
           </form>
         )}
-
-        {/* Demo section */}
-        <div id="demo-section" className="login-demo-section">
-          <div className="login-demo-divider">
-            <span>or explore the demo</span>
-          </div>
-          {error && demoLoading && <div className="login-error">{error}</div>}
-          <div className="login-demo-buttons">
-            <button
-              className="login-demo-btn login-demo-btn--employee"
-              onClick={() => handleDemoLogin("employee")}
-              disabled={!!demoLoading}
-            >
-              {demoLoading === "employee" ? "Loading..." : "Employee Demo"}
-            </button>
-            <button
-              className="login-demo-btn login-demo-btn--admin"
-              onClick={() => handleDemoLogin("hr_admin")}
-              disabled={!!demoLoading}
-            >
-              {demoLoading === "hr_admin" ? "Loading..." : "HR Admin Demo"}
-            </button>
-          </div>
-        </div>
 
         <div className="login-links">
           <Link to="/">Home</Link>

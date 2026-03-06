@@ -69,7 +69,7 @@ export default function AdminLayout() {
           <NavLink to="/manager" className="admin-nav-link">
             Manager Portal
           </NavLink>
-          <NavLink to="/" className="admin-nav-link">
+          <NavLink to="/chat" className="admin-nav-link">
             Back to Chat
           </NavLink>
           <button onClick={handleLogout} className="admin-nav-link"
