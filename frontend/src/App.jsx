@@ -16,6 +16,7 @@ import AdminPayroll from "./pages/AdminPayroll.jsx";
 import AdminUsageReport from "./pages/AdminUsageReport.jsx";
 import AdminLeave from "./pages/AdminLeave.jsx";
 import AdminWellbeing from "./pages/AdminWellbeing.jsx";
+import AdminTimesheets from "./pages/AdminTimesheets.jsx";
 import EmployeeKnowledgeBase from "./pages/EmployeeKnowledgeBase.jsx";
 import EmployeeAnnouncements from "./pages/EmployeeAnnouncements.jsx";
 import GuidedPathExplore from "./pages/GuidedPathExplore.jsx";
@@ -119,7 +120,7 @@ export default function App() {
           <Route path="managers" element={<AdminManagerConfig />} />
           <Route path="payroll" element={<AdminPayroll />} />
           <Route path="calendar" element={<CalendarPage />} />
-          <Route path="timesheets" element={<TimesheetPage />} />
+          <Route path="timesheets" element={<AdminTimesheets />} />
           <Route path="leave" element={<AdminLeave />} />
           <Route path="wellbeing" element={<AdminWellbeing />} />
         </Route>
