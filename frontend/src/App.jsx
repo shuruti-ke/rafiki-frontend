@@ -69,6 +69,8 @@ export default function App() {
           <Route path="/chat" element={<ChatPage />} />
           <Route path="/knowledge-base" element={<EmployeeKnowledgeBase />} />
           <Route path="/announcements" element={<EmployeeAnnouncements />} />
+          {/* Sprint 2: deep-link target from reminder notification emails */}
+          <Route path="/announcements/:annId" element={<EmployeeAnnouncements />} />
           <Route path="/guided-paths" element={<GuidedPathExplore />} />
           <Route path="/guided-paths/:moduleId" element={<GuidedPathRunner />} />
           <Route path="/objectives" element={<ObjectivesPage />} />
