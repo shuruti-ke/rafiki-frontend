@@ -47,14 +47,15 @@ export default function ManagerLayout() {
 
         <div className="mgr-nav-footer">
           <NavLink to="/chat" className="mgr-nav-link">
-            Back to Chat
+            Employee Portal
           </NavLink>
           {isAdmin && (
             <NavLink to="/admin" className="mgr-nav-link">
               HR Portal
             </NavLink>
           )}
-          <button onClick={handleLogout} className="mgr-nav-link" style={{ background: "none", border: "none", cursor: "pointer", textAlign: "left", width: "100%", font: "inherit" }}>
+          <button onClick={handleLogout} className="mgr-nav-link"
+            style={{ background: "none", border: "none", cursor: "pointer", textAlign: "left", width: "100%", font: "inherit" }}>
             Logout
           </button>
         </div>
