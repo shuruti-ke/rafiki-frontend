@@ -160,7 +160,7 @@ function monday(d) {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   MAIN PAGE  (unchanged from original)
+   MAIN PAGE
 ───────────────────────────────────────────────────────────── */
 export default function TimesheetPage() {
   const [weekStart, setWeekStart] = useState(monday(new Date()));
@@ -170,6 +170,10 @@ export default function TimesheetPage() {
   const [summary,   setSummary]   = useState(null);
   const [projects,  setProjects]  = useState([]);
 
+  // Sprint 2: activity_type split view for admin (Finance reporting)
+  const [groupByActivityType, setGroupByActivityType] = useState(false);
+  const [groupedData, setGroupedData] = useState(null);
+
   const weekEnd = new Date(weekStart);
   weekEnd.setDate(weekEnd.getDate() + 6);
 
@@ -177,16 +181,31 @@ export default function TimesheetPage() {
     const res = await authFetch(`${API}/api/v1/timesheets/?start=${fmtDate(weekStart)}&end=${fmtDate(weekEnd)}`);
     if (res.ok) setEntries(await res.json());
   };
+
   const loadSummary = async () => {
     const res = await authFetch(`${API}/api/v1/timesheets/summary/weekly?week_start=${fmtDate(weekStart)}`);
     if (res.ok) setSummary(await res.json());
   };
+
   const loadProjects = async () => {
     const res = await authFetch(`${API}/api/v1/timesheets/projects`);
     if (res.ok) setProjects(await res.json());
   };
 
-  useEffect(() => { loadEntries(); loadSummary(); }, [weekStart.toISOString()]);
+  // Sprint 2: load admin grouped view with ?group_by=activity_type
+  const loadGroupedData = async () => {
+    const res = await authFetch(
+      `${API}/api/v1/timesheets/admin/all?start=${fmtDate(weekStart)}&end=${fmtDate(weekEnd)}&group_by=activity_type`
+    );
+    if (res.ok) setGroupedData(await res.json());
+  };
+
+  useEffect(() => {
+    loadEntries();
+    loadSummary();
+    if (groupByActivityType) loadGroupedData();
+  }, [weekStart.toISOString(), groupByActivityType]);
+
   useEffect(() => { loadProjects(); }, []);
 
   const prevWeek = () => { const d = new Date(weekStart); d.setDate(d.getDate() - 7); setWeekStart(d); };
@@ -219,7 +238,17 @@ export default function TimesheetPage() {
     <div className="tsp-page">
       <div className="tsp-header">
         <h1>Timesheets</h1>
-        <div style={{ display: "flex", gap: "0.5rem" }}>
+        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+          {/* Sprint 2: Finance reporting toggle */}
+          <label className="tsp-toggle-label" style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.85rem", color: "var(--text-muted, #6b7280)", cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={groupByActivityType}
+              onChange={e => setGroupByActivityType(e.target.checked)}
+              style={{ accentColor: "#8b5cf6" }}
+            />
+            Finance split view
+          </label>
           <button className="tsp-btn tsp-btn-ghost" onClick={thisWeek}>This Week</button>
           <button className="tsp-btn tsp-btn-primary" onClick={openCreate}>+ Log Time</button>
         </div>
@@ -252,44 +281,95 @@ export default function TimesheetPage() {
         </div>
       )}
 
-      <div className="tsp-table-wrap">
-        <table className="tsp-table">
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Activity / Project</th>
-              <th>Category</th>
-              <th>Hours</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {entries.length === 0 && (
-              <tr><td colSpan={6} className="tsp-empty">No entries this week. Click "Log Time" to start.</td></tr>
-            )}
-            {entries.map(e => (
-              <tr key={e.id}>
-                <td>{e.date}</td>
-                <td>{e.project}</td>
-                <td>{e.category}</td>
-                <td>{Number(e.hours).toFixed(1)}</td>
-                <td><span className={`tsp-status tsp-status-${e.status}`}>{e.status}</span></td>
-                <td>
-                  <div className="tsp-actions">
-                    {(e.status === "draft" || e.status === "rejected") && (
-                      <>
-                        <button className="tsp-btn tsp-btn-ghost tsp-btn-sm" onClick={() => openEdit(e)}>Edit</button>
-                        <button className="tsp-btn tsp-btn-ghost tsp-btn-sm" onClick={() => handleDelete(e.id)}>Del</button>
-                      </>
-                    )}
-                  </div>
-                </td>
+      {/* Sprint 2: Finance split view — grouped by activity_type */}
+      {groupByActivityType && groupedData && (
+        <div className="tsp-split-report">
+          <h2 className="tsp-split-title">Hours by Activity Type</h2>
+          {Object.entries(groupedData).map(([actType, rows]) => (
+            <div key={actType} className="tsp-split-section">
+              <div className="tsp-split-section-header">
+                <span className="tsp-split-badge">{actType === "project" ? "📁 Project Work" : "🏢 Organisational Activity"}</span>
+                <span className="tsp-split-total">
+                  {rows.reduce((sum, r) => sum + Number(r.hours || 0), 0).toFixed(1)} hrs
+                </span>
+              </div>
+              <table className="tsp-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Employee</th>
+                    <th>Activity / Project</th>
+                    <th>Category</th>
+                    <th>Hours</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map(e => (
+                    <tr key={e.id}>
+                      <td>{e.date}</td>
+                      <td>{e.employee_name || e.user_id}</td>
+                      <td>{e.project}</td>
+                      <td>{e.category}</td>
+                      <td>{Number(e.hours).toFixed(1)}</td>
+                      <td><span className={`tsp-status tsp-status-${e.status}`}>{e.status}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Standard employee view */}
+      {!groupByActivityType && (
+        <div className="tsp-table-wrap">
+          <table className="tsp-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Activity / Project</th>
+                <th>Type</th>
+                <th>Category</th>
+                <th>Hours</th>
+                <th>Status</th>
+                <th>Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {entries.length === 0 && (
+                <tr><td colSpan={7} className="tsp-empty">No entries this week. Click "Log Time" to start.</td></tr>
+              )}
+              {entries.map(e => (
+                <tr key={e.id}>
+                  <td>{e.date}</td>
+                  <td>{e.project}</td>
+                  {/* Sprint 2: show activity_type column */}
+                  <td>
+                    <span className={`tsp-type-badge tsp-type-badge--${e.activity_type || "project"}`}>
+                      {e.activity_type === "activity" ? "🏢 Activity" : "📁 Project"}
+                    </span>
+                  </td>
+                  <td>{e.category}</td>
+                  <td>{Number(e.hours).toFixed(1)}</td>
+                  <td><span className={`tsp-status tsp-status-${e.status}`}>{e.status}</span></td>
+                  <td>
+                    <div className="tsp-actions">
+                      {(e.status === "draft" || e.status === "rejected") && (
+                        <>
+                          <button className="tsp-btn tsp-btn-ghost tsp-btn-sm" onClick={() => openEdit(e)}>Edit</button>
+                          <button className="tsp-btn tsp-btn-ghost tsp-btn-sm" onClick={() => handleDelete(e.id)}>Del</button>
+                        </>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {draftEntries.length > 0 && (
         <div className="tsp-submit-bar">
@@ -313,6 +393,7 @@ export default function TimesheetPage() {
 
 /* ─────────────────────────────────────────────────────────────
    ENTRY MODAL  — smart activity selector
+   Sprint 2: sends activity_type field to backend
 ───────────────────────────────────────────────────────────── */
 function EntryModal({ entry, projects, weekStart, onClose, onSaved }) {
   const isEdit = !!entry;
@@ -327,7 +408,12 @@ function EntryModal({ entry, projects, weekStart, onClose, onSaved }) {
   };
 
   const [date,        setDate]        = useState(entry?.date || fmtDate(new Date()));
-  const [actType,     setActType]     = useState(isEdit ? detectActivityType(entry.project) : "project");
+  // Sprint 2: prefer stored activity_type from backend if editing
+  const [actType,     setActType]     = useState(
+    isEdit
+      ? (entry.activity_type || detectActivityType(entry.project))
+      : "project"
+  );
   const [actGroup,    setActGroup]    = useState(() => {
     if (isEdit && detectActivityType(entry.project) === "activity") {
       const g = ACTIVITY_GROUPS.find(g => g.type === "activity" && g.items.includes(entry.project));
@@ -363,6 +449,8 @@ function EntryModal({ entry, projects, weekStart, onClose, onSaved }) {
     const body = {
       date,
       project: resolvedActivity,
+      // Sprint 2: wire activity_type to the API
+      activity_type: actType,
       category: category || suggestCategory(resolvedActivity) || "Other",
       hours: parseFloat(hours),
       description,
