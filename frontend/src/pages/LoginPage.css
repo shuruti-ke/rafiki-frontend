@@ -151,3 +151,68 @@
 .login-links a:hover {
   text-decoration: underline;
 }
+
+/* ===== Demo Section ===== */
+.login-demo-section {
+  margin-top: 24px;
+}
+
+.login-demo-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.login-demo-divider::before,
+.login-demo-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.login-demo-divider span {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.login-demo-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.login-demo-btn {
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+  border: none;
+}
+
+.login-demo-btn:hover {
+  opacity: 0.88;
+  transform: translateY(-1px);
+}
+
+.login-demo-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.login-demo-btn--employee {
+  background: rgba(31, 191, 184, 0.12);
+  color: #0d9488;
+  border: 1px solid rgba(31, 191, 184, 0.25);
+}
+
+.login-demo-btn--admin {
+  background: rgba(139, 92, 246, 0.1);
+  color: #7c3aed;
+  border: 1px solid rgba(139, 92, 246, 0.25);
+}

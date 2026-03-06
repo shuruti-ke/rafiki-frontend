@@ -7,43 +7,20 @@ const FEATURES = [
   {
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="10" />
-        <path d="M2 12h20" />
-        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
       </svg>
     ),
-    title: 'Culturally Adapted AI',
-    desc: 'Rafiki understands Kenyan workplace culture, speaks English, Swahili, and Sheng.',
+    title: 'AI Wellbeing Chat',
+    desc: '24/7 culturally adapted AI companion. English, Swahili, and Sheng.',
   },
   {
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
       </svg>
     ),
-    title: 'Anonymous & Private',
-    desc: 'No names, no emails required. Conversations are encrypted and confidential.',
-  },
-  {
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="3" />
-        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-      </svg>
-    ),
-    title: 'Organization Customization',
-    desc: "Tailored to your company's values, culture, EAP, and policies.",
-  },
-  {
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="10" />
-        <polyline points="12 6 12 12 16 14" />
-      </svg>
-    ),
-    title: '24/7 Availability',
-    desc: 'Always-on support \u2014 no appointments, no waiting rooms, no business hours.',
+    title: 'Crisis Detection & Safety',
+    desc: 'Real-time safety screening with helpline connections across 7 East African countries.',
   },
   {
     icon: (
@@ -53,17 +30,119 @@ const FEATURES = [
         <line x1="6" y1="20" x2="6" y2="14" />
       </svg>
     ),
-    title: 'HR Analytics Dashboard',
-    desc: 'Anonymized workforce wellbeing insights with n\u226520 cohort privacy gating.',
+    title: 'Wellbeing Analytics',
+    desc: 'Anonymized stress tracking, sentiment analysis, and mental health topic trends for HR.',
   },
   {
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+        <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+        <line x1="8" y1="21" x2="16" y2="21" />
+        <line x1="12" y1="17" x2="12" y2="21" />
       </svg>
     ),
-    title: 'Kenya DPA Compliant',
-    desc: 'Built from the ground up for Kenya Data Protection Act 2019 compliance.',
+    title: 'Payroll Management',
+    desc: 'Payslip uploads, templates, and employee self-service document vault.',
+  },
+  {
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10" />
+        <path d="M12 8v4l3 3" />
+      </svg>
+    ),
+    title: 'Objectives & OKRs',
+    desc: 'Set, track, and manage employee objectives and key results.',
+  },
+  {
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+        <line x1="16" y1="2" x2="16" y2="6" />
+        <line x1="8" y1="2" x2="8" y2="6" />
+        <line x1="3" y1="10" x2="21" y2="10" />
+      </svg>
+    ),
+    title: 'Calendar & Scheduling',
+    desc: 'Shared team calendar with event management and meeting scheduling.',
+  },
+  {
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+        <polyline points="14 2 14 8 20 8" />
+        <line x1="16" y1="13" x2="8" y2="13" />
+        <line x1="16" y1="17" x2="8" y2="17" />
+      </svg>
+    ),
+    title: 'Leave Management',
+    desc: 'Digital leave applications with approval workflows and balance tracking.',
+  },
+  {
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10" />
+        <polyline points="12 6 12 12 16 14" />
+      </svg>
+    ),
+    title: 'Timesheets',
+    desc: 'Time tracking with manager and HR approval workflows.',
+  },
+  {
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+        <circle cx="9" cy="7" r="4" />
+        <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+      </svg>
+    ),
+    title: 'Manager Toolkit',
+    desc: 'Coaching AI, team analytics, and HR toolkit for people managers.',
+  },
+  {
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+      </svg>
+    ),
+    title: 'Knowledge Base',
+    desc: 'Organization-specific policies, guides, and resources.',
+  },
+  {
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+      </svg>
+    ),
+    title: 'Guided Learning Paths',
+    desc: 'Structured wellbeing and professional development modules.',
+  },
+  {
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+      </svg>
+    ),
+    title: 'Privacy & Compliance',
+    desc: 'Kenya DPA 2019 compliant. Encrypted, anonymous, n\u226520 cohort gating.',
+  },
+];
+
+const PORTALS = [
+  {
+    title: 'Employee Portal',
+    items: ['AI Chat', 'My Documents', 'Objectives', 'Calendar', 'Leave', 'Timesheets', 'Meetings'],
+  },
+  {
+    title: 'HR Admin Portal',
+    items: ['Dashboard', 'Analytics', 'Payroll', 'Employees', 'Knowledge Base', 'Wellbeing', 'Leave Mgmt'],
+  },
+  {
+    title: 'Manager Portal',
+    items: ['Team Overview', 'Coaching AI', 'HR Toolkit', 'Calendar', 'Team Timesheets'],
   },
 ];
 
@@ -87,28 +166,19 @@ const STEPS = [
 
 const PRICING = [
   {
-    tier: 'Starter',
-    price: 'KES 200',
-    period: '/employee/mo',
+    tier: 'Standard',
+    price: '$10',
+    period: '/user/month',
     features: [
-      'AI chat support',
-      'Daily check-ins',
-      'Crisis detection',
-      'Swahili + English',
+      'Full platform access',
+      'AI chat & crisis detection',
+      'Wellbeing analytics',
+      'Payroll & objectives',
+      'Calendar, leave & timesheets',
+      'Manager toolkit',
+      'Knowledge base & guided paths',
     ],
-    cta: 'Get Started',
-    highlighted: false,
-  },
-  {
-    tier: 'Professional',
-    price: 'KES 500',
-    period: '/employee/mo',
-    features: [
-      'Everything in Starter',
-      'HR analytics dashboard',
-      'EAP integration',
-      'Org customization',
-    ],
+    note: 'For teams up to 50 employees',
     cta: 'Get Started',
     highlighted: true,
   },
@@ -117,12 +187,14 @@ const PRICING = [
     price: 'Custom',
     period: 'pricing',
     features: [
-      'Everything in Professional',
+      'Everything in Standard',
       'Dedicated support',
       'Custom integrations',
       'SLA guarantee',
+      'API access',
     ],
-    cta: 'Contact Us',
+    note: '50+ employees',
+    cta: 'Contact Sales',
     highlighted: false,
   },
 ];
@@ -195,10 +267,10 @@ export default function LandingPage() {
               Get Started
             </Link>
             <Link to="/login" className="landing-hero__btn-outline">
-              Employee Login
+              Login
             </Link>
-            <Link to="/admin/login" className="landing-hero__btn-admin">
-              HR Admin Portal
+            <Link to="/login?demo=true" className="landing-hero__btn-admin">
+              Try Demo
             </Link>
           </div>
         </div>
@@ -223,13 +295,33 @@ export default function LandingPage() {
 
       {/* ===== Features ===== */}
       <section id="features" className="landing-features">
-        <h2 className="landing-section__heading">Powerful Features for Modern Workplaces</h2>
+        <h2 className="landing-section__heading">Everything Your Workplace Needs</h2>
         <div className="landing-features__grid">
           {FEATURES.map((f) => (
             <div key={f.title} className="landing-feature-card">
               <div className="landing-feature-card__icon">{f.icon}</div>
               <h3 className="landing-feature-card__title">{f.title}</h3>
               <p className="landing-feature-card__desc">{f.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ===== Platform Overview ===== */}
+      <section className="landing-portals">
+        <h2 className="landing-section__heading">Platform Overview</h2>
+        <p className="landing-section__subtitle">
+          Three integrated portals for employees, HR admins, and managers
+        </p>
+        <div className="landing-portals__grid">
+          {PORTALS.map((p) => (
+            <div key={p.title} className="landing-portal-card">
+              <h3 className="landing-portal-card__title">{p.title}</h3>
+              <ul className="landing-portal-card__list">
+                {p.items.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
             </div>
           ))}
         </div>
@@ -257,12 +349,16 @@ export default function LandingPage() {
             <span className="landing-metric__label">Always Available</span>
           </div>
           <div className="landing-metric">
-            <span className="landing-metric__value">100%</span>
-            <span className="landing-metric__label">Anonymous & Private</span>
+            <span className="landing-metric__value">12+</span>
+            <span className="landing-metric__label">HR Modules</span>
           </div>
           <div className="landing-metric">
             <span className="landing-metric__value">3</span>
-            <span className="landing-metric__label">Languages Supported</span>
+            <span className="landing-metric__label">Languages</span>
+          </div>
+          <div className="landing-metric">
+            <span className="landing-metric__value">7</span>
+            <span className="landing-metric__label">Countries</span>
           </div>
         </div>
       </section>
@@ -271,7 +367,7 @@ export default function LandingPage() {
       <section id="pricing" className="landing-pricing">
         <h2 className="landing-section__heading">Simple, Transparent Pricing</h2>
         <p className="landing-section__subtitle">
-          Designed to be accessible for organizations of all sizes
+          Full platform access at one flat rate
         </p>
         <div className="landing-pricing__row">
           {PRICING.map((p) => (
@@ -279,7 +375,7 @@ export default function LandingPage() {
               key={p.tier}
               className={`landing-pricing-card${p.highlighted ? ' landing-pricing-card--highlighted' : ''}`}
             >
-              {p.highlighted && <span className="landing-pricing-card__badge">Most Popular</span>}
+              {p.highlighted && <span className="landing-pricing-card__badge">Recommended</span>}
               <h3 className="landing-pricing-card__tier">{p.tier}</h3>
               <div className="landing-pricing-card__price">
                 <span className="landing-pricing-card__amount">{p.price}</span>
@@ -290,12 +386,24 @@ export default function LandingPage() {
                   <li key={feat}>{feat}</li>
                 ))}
               </ul>
-              <Link
-                to="/login"
-                className={`landing-pricing-card__cta${p.highlighted ? ' landing-pricing-card__cta--primary' : ''}`}
-              >
-                {p.cta}
-              </Link>
+              {p.note && (
+                <p className="landing-pricing-card__note">{p.note}</p>
+              )}
+              {p.tier === 'Enterprise' ? (
+                <a
+                  href="mailto:sales@rafikihr.com"
+                  className="landing-pricing-card__cta"
+                >
+                  {p.cta}
+                </a>
+              ) : (
+                <Link
+                  to="/login"
+                  className="landing-pricing-card__cta landing-pricing-card__cta--primary"
+                >
+                  {p.cta}
+                </Link>
+              )}
             </div>
           ))}
         </div>
@@ -361,9 +469,14 @@ export default function LandingPage() {
         <p className="landing-cta-banner__subtitle">
           Join organizations across East Africa who are investing in their people.
         </p>
-        <Link to="/login" className="landing-cta-banner__btn">
-          Get Started Free
-        </Link>
+        <div className="landing-cta-banner__btns">
+          <Link to="/login" className="landing-cta-banner__btn">
+            Get Started
+          </Link>
+          <Link to="/login?demo=true" className="landing-cta-banner__btn landing-cta-banner__btn--outline">
+            Try Demo
+          </Link>
+        </div>
       </section>
 
       {/* ===== Footer ===== */}
@@ -412,7 +525,7 @@ export default function LandingPage() {
             <h4 className="landing-footer__col-title">Company</h4>
             <span>About Shoulder2LeanOn</span>
             <span>Contact</span>
-            <Link to="/admin/login" className="landing-footer__admin-link">HR Admin Login</Link>
+            <Link to="/login" className="landing-footer__admin-link">Login</Link>
             <Link to="/super-admin/login" className="landing-footer__platform-link">Platform Admin</Link>
           </div>
           <div className="landing-footer__col">

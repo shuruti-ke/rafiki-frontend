@@ -1,5 +1,5 @@
 // frontend/src/App.jsx
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import LandingPage from "./pages/LandingPage.jsx";
 import ChatPage from "./pages/ChatPage.jsx";
 import EmployeeLayout from "./components/EmployeeLayout.jsx";
@@ -33,8 +33,7 @@ import ManagerTeam from "./pages/ManagerTeam.jsx";
 import ManagerCoaching from "./pages/ManagerCoaching.jsx";
 import ManagerToolkit from "./pages/ManagerToolkit.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
-import HRAdminLoginPage from "./pages/HRAdminLoginPage.jsx";
-import EmployeeLoginPage from "./pages/EmployeeLoginPage.jsx";
+import SuperAdminLoginPage from "./pages/SuperAdminLoginPage.jsx";
 import SuperAdminLayout from "./components/SuperAdminLayout.jsx";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard.jsx";
 import SuperAdminOrgDetail from "./pages/SuperAdminOrgDetail.jsx";
@@ -47,9 +46,9 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         {/* Login pages */}
-        <Route path="/login" element={<EmployeeLoginPage />} />
-        <Route path="/super-admin/login" element={<LoginPage />} />
-        <Route path="/admin/login" element={<HRAdminLoginPage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/super-admin/login" element={<SuperAdminLoginPage />} />
+        <Route path="/admin/login" element={<Navigate to="/login" replace />} />
 
         {/* Landing page */}
         <Route path="/" element={<LandingPage />} />
@@ -83,7 +82,7 @@ export default function App() {
 
         {/* Manager Portal */}
         <Route path="/manager" element={
-          <AuthGuard requiredRoles={["manager", "hr_admin", "super_admin"]} loginPath="/admin/login">
+          <AuthGuard requiredRoles={["manager", "hr_admin", "super_admin"]} loginPath="/login">
             <ManagerLayout />
           </AuthGuard>
         }>
@@ -97,7 +96,7 @@ export default function App() {
 
         {/* Admin HR Portal */}
         <Route path="/admin" element={
-          <AuthGuard requiredRoles={["hr_admin", "super_admin"]} loginPath="/admin/login">
+          <AuthGuard requiredRoles={["hr_admin", "super_admin"]} loginPath="/login">
             <AdminLayout />
           </AuthGuard>
         }>

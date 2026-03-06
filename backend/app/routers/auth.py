@@ -66,6 +66,10 @@ class VerifyCodeResponse(BaseModel):
     org_name: str
 
 
+class DemoLoginRequest(BaseModel):
+    role: str
+
+
 class LoginRequest(BaseModel):
     email: str
     password: str
@@ -137,6 +141,36 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
     except Exception as e:
         logger.exception(f"Login error for email={getattr(body, 'email', None)}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+DEMO_USERS = {
+    "employee": "demo-employee@rafiki.demo",
+    "hr_admin": "demo-hr@rafiki.demo",
+}
+
+
+@router.post("/demo-login", response_model=LoginResponse)
+def demo_login(body: DemoLoginRequest, db: Session = Depends(get_db)):
+    demo_email = DEMO_USERS.get(body.role)
+    if not demo_email:
+        raise HTTPException(status_code=400, detail=f"Invalid demo role: {body.role}")
+
+    user = db.query(User).filter(User.email == demo_email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail=f"Demo user not found for role: {body.role}")
+
+    token = _create_token(user)
+
+    return LoginResponse(
+        access_token=token,
+        user=UserOut(
+            user_id=str(user.user_id),
+            email=user.email,
+            full_name=user.name,
+            role=str(user.role),
+            org_id=str(user.org_id) if user.org_id else None,
+        ),
+    )
+
 
 @router.get("/me", response_model=UserOut)
 def me(

@@ -10,7 +10,7 @@ export default function ManagerLayout() {
     localStorage.removeItem("rafiki_token");
     localStorage.removeItem("rafiki_role");
     localStorage.removeItem("rafiki_user");
-    navigate("/admin/login");
+    navigate("/login");
   };
 
   return (
