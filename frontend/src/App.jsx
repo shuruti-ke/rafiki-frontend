@@ -17,6 +17,7 @@ import AdminUsageReport from "./pages/AdminUsageReport.jsx";
 import AdminLeave from "./pages/AdminLeave.jsx";
 import AdminWellbeing from "./pages/AdminWellbeing.jsx";
 import AdminTimesheets from "./pages/AdminTimesheets.jsx";
+import ManagerTimesheets from "./pages/ManagerTimesheets.jsx";
 import EmployeeKnowledgeBase from "./pages/EmployeeKnowledgeBase.jsx";
 import EmployeeAnnouncements from "./pages/EmployeeAnnouncements.jsx";
 import GuidedPathExplore from "./pages/GuidedPathExplore.jsx";
@@ -100,7 +101,7 @@ export default function App() {
           <Route path="coaching" element={<ManagerCoaching />} />
           <Route path="toolkit" element={<ManagerToolkit />} />
           <Route path="calendar" element={<CalendarPage />} />
-          <Route path="timesheets" element={<TimesheetPage />} />
+          <Route path="timesheets" element={<ManagerTimesheets />} />
         </Route>
 
         {/* Admin HR Portal */}
