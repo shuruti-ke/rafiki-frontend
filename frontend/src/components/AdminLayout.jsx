@@ -70,7 +70,7 @@ export default function AdminLayout() {
             Manager Portal
           </NavLink>
           <NavLink to="/chat" className="admin-nav-link">
-            Back to Chat
+            Employee Portal
           </NavLink>
           <button onClick={handleLogout} className="admin-nav-link"
             style={{ background: "none", border: "none", cursor: "pointer", textAlign: "left", width: "100%", font: "inherit" }}>
