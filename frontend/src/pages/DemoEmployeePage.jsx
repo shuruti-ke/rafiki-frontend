@@ -100,11 +100,17 @@ export default function DemoEmployeePage() {
 
       {/* Nav Bar */}
       <nav className="demo-emp-nav">
-        {NAV_LINKS.map(l => (
-          <span key={l.label} className={`demo-emp-nav-link${l.active ? " active" : ""}`}>
-            {l.label}
-          </span>
-        ))}
+        <div className="demo-emp-nav-links">
+          {NAV_LINKS.map(l => (
+            <span key={l.label} className={`demo-emp-nav-link${l.active ? " active" : ""}`}>
+              {l.label}
+            </span>
+          ))}
+        </div>
+        <div className="demo-portal-switcher">
+          <Link to="/demo/hr" className="demo-portal-link">HR Admin</Link>
+          <Link to="/demo/manager" className="demo-portal-link">Manager Portal</Link>
+        </div>
       </nav>
 
       {/* Body */}
@@ -198,10 +204,10 @@ export default function DemoEmployeePage() {
 
           {/* Quick Actions */}
           <div className="demo-actions">
-            <span className="demo-action">Chat with Rafiki</span>
-            <span className="demo-action">Log Time</span>
-            <span className="demo-action">My Documents</span>
-            <span className="demo-action">View Objectives</span>
+            <Link to="/demo/employee" className="demo-action">Chat with Rafiki</Link>
+            <Link to="/demo/employee" className="demo-action">Log Time</Link>
+            <Link to="/demo/employee" className="demo-action">My Documents</Link>
+            <Link to="/demo/employee" className="demo-action">View Objectives</Link>
           </div>
         </div>
       </div>

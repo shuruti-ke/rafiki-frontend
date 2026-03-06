@@ -34,6 +34,7 @@ import ManagerCoaching from "./pages/ManagerCoaching.jsx";
 import ManagerToolkit from "./pages/ManagerToolkit.jsx";
 import DemoEmployeePage from "./pages/DemoEmployeePage.jsx";
 import DemoHRPage from "./pages/DemoHRPage.jsx";
+import DemoManagerPage from "./pages/DemoManagerPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
 import SuperAdminLoginPage from "./pages/SuperAdminLoginPage.jsx";
 import SuperAdminLayout from "./components/SuperAdminLayout.jsx";
@@ -55,6 +56,7 @@ export default function App() {
         {/* Demo pages */}
         <Route path="/demo/employee" element={<DemoEmployeePage />} />
         <Route path="/demo/hr" element={<DemoHRPage />} />
+        <Route path="/demo/manager" element={<DemoManagerPage />} />
 
         {/* Landing page */}
         <Route path="/" element={<LandingPage />} />

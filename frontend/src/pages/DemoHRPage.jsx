@@ -115,6 +115,10 @@ export default function DemoHRPage() {
               </span>
             ))}
           </nav>
+          <div className="demo-hr-nav-footer">
+            <Link to="/demo/manager" className="demo-hr-footer-link">Manager Portal</Link>
+            <Link to="/demo/employee" className="demo-hr-footer-link">Back to Chat</Link>
+          </div>
         </aside>
 
         {/* Main Content */}
@@ -163,7 +167,7 @@ export default function DemoHRPage() {
           {/* Quick Links */}
           <div className="demo-links">
             {QUICK_LINKS.map(l => (
-              <div key={l.title} className="demo-link">
+              <div key={l.title} className="demo-link demo-link--clickable">
                 <strong>{l.title}</strong>
                 <p>{l.desc}</p>
               </div>

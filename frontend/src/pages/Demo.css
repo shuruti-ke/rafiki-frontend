@@ -487,3 +487,262 @@
   font-weight: 400;
   color: var(--muted, #71717a);
 }
+
+/* ─── Employee Nav: Portal Switcher ─── */
+.demo-emp-nav {
+  justify-content: space-between;
+}
+.demo-emp-nav-links {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.demo-portal-switcher {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding-right: 4px;
+}
+.demo-portal-link {
+  padding: 6px 12px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--accent, #8b5cf6);
+  text-decoration: none;
+  border-radius: 6px;
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  transition: background 0.2s;
+}
+.demo-portal-link:hover {
+  background: rgba(139, 92, 246, 0.1);
+}
+
+/* ─── Employee Quick Actions as Links ─── */
+.demo-action {
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.demo-action:hover {
+  background: rgba(139, 92, 246, 0.18);
+}
+
+/* ─── HR Sidebar Footer ─── */
+.demo-hr-nav-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 8px;
+  border-top: 1px solid var(--border, #27272a);
+  margin-top: auto;
+}
+.demo-hr-footer-link {
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  color: var(--accent, #8b5cf6);
+  text-decoration: none;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+.demo-hr-footer-link:hover {
+  background: rgba(139, 92, 246, 0.1);
+}
+
+/* ─── HR Quick Links Clickable ─── */
+.demo-link--clickable {
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+.demo-link--clickable:hover {
+  border-color: rgba(139, 92, 246, 0.35);
+  background: rgba(139, 92, 246, 0.05);
+}
+
+/* ─── Demo Manager Layout ─── */
+.demo-mgr {
+  min-height: 100vh;
+  background: var(--bg, #0f0f14);
+  color: var(--text, #e4e4e7);
+  display: flex;
+  flex-direction: column;
+}
+.demo-mgr-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+.demo-mgr-sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  background: var(--panel, #18181b);
+  border-right: 1px solid var(--border, #27272a);
+  display: flex;
+  flex-direction: column;
+  padding-top: 12px;
+}
+.demo-mgr-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px 18px;
+}
+.demo-mgr-brand-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+}
+.demo-mgr-brand-title {
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+.demo-mgr-brand-sub {
+  font-size: 0.7rem;
+  color: var(--muted, #71717a);
+}
+.demo-mgr-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 8px;
+  flex: 1;
+}
+.demo-mgr-nav-link {
+  padding: 8px 12px;
+  font-size: 0.82rem;
+  color: var(--muted, #71717a);
+  border-radius: 6px;
+  cursor: default;
+}
+.demo-mgr-nav-link.active {
+  background: rgba(59, 130, 246, 0.12);
+  color: #3b82f6;
+}
+.demo-mgr-nav-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 8px;
+  border-top: 1px solid var(--border, #27272a);
+}
+.demo-mgr-footer-link {
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  color: #3b82f6;
+  text-decoration: none;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+.demo-mgr-footer-link:hover {
+  background: rgba(59, 130, 246, 0.1);
+}
+.demo-mgr-content {
+  flex: 1;
+  padding: 28px;
+  overflow-y: auto;
+}
+
+/* ─── Manager Quick Action Cards ─── */
+.demo-mgr-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.demo-mgr-action-card {
+  background: var(--panel, #18181b);
+  border: 1px solid var(--border, #27272a);
+  border-radius: 10px;
+  padding: 16px;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+.demo-mgr-action-card:hover {
+  border-color: rgba(59, 130, 246, 0.35);
+  background: rgba(59, 130, 246, 0.05);
+}
+.demo-mgr-action-card strong {
+  display: block;
+  font-size: 0.88rem;
+  margin-bottom: 4px;
+}
+.demo-mgr-action-card p {
+  font-size: 0.75rem;
+  color: var(--muted, #71717a);
+  margin: 0;
+}
+
+/* ─── Manager Timesheet Table ─── */
+.demo-mgr-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+.demo-mgr-table th {
+  text-align: left;
+  padding: 8px 12px;
+  color: var(--muted, #71717a);
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--border, #27272a);
+}
+.demo-mgr-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border, #27272a);
+}
+.demo-mgr-table tr:last-child td {
+  border-bottom: none;
+}
+.demo-mgr-badge {
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+.demo-mgr-badge.yes {
+  background: rgba(52, 211, 153, 0.15);
+  color: #34d399;
+}
+.demo-mgr-badge.no {
+  background: rgba(251, 191, 36, 0.15);
+  color: #fbbf24;
+}
+
+/* ─── Manager Coaching Rows ─── */
+.demo-mgr-coaching-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border, #27272a);
+  font-size: 0.82rem;
+}
+.demo-mgr-coaching-row:last-child {
+  border-bottom: none;
+}
+.demo-mgr-coaching-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.demo-mgr-coaching-name {
+  font-weight: 500;
+}
+.demo-mgr-coaching-concern {
+  font-size: 0.75rem;
+  color: var(--muted, #71717a);
+}
+.demo-mgr-coaching-outcome {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+.demo-mgr-coaching-date {
+  font-size: 0.72rem;
+  color: var(--muted, #71717a);
+  white-space: nowrap;
+}
