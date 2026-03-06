@@ -71,7 +71,7 @@ def list_entries(
     return q.order_by(TimesheetEntry.date.desc()).all()
 
 
-# ── Submit / Approve ──
+# ── Submit / Approve (bulk) ──
 
 
 @router.post("/submit")
@@ -117,6 +117,102 @@ def approve_entries(
         e.approval_comment = body.comment
     db.commit()
     return {"ok": True, "action": body.action, "count": len(entries)}
+
+
+# ── Admin: org-wide report ──
+
+
+@router.get("/admin/all")
+def admin_all_entries(
+    start: Optional[date] = Query(None),
+    end: Optional[date] = Query(None),
+    status: Optional[str] = Query(None),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    role: str = Depends(require_manager),
+    db: Session = Depends(get_db),
+):
+    """Return all timesheet entries for the org with employee name + department attached."""
+    q = (
+        db.query(TimesheetEntry, User)
+        .join(User, User.user_id == TimesheetEntry.user_id)
+        .filter(TimesheetEntry.org_id == org_id)
+    )
+    if start:
+        q = q.filter(TimesheetEntry.date >= start)
+    if end:
+        q = q.filter(TimesheetEntry.date <= end)
+    if status:
+        q = q.filter(TimesheetEntry.status == status)
+
+    rows = q.order_by(TimesheetEntry.date.desc()).limit(1000).all()
+
+    result = []
+    for entry, user in rows:
+        result.append({
+            "id":            str(entry.id),
+            "user_id":       str(entry.user_id),
+            "employee_name": user.name or user.email,
+            "department":    getattr(user, "department", None),
+            "date":          str(entry.date),
+            "project":       entry.project,
+            "category":      entry.category,
+            "hours":         float(entry.hours),
+            "status":        entry.status,
+            "description":   entry.description or "",
+            "submitted_at":  entry.submitted_at.isoformat() if entry.submitted_at else None,
+            "approved_at":   entry.approved_at.isoformat()  if entry.approved_at  else None,
+            "approval_comment": entry.approval_comment,
+        })
+    return result
+
+
+# ── Per-entry approve / reject (called by admin frontend) ──
+
+
+@router.post("/{entry_id}/approve")
+def approve_single(
+    entry_id: uuid.UUID,
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    approver_id: uuid.UUID = Depends(get_current_user_id),
+    role: str = Depends(require_manager),
+    db: Session = Depends(get_db),
+):
+    entry = db.query(TimesheetEntry).filter(
+        TimesheetEntry.id == entry_id,
+        TimesheetEntry.org_id == org_id,
+    ).first()
+    if not entry:
+        raise HTTPException(404, "Entry not found")
+    if entry.status != "submitted":
+        raise HTTPException(400, f"Entry status is '{entry.status}', expected 'submitted'")
+    entry.status = "approved"
+    entry.approved_by = approver_id
+    entry.approved_at = datetime.utcnow()
+    db.commit()
+    return {"ok": True, "id": str(entry_id), "status": "approved"}
+
+
+@router.post("/{entry_id}/reject")
+def reject_single(
+    entry_id: uuid.UUID,
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    approver_id: uuid.UUID = Depends(get_current_user_id),
+    role: str = Depends(require_manager),
+    db: Session = Depends(get_db),
+):
+    entry = db.query(TimesheetEntry).filter(
+        TimesheetEntry.id == entry_id,
+        TimesheetEntry.org_id == org_id,
+    ).first()
+    if not entry:
+        raise HTTPException(404, "Entry not found")
+    if entry.status != "submitted":
+        raise HTTPException(400, f"Entry status is '{entry.status}', expected 'submitted'")
+    entry.status = "rejected"
+    entry.approved_by = approver_id
+    entry.approved_at = datetime.utcnow()
+    db.commit()
+    return {"ok": True, "id": str(entry_id), "status": "rejected"}
 
 
 # ── Team entries (manager view) ──
