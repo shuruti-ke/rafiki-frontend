@@ -1,9 +1,8 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { API, authFetch } from "../api.js";
 import "./SuperAdminDashboard.css";
 import "./SuperAdminOrgDetail.css";
-
-const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 function getHeaders() {
   const token = localStorage.getItem("rafiki_token");
@@ -45,8 +44,8 @@ export default function SuperAdminOrgDetail() {
     if (!orgId) return; // ✅ FIX: guard against undefined orgId
     try {
       const [orgRes, usersRes] = await Promise.all([
-        fetch(`${API}/super-admin/orgs/${orgId}`, { headers: getHeaders() }),
-        fetch(`${API}/super-admin/orgs/${orgId}/users`, { headers: getHeaders() }),
+        authFetch(`${API}/super-admin/orgs/${orgId}`),
+        authFetch(`${API}/super-admin/orgs/${orgId}/users`),
       ]);
 
       if (!orgRes.ok) {
@@ -90,7 +89,6 @@ export default function SuperAdminOrgDetail() {
 
       const res = await authFetch(`${API}/super-admin/orgs/${orgId}`, {
         method: "PUT",
-        headers: getHeaders(),
         body: JSON.stringify(body),
       });
       const data = await res.json();
@@ -111,7 +109,6 @@ export default function SuperAdminOrgDetail() {
     try {
       const res = await authFetch(`${API}/super-admin/orgs/${orgId}/admin`, {
         method: "POST",
-        headers: getHeaders(),
         body: JSON.stringify({ email: hrEmail, password: hrPassword, full_name: hrName }),
       });
       const data = await res.json();
