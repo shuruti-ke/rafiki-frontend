@@ -36,10 +36,11 @@
 
 /* Modal */
 .tsp-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 999; }
-.tsp-modal { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; width: 440px; max-width: 95vw; }
+.tsp-modal { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; width: 440px; max-width: 95vw; max-height: 90vh; overflow-y: auto; }
+.tsp-modal--wide { width: 500px; }
 .tsp-modal h2 { margin: 0 0 1rem 0; font-size: 1.15rem; color: var(--text); }
 .tsp-form-row { margin-bottom: 0.75rem; }
-.tsp-form-row label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 0.25rem; }
+.tsp-form-row label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 0.25rem; font-weight: 600; }
 .tsp-form-row input, .tsp-form-row select, .tsp-form-row textarea { width: 100%; padding: 0.45rem 0.6rem; border-radius: 6px; border: 1px solid var(--border); background: rgba(255,255,255,0.05); color: var(--text); font-size: 0.85rem; box-sizing: border-box; }
 .tsp-form-row textarea { resize: vertical; min-height: 50px; }
 .tsp-modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; }
@@ -47,3 +48,41 @@
 /* Submit bar */
 .tsp-submit-bar { display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; padding: 0.75rem 1rem; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; }
 .tsp-submit-bar span { font-size: 0.85rem; color: var(--muted); }
+
+/* ── Activity type toggle ── */
+.tsp-type-toggle {
+  display: flex;
+  gap: 8px;
+}
+.tsp-type-btn {
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1.5px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.83rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.18s;
+  font-family: inherit;
+}
+.tsp-type-btn:hover {
+  border-color: var(--accent, #8b5cf6);
+  color: var(--accent, #8b5cf6);
+}
+.tsp-type-btn--active {
+  background: linear-gradient(135deg, #8b5cf6 0%, #1fbfb8 100%);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(139,92,246,.22);
+}
+
+/* Hint text next to label */
+.tsp-label-hint {
+  font-weight: 400;
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-left: 4px;
+}
