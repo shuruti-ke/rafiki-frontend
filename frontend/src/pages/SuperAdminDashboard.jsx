@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { API, authFetch } from "../api.js";
 import "./SuperAdminDashboard.css";
-
-const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 function getHeaders() {
   const token = localStorage.getItem("rafiki_token");
@@ -37,8 +36,8 @@ export default function SuperAdminDashboard() {
   const fetchAll = async () => {
     try {
       const [sRes, oRes] = await Promise.all([
-        fetch(`${API}/super-admin/stats`, { headers: getHeaders() }),
-        fetch(`${API}/super-admin/orgs`, { headers: getHeaders() }),
+        authFetch(`${API}/super-admin/stats`),
+        authFetch(`${API}/super-admin/orgs`),
       ]);
       if (sRes.ok) setStats(await sRes.json());
       if (oRes.ok) setOrgs(await oRes.json());
@@ -65,7 +64,6 @@ export default function SuperAdminDashboard() {
 
       const res = await authFetch(`${API}/super-admin/orgs`, {
         method: "POST",
-        headers: getHeaders(),
         body: JSON.stringify(body),
       });
       const data = await res.json();
@@ -89,7 +87,6 @@ export default function SuperAdminDashboard() {
     try {
       const res = await authFetch(`${API}/super-admin/orgs/${hrOrgId}/admin`, {
         method: "POST",
-        headers: getHeaders(),
         body: JSON.stringify({ email: hrEmail, password: hrPassword, full_name: hrName }),
       });
       const data = await res.json();
