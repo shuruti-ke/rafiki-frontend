@@ -62,29 +62,42 @@ def get_team(
     if not config:
         raise HTTPException(status_code=403, detail="No active manager configuration found")
 
-    # Primary: employees whose manager_id points to this manager
-    direct_reports = (
-        db.query(User)
-        .filter(
-            User.manager_id == user_id,
-            User.org_id == org_id,
-            User.is_active == True,
-        )
-        .all()
-    )
+    is_super = _role == "super_admin"
 
-    # Fallback: if no direct reports via manager_id, check department scope
-    if not direct_reports and config.department_scope:
+    # super_admin: show all active users across all orgs
+    if is_super:
         direct_reports = (
             db.query(User)
             .filter(
-                User.org_id == org_id,
-                User.department.in_(config.department_scope),
                 User.user_id != user_id,
                 User.is_active == True,
             )
             .all()
         )
+    else:
+        # Primary: employees whose manager_id points to this manager
+        direct_reports = (
+            db.query(User)
+            .filter(
+                User.manager_id == user_id,
+                User.org_id == org_id,
+                User.is_active == True,
+            )
+            .all()
+        )
+
+        # Fallback: if no direct reports via manager_id, check department scope
+        if not direct_reports and config.department_scope:
+            direct_reports = (
+                db.query(User)
+                .filter(
+                    User.org_id == org_id,
+                    User.department.in_(config.department_scope),
+                    User.user_id != user_id,
+                    User.is_active == True,
+                )
+                .all()
+            )
 
     # Build user_id list for batch queries
     member_ids = [u.user_id for u in direct_reports]
@@ -348,39 +361,55 @@ def get_dashboard(
 
     from app.models.user import User
 
-    # Team size — direct reports via manager_id
-    team_count = (
-        db.query(sa_func.count(User.user_id))
-        .filter(
-            User.manager_id == user_id,
-            User.org_id == org_id,
-            User.is_active == True,
-        )
-        .scalar() or 0
-    )
+    is_super = _role == "super_admin"
 
-    # Fallback to department scope if no direct reports
-    if team_count == 0 and config.department_scope:
+    if is_super:
+        # super_admin sees all users across all orgs
+        team_count = (
+            db.query(sa_func.count(User.user_id))
+            .filter(User.user_id != user_id, User.is_active == True)
+            .scalar() or 0
+        )
+        member_ids = [
+            uid for (uid,) in
+            db.query(User.user_id).filter(
+                User.user_id != user_id, User.is_active == True,
+            ).all()
+        ]
+    else:
+        # Team size — direct reports via manager_id
         team_count = (
             db.query(sa_func.count(User.user_id))
             .filter(
+                User.manager_id == user_id,
                 User.org_id == org_id,
-                User.department.in_(config.department_scope),
-                User.user_id != user_id,
                 User.is_active == True,
             )
             .scalar() or 0
         )
 
-    # Get direct report IDs for evaluation query
-    member_ids = [
-        uid for (uid,) in
-        db.query(User.user_id).filter(
-            User.manager_id == user_id,
-            User.org_id == org_id,
-            User.is_active == True,
-        ).all()
-    ]
+        # Fallback to department scope if no direct reports
+        if team_count == 0 and config.department_scope:
+            team_count = (
+                db.query(sa_func.count(User.user_id))
+                .filter(
+                    User.org_id == org_id,
+                    User.department.in_(config.department_scope),
+                    User.user_id != user_id,
+                    User.is_active == True,
+                )
+                .scalar() or 0
+            )
+
+        # Get direct report IDs for evaluation query
+        member_ids = [
+            uid for (uid,) in
+            db.query(User.user_id).filter(
+                User.manager_id == user_id,
+                User.org_id == org_id,
+                User.is_active == True,
+            ).all()
+        ]
 
     # Average performance rating for team members
     avg_query = db.query(sa_func.avg(PerformanceEvaluation.overall_rating)).filter(
