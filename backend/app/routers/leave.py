@@ -581,6 +581,65 @@ def review_application(
 
     db.commit()
 
+    # ── Sprint 1: Auto-create timesheet entries for approved leave ──────────
+    if data.status == "approved":
+        try:
+            from app.models.timesheet import TimesheetEntry as _TS
+            leave_start: date = row["start_date"]
+            leave_end:   date = row["end_date"]
+            leave_type_str: str = row["leave_type"]
+            emp_user_id = row["user_id"]
+
+            hours_per_day = 4.0 if row.get("half_day") else 8.0
+            type_labels = {
+                "annual":    "Annual Leave",
+                "sick":      "Sick Leave",
+                "maternity": "Maternity Leave",
+                "paternity": "Paternity Leave",
+            }
+            project_label = type_labels.get(leave_type_str, f"{leave_type_str.title()} Leave")
+
+            current = leave_start
+            created = 0
+            while current <= leave_end:
+                if current.weekday() < 5:
+                    existing = db.query(_TS).filter(
+                        _TS.org_id   == org_id,
+                        _TS.user_id  == emp_user_id,
+                        _TS.date     == current,
+                        _TS.is_leave == True,
+                    ).first()
+                    if not existing:
+                        ts = _TS(
+                            org_id               = org_id,
+                            user_id              = emp_user_id,
+                            date                 = current,
+                            project              = project_label,
+                            activity_type        = "organisational",
+                            category             = "Admin",
+                            hours                = hours_per_day,
+                            description          = f"Auto-generated from approved {leave_type_str} leave.",
+                            status               = "approved",
+                            submitted_at         = datetime.utcnow(),
+                            approved_by          = reviewer_id,
+                            approved_at          = datetime.utcnow(),
+                            approval_comment     = "Auto-approved via leave management.",
+                            is_leave             = True,
+                            leave_application_id = uuid.UUID(app_id),
+                        )
+                        db.add(ts)
+                        created += 1
+                current += timedelta(days=1)
+
+            if created:
+                db.commit()
+                logger.info(f"Leave sync: created {created} timesheet entries for user {emp_user_id}")
+
+        except Exception as _sync_err:
+            logger.warning(f"Leave->timesheet sync failed (non-fatal): {_sync_err}")
+            db.rollback()
+    # ── end Sprint 1 leave sync ─────────────────────────────────────────────
+
     # Send notification via sidebar message if possible
     try:
         from app.models.chat_session import ChatMessage
