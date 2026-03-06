@@ -77,6 +77,7 @@ from app.routers.leave import router as leave_router
 from app.routers.meetings import router as meetings_router
 from app.routers.usage import router as usage_router
 from app.routers.wellbeing import router as wellbeing_router
+from app.models.notification import Notification
 
 app.include_router(auth_router)
 app.include_router(kb_router)
