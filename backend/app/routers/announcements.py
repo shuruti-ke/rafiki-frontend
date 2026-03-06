@@ -7,6 +7,7 @@ from sqlalchemy import or_
 
 from app.database import get_db
 from app.models.announcement import Announcement, AnnouncementRead, TrainingAssignment
+from app.models.user import User  # needed for unread-employee lookup
 from app.schemas.announcements import (
     AnnouncementCreate,
     AnnouncementResponse,
@@ -16,6 +17,7 @@ from app.schemas.announcements import (
     TrainingAssignmentResponse,
 )
 from app.services.audit import log_action
+from app.services.notifications import send_reminder_notification  # implement per your notification layer
 
 # ✅ Use real auth deps (JWT or demo-header fallback)
 from app.dependencies import get_current_org_id, get_current_user_id, require_admin
@@ -62,11 +64,9 @@ def list_announcements(
 ):
     q = db.query(Announcement).filter(Announcement.org_id == org_id)
 
-    # By default only show published
     if not include_unpublished:
         q = q.filter(Announcement.published_at.isnot(None))
 
-    # By default hide expired
     if not include_expired:
         now = datetime.now(timezone.utc)
         q = q.filter(or_(Announcement.expires_at.is_(None), Announcement.expires_at > now))
@@ -130,12 +130,7 @@ def update_announcement(
     db.refresh(ann)
 
     log_action(
-        db,
-        org_id,
-        user_id,
-        "update",
-        "announcement",
-        ann.id,
+        db, org_id, user_id, "update", "announcement", ann.id,
         update.model_dump(exclude_unset=True),
     )
     return ann
@@ -210,6 +205,78 @@ def get_read_receipts(
     )
 
 
+# ─────────────────────────────────────────────────────────────
+# SPRINT 2: Send reminder to employees who haven't read yet
+# POST /api/v1/announcements/{id}/remind
+# ─────────────────────────────────────────────────────────────
+@router.post("/{ann_id}/remind")
+def send_reminder(
+    ann_id: UUID,
+    db: Session = Depends(get_db),
+    org_id: UUID = Depends(get_current_org_id),
+    user_id: UUID = Depends(get_current_user_id),
+    role: str = Depends(require_admin),
+):
+    """
+    Send a reminder notification to all active employees in the org
+    who have NOT yet created a read receipt for this announcement.
+    Returns a count of employees reminded.
+    """
+    ann = (
+        db.query(Announcement)
+        .filter(Announcement.id == ann_id, Announcement.org_id == org_id)
+        .first()
+    )
+    if not ann:
+        raise HTTPException(status_code=404, detail="Announcement not found")
+
+    if not ann.published_at:
+        raise HTTPException(status_code=400, detail="Cannot remind for an unpublished announcement")
+
+    # All user IDs who have already read this announcement
+    read_user_ids = {
+        row.user_id
+        for row in db.query(AnnouncementRead)
+        .filter(AnnouncementRead.announcement_id == ann_id)
+        .all()
+    }
+
+    # All active employees in this org who haven't read it
+    unread_employees = (
+        db.query(User)
+        .filter(
+            User.org_id == org_id,
+            User.is_active == True,
+            User.user_id.notin_(read_user_ids),
+        )
+        .all()
+    )
+
+    if not unread_employees:
+        return {"ok": True, "reminded": 0, "message": "All employees have already read this announcement"}
+
+    # Dispatch notifications (in-app / email — implement per your stack)
+    for employee in unread_employees:
+        send_reminder_notification(
+            user=employee,
+            announcement_id=ann_id,
+            announcement_title=ann.title,
+        )
+
+    reminded_count = len(unread_employees)
+
+    log_action(
+        db, org_id, user_id, "remind", "announcement", ann_id,
+        {"reminded_count": reminded_count},
+    )
+
+    return {
+        "ok": True,
+        "reminded": reminded_count,
+        "message": f"Reminder sent to {reminded_count} employee{'s' if reminded_count != 1 else ''}",
+    }
+
+
 @router.post("/{ann_id}/assign-training", response_model=list[TrainingAssignmentResponse])
 def assign_training(
     ann_id: UUID,
@@ -229,7 +296,6 @@ def assign_training(
 
     assignments = []
     for uid in data.user_ids:
-        # uid should be UUIDs in the schema
         existing = (
             db.query(TrainingAssignment)
             .filter(
@@ -255,12 +321,7 @@ def assign_training(
         db.refresh(a)
 
     log_action(
-        db,
-        org_id,
-        user_id,
-        "assign_training",
-        "announcement",
-        ann_id,
+        db, org_id, user_id, "assign_training", "announcement", ann_id,
         {"user_ids": [str(x) for x in data.user_ids]},
     )
     return assignments
@@ -273,7 +334,6 @@ def get_training_status(
     org_id: UUID = Depends(get_current_org_id),
     role: str = Depends(require_admin),
 ):
-    # Ensure announcement belongs to org
     ann = (
         db.query(Announcement)
         .filter(Announcement.id == ann_id, Announcement.org_id == org_id)
@@ -296,7 +356,6 @@ def complete_training(
     org_id: UUID = Depends(get_current_org_id),
     user_id: UUID = Depends(get_current_user_id),
 ):
-    # Ensure announcement belongs to org
     ann = (
         db.query(Announcement)
         .filter(Announcement.id == ann_id, Announcement.org_id == org_id)
