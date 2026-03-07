@@ -205,12 +205,12 @@ def admin_usage_report(
         try:
             total_gp = db.query(func.count(GuidedPathSession.id)).filter(
                 GuidedPathSession.org_id == org_id,
-                GuidedPathSession.created_at.between(start_dt, end_dt),
+                GuidedPathSession.started_at.between(start_dt, end_dt),
             ).scalar() or 0
             completed_gp = db.query(func.count(GuidedPathSession.id)).filter(
                 GuidedPathSession.org_id == org_id,
                 GuidedPathSession.status == "completed",
-                GuidedPathSession.created_at.between(start_dt, end_dt),
+                GuidedPathSession.started_at.between(start_dt, end_dt),
             ).scalar() or 0
             result["guided_paths"] = {
                 "total_started": total_gp,
@@ -392,12 +392,12 @@ def my_usage(
         try:
             started = db.query(func.count(GuidedPathSession.id)).filter(
                 GuidedPathSession.user_id == user_id,
-                GuidedPathSession.created_at.between(start_dt, end_dt),
+                GuidedPathSession.started_at.between(start_dt, end_dt),
             ).scalar() or 0
             completed = db.query(func.count(GuidedPathSession.id)).filter(
                 GuidedPathSession.user_id == user_id,
                 GuidedPathSession.status == "completed",
-                GuidedPathSession.created_at.between(start_dt, end_dt),
+                GuidedPathSession.started_at.between(start_dt, end_dt),
             ).scalar() or 0
             result["guided_paths"] = {
                 "started": started,

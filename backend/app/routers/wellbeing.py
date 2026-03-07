@@ -340,6 +340,41 @@ def sentiment_trend(
     ]
 
 
+@router.get("/trend")
+def trend_alias(
+    days: int = 30,
+    db: Session = Depends(get_db),
+    org_id: UUID = Depends(get_current_org_id),
+    role: str = Depends(require_admin),
+):
+    """Alias for /sentiment-trend — daily sentiment/stress averages."""
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    rows = db.query(
+        func.date_trunc("day", ChatAnalytics.created_at).label("day"),
+        func.avg(ChatAnalytics.sentiment).label("avg_sentiment"),
+        func.avg(ChatAnalytics.stress_level).label("avg_stress"),
+        func.count(ChatAnalytics.id).label("count"),
+    ).filter(
+        ChatAnalytics.org_id == org_id,
+        ChatAnalytics.created_at >= since,
+    ).group_by(
+        func.date_trunc("day", ChatAnalytics.created_at),
+    ).order_by(
+        func.date_trunc("day", ChatAnalytics.created_at),
+    ).all()
+
+    return [
+        {
+            "date": r.day.isoformat() if r.day else None,
+            "avg_sentiment": round(float(r.avg_sentiment), 3) if r.avg_sentiment else 0,
+            "avg_stress": round(float(r.avg_stress), 2) if r.avg_stress else 0,
+            "count": r.count,
+        }
+        for r in rows
+    ]
+
+
 # ── Crisis Config ──
 
 @router.get("/crisis-config")
