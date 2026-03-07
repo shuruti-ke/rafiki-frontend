@@ -124,17 +124,37 @@ function PayrollApprovalBlock({ payload, onAction }) {
   );
 }
 
-/* ── ObjectiveReviewBlock (unchanged) ── */
+/* ── ObjectiveReviewBlock ── */
 function ObjectiveReviewBlock({ payload, onAction }) {
-  const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState(null);
-  const [notes, setNotes] = useState("");
+  const [busy,       setBusy]       = useState(false);
+  const [done,       setDone]       = useState(null); // "approved" | "needs_revision" | "error:..." | null
+  const [notes,      setNotes]      = useState("");
   const [showRevise, setShowRevise] = useState(false);
+  const [checking,   setChecking]   = useState(true);
+
+  // On mount, fetch current objective status — it may already be reviewed
+  useEffect(() => {
+    if (!payload.objective_id) { setChecking(false); return; }
+    authFetch(`${API}/api/v1/objectives/${payload.objective_id}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(obj => {
+        if (!obj) return;
+        if (obj.status === "active")          setDone("approved");
+        else if (obj.status === "draft" && obj.review_status === "needs_revision")
+                                              setDone("needs_revision");
+        else if (obj.status === "cancelled")  setDone("cancelled");
+      })
+      .catch(() => {})
+      .finally(() => setChecking(false));
+  }, [payload.objective_id]);
 
   async function handleApprove() {
     setBusy(true);
     try {
-      const r = await authFetch(`${API}${payload.approve_endpoint}`, { method: "POST", body: JSON.stringify({ review_status: "approved", review_notes: notes }) });
+      const r = await authFetch(`${API}${payload.approve_endpoint}`, {
+        method: "POST",
+        body: JSON.stringify({ review_status: "approved", review_notes: notes }),
+      });
       const data = await r.json();
       if (r.ok) { setDone("approved"); onAction && onAction(); }
       else setDone("error:" + (data.detail || "Failed"));
@@ -144,7 +164,10 @@ function ObjectiveReviewBlock({ payload, onAction }) {
   async function handleRevise() {
     setBusy(true);
     try {
-      const r = await authFetch(`${API}${payload.reject_endpoint}`, { method: "POST", body: JSON.stringify({ review_status: "needs_revision", review_notes: notes }) });
+      const r = await authFetch(`${API}${payload.reject_endpoint}`, {
+        method: "POST",
+        body: JSON.stringify({ review_status: "needs_revision", review_notes: notes }),
+      });
       const data = await r.json();
       if (r.ok) { setDone("needs_revision"); onAction && onAction(); }
       else setDone("error:" + (data.detail || "Failed"));
@@ -156,8 +179,12 @@ function ObjectiveReviewBlock({ payload, onAction }) {
       <div style={{ fontWeight: 700, marginBottom: 4 }}>📋 Objective Review Request</div>
       <div style={{ fontWeight: 600, marginBottom: 2 }}>{payload.title}</div>
       {payload.description && <div style={{ color: "#9ca3af", marginBottom: 4 }}>{payload.description}</div>}
-      <div style={{ color: "#9ca3af", fontSize: "0.75rem", marginBottom: 2 }}>From: {payload.submitter_name || "Employee"}{payload.target_date ? ` · Due: ${payload.target_date}` : ""}</div>
-      {payload.key_results_summary && <div style={{ color: "#9ca3af", fontSize: "0.75rem", marginBottom: 6 }}>{payload.key_results_summary}</div>}
+      <div style={{ color: "#9ca3af", fontSize: "0.75rem", marginBottom: 2 }}>
+        From: {payload.submitter_name || "Employee"}{payload.target_date ? ` · Due: ${payload.target_date}` : ""}
+      </div>
+      {payload.key_results_summary && (
+        <div style={{ color: "#9ca3af", fontSize: "0.75rem", marginBottom: 6 }}>{payload.key_results_summary}</div>
+      )}
       {payload.progress != null && (
         <div style={{ marginBottom: 6 }}>
           <div style={{ height: 4, background: "rgba(0,0,0,.08)", borderRadius: 2, overflow: "hidden" }}>
@@ -166,12 +193,34 @@ function ObjectiveReviewBlock({ payload, onAction }) {
           <div style={{ fontSize: "0.72rem", color: "#9ca3af", marginTop: 2 }}>{payload.progress}% complete</div>
         </div>
       )}
-      {done === "approved" && <div style={{ color: "#34d399", marginTop: 4, fontWeight: 600 }}>✓ Approved</div>}
-      {done === "needs_revision" && <div style={{ color: "#f59e0b", marginTop: 4, fontWeight: 600 }}>↩ Sent back for revision</div>}
-      {done?.startsWith("error:") && <div style={{ color: "#f87171", marginTop: 4 }}>{done.slice(6)}</div>}
-      {!done && (
+
+      {/* ── Status display ── */}
+      {checking && (
+        <div style={{ color: "#9ca3af", marginTop: 4, fontSize: "0.75rem" }}>Checking status…</div>
+      )}
+      {!checking && done === "approved" && (
+        <div style={{ color: "#34d399", marginTop: 6, fontWeight: 700, fontSize: "0.85rem" }}>✅ Approved</div>
+      )}
+      {!checking && done === "needs_revision" && (
+        <div style={{ color: "#f59e0b", marginTop: 6, fontWeight: 700, fontSize: "0.85rem" }}>↩ Sent back for revision</div>
+      )}
+      {!checking && done === "cancelled" && (
+        <div style={{ color: "#9ca3af", marginTop: 6, fontWeight: 700, fontSize: "0.85rem" }}>🚫 Objective cancelled</div>
+      )}
+      {!checking && done?.startsWith("error:") && (
+        <div style={{ color: "#f87171", marginTop: 4 }}>{done.slice(6)}</div>
+      )}
+
+      {/* ── Action buttons — only shown if still pending ── */}
+      {!checking && !done && (
         <>
-          <textarea style={{ width: "100%", marginTop: 6, padding: "4px 6px", borderRadius: 4, border: "1px solid #e5e7eb", fontSize: "0.75rem", resize: "vertical", fontFamily: "inherit", boxSizing: "border-box" }} rows={2} placeholder="Notes (optional)..." value={notes} onChange={e => setNotes(e.target.value)} />
+          <textarea
+            style={{ width: "100%", marginTop: 6, padding: "4px 6px", borderRadius: 4, border: "1px solid #e5e7eb", fontSize: "0.75rem", resize: "vertical", fontFamily: "inherit", boxSizing: "border-box" }}
+            rows={2}
+            placeholder="Notes (optional)..."
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+          />
           {!showRevise ? (
             <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
               <button className="btn btnPrimary btnTiny" onClick={handleApprove} disabled={busy}>{busy ? "…" : "✓ Approve"}</button>
@@ -301,7 +350,7 @@ function MiniCalendar() {
 }
 
 /* ── SidebarMessages (unchanged logic, new panel wrapper) ── */
-function SidebarMessages({ onUnreadChange, onConvoChange }) {
+function SidebarMessages({ onUnreadChange }) {
   const user    = JSON.parse(localStorage.getItem("rafiki_user") || "{}");
   const myId    = user.id || user.user_id;
   const [conversations, setConversations] = useState([]);
@@ -323,10 +372,6 @@ function SidebarMessages({ onUnreadChange, onConvoChange }) {
       onUnreadChange && onUnreadChange(total);
     }).catch(() => {});
   };
-
-  useEffect(() => {
-    onConvoChange && onConvoChange(!!activeConvo);
-  }, [activeConvo]);
 
   const loadThread = (id) => {
     authFetch(`${API}/api/v1/messages/conversations/${id}/messages`).then(r => r.ok ? r.json() : []).then(d => {
@@ -426,7 +471,7 @@ function SidebarMessages({ onUnreadChange, onConvoChange }) {
       <div className="emp-msg-list">
         {conversations.length === 0 && <div className="emp-msg-empty">No conversations yet</div>}
         {conversations.map(c => (
-          <div key={c.id} className="emp-msg-item" onClick={() => { setThread([]); setActiveConvo(c); loadThread(c.id); setShowNewMsg(false); }}>
+          <div key={c.id} className="emp-msg-item" onClick={() => { setActiveConvo(c); setShowNewMsg(false); }}>
             <div className="emp-msg-item-top">
               <span className="emp-msg-item-name">{c.is_group && <span className="emp-msg-group-icon">G</span>}{c.display_name}</span>
               <span className="emp-msg-item-time">{timeAgo(c.last_message_at)}</span>
@@ -470,8 +515,6 @@ export default function EmployeeLayout() {
   const [mobileOpen,   setMobileOpen]   = useState(false);
   const [msgPanelOpen, setMsgPanelOpen] = useState(false);
   const [unreadCount,  setUnreadCount]  = useState(0);
-
-  const [msgConvoOpen, setMsgConvoOpen] = useState(false);
 
   const user      = JSON.parse(localStorage.getItem("rafiki_user") || "{}");
   const name      = user.full_name || user.name || user.email || "Employee";
@@ -608,8 +651,8 @@ export default function EmployeeLayout() {
           <span className="emp-msg-panel-title">Messages</span>
           <button className="emp-msg-panel-close" onClick={() => setMsgPanelOpen(false)}>✕</button>
         </div>
-        <SidebarMessages onUnreadChange={setUnreadCount} onConvoChange={setMsgConvoOpen} />
-        {!msgConvoOpen && <MiniCalendar />}
+        <SidebarMessages onUnreadChange={setUnreadCount} />
+        <MiniCalendar />
       </div>
     </div>
   );
