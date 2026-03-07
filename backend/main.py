@@ -79,6 +79,7 @@ from app.routers.usage import router as usage_router
 from app.routers.wellbeing import router as wellbeing_router
 from app.routers.coaching import router as coaching_router
 from app.routers.reports import router as reports_router
+from app.routers.notifications import router as notifications_router
 from app.models.notification import Notification
 
 app.include_router(auth_router)
@@ -104,6 +105,7 @@ app.include_router(usage_router)
 app.include_router(wellbeing_router)
 app.include_router(coaching_router)
 app.include_router(reports_router)
+app.include_router(notifications_router)
 
 @app.get("/__routes")
 def __routes():
