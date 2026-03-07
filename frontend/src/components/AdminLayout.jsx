@@ -41,6 +41,7 @@ const NAV_GROUPS = [
     label: "Analytics",
     icon: "📊",
     items: [
+      { to: "/admin/reports",      label: "HR Reports" },
       { to: "/admin/usage-report", label: "Usage Report" },
     ],
   },
