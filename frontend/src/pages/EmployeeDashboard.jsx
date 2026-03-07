@@ -132,7 +132,7 @@ export default function EmployeeDashboard() {
       authFetch(`${API}/api/v1/calendar/?start=${encodeURIComponent(now.toISOString())}&end=${encodeURIComponent(calEnd.toISOString())}`).then(r => r.ok ? r.json() : []),
       authFetch(`${API}/api/v1/announcements/`).then(r => r.ok ? r.json() : []),
       authFetch(`${API}/api/v1/timesheets/summary/weekly?week_start=${weekStart}`).then(r => r.ok ? r.json() : null),
-      authFetch(`${API}/api/v1/leave/balances`).then(r => r.ok ? r.json() : null),
+      authFetch(`${API}/api/v1/leave/balance`).then(r => r.ok ? r.json() : null),
     ]).then(([objR, evR, annR, tsR, lbR]) => {
       if (objR.status === "fulfilled") setObjectives(Array.isArray(objR.value) ? objR.value : []);
       if (evR.status  === "fulfilled") setEvents(Array.isArray(evR.value) ? evR.value : []);
