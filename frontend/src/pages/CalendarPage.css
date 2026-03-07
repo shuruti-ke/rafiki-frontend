@@ -53,3 +53,33 @@
 .calp-form-check input[type="checkbox"] { width: auto; }
 .calp-form-check label { font-size: 0.8rem; color: var(--text); margin: 0; }
 .calp-modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; }
+/* ── CalendarPage.css Sprint 4 additions ──
+   Append these rules to your existing CalendarPage.css
+*/
+
+/* Google sync panel */
+.calp-google-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.calp-google-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.88rem;
+}
+
+/* Completed event styling */
+.calp-event-card.calp-event-completed {
+  opacity: 0.6;
+}
+.calp-event-card.calp-event-completed .calp-event-title {
+  text-decoration: line-through;
+}
+
