@@ -1,15 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
+import { API, authFetch } from "../api.js";
 import "./AdminLeave.css";
-
-const API = import.meta.env.VITE_API_URL || "https://rafiki-backend.onrender.com";
-
-function authFetch(url, opts = {}) {
-  const token = localStorage.getItem("rafiki_token");
-  return fetch(url, {
-    ...opts,
-    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(opts.headers || {}) },
-  });
-}
 
 const STATUS_BADGE = {
   pending:   { label: "Pending Review", cls: "badge-pending" },
@@ -51,7 +42,7 @@ export default function AdminLeave() {
         authFetch(`${API}/api/v1/leave/admin/applications`),
         authFetch(`${API}/api/v1/leave/admin/summary`),
         authFetch(`${API}/api/v1/leave/policy`),
-        authFetch(`${API}/api/v1/kb/documents`),
+        authFetch(`${API}/api/v1/knowledge-base/`),
       ]);
       if (appRes.ok) setApplications((await appRes.json()).applications || []);
       if (sumRes.ok) setSummary(await sumRes.json());
@@ -72,7 +63,7 @@ export default function AdminLeave() {
           setSelectedKbDoc(d.policy.kb_document_id || "");
         }
       }
-      if (kbRes.ok) setKbDocs((await kbRes.json()).documents || []);
+      if (kbRes.ok) { const d = await kbRes.json(); setKbDocs(Array.isArray(d) ? d : d.documents || []); }
     } catch (e) { console.error(e); }
     setLoading(false);
   }, []);
