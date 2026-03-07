@@ -16,6 +16,7 @@ import AdminPayroll from "./pages/AdminPayroll.jsx";
 import AdminUsageReport from "./pages/AdminUsageReport.jsx";
 import AdminLeave from "./pages/AdminLeave.jsx";
 import AdminWellbeing from "./pages/AdminWellbeing.jsx";
+import AdminReports from "./pages/AdminReports.jsx";
 import AdminTimesheets from "./pages/AdminTimesheets.jsx";
 import ManagerTimesheets from "./pages/ManagerTimesheets.jsx";
 import EmployeeKnowledgeBase from "./pages/EmployeeKnowledgeBase.jsx";
@@ -126,6 +127,7 @@ export default function App() {
           <Route path="timesheets" element={<AdminTimesheets />} />
           <Route path="leave" element={<AdminLeave />} />
           <Route path="wellbeing" element={<AdminWellbeing />} />
+          <Route path="reports" element={<AdminReports />} />
         </Route>
       </Routes>
     </BrowserRouter>
