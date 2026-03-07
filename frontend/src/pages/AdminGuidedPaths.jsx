@@ -18,7 +18,10 @@ function emptyStep() {
 export default function AdminGuidedPaths() {
   const [modules, setModules] = useState([]);
   const [showModal, setShowModal] = useState(false);
-  const [editingModule, setEditingModule] = useState(null); // null = create, object = edit
+  const [editingModule, setEditingModule] = useState(null);
+
+  // ── Sprint 4: completions view state ──
+  const [completionsModule, setCompletionsModule] = useState(null); // module object | null
 
   // Form state
   const [name, setName] = useState("");
@@ -50,7 +53,6 @@ export default function AdminGuidedPaths() {
   }
 
   async function openEdit(mod) {
-    // Fetch full detail with steps
     const res = await authFetch(`${API}/api/v1/guided-paths/modules/${mod.id}`);
     if (!res.ok) return;
     const detail = await res.json();
@@ -122,7 +124,6 @@ export default function AdminGuidedPaths() {
     if (res.ok) fetchModules();
   }
 
-  // Step builder helpers
   function updateStep(index, field, value) {
     setSteps((prev) => prev.map((s, i) => (i === index ? { ...s, [field]: value } : s)));
   }
@@ -139,6 +140,16 @@ export default function AdminGuidedPaths() {
       [arr[index], arr[target]] = [arr[target], arr[index]];
       return arr;
     });
+  }
+
+  // ── Sprint 4: show completions subview ──
+  if (completionsModule) {
+    return (
+      <CompletionsView
+        module={completionsModule}
+        onBack={() => { setCompletionsModule(null); fetchModules(); }}
+      />
+    );
   }
 
   return (
@@ -185,16 +196,27 @@ export default function AdminGuidedPaths() {
                 <td>{mod.steps?.length ?? "—"}</td>
                 <td>{mod.duration_minutes} min</td>
                 <td>
-                  {mod.org_id ? (
-                    <div className="agp-actions">
-                      <button className="btn btnTiny" onClick={() => openEdit(mod)}>Edit</button>
-                      {mod.is_active && (
-                        <button className="btn btnTiny miniBtnDanger" onClick={() => handleDeactivate(mod)}>Deactivate</button>
-                      )}
-                    </div>
-                  ) : (
-                    <span className="agp-muted">—</span>
-                  )}
+                  <div className="agp-actions">
+                    {/* Sprint 4: completions button on every module */}
+                    <button
+                      className="btn btnTiny"
+                      onClick={() => setCompletionsModule(mod)}
+                    >
+                      Completions
+                    </button>
+                    {mod.org_id ? (
+                      <>
+                        <button className="btn btnTiny" onClick={() => openEdit(mod)}>Edit</button>
+                        {mod.is_active && (
+                          <button className="btn btnTiny miniBtnDanger" onClick={() => handleDeactivate(mod)}>
+                            Deactivate
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      <span className="agp-muted">—</span>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))
@@ -202,14 +224,13 @@ export default function AdminGuidedPaths() {
         </tbody>
       </table>
 
-      {/* Create / Edit Modal */}
+      {/* Create / Edit Modal — unchanged */}
       {showModal && (
         <div className="agp-modal-overlay" onClick={() => setShowModal(false)}>
           <div className="agp-modal" onClick={(e) => e.stopPropagation()}>
             <h2>{editingModule ? "Edit Module" : "Create Module"}</h2>
 
             <form onSubmit={handleSave}>
-              {/* Basic info */}
               <div className="agp-form-grid">
                 <div className="agp-field">
                   <label>Name *</label>
@@ -243,7 +264,6 @@ export default function AdminGuidedPaths() {
                 <input type="text" value={triggers} onChange={(e) => setTriggers(e.target.value)} placeholder="e.g. anxiety, stress, burnout" />
               </div>
 
-              {/* Step builder */}
               <div className="agp-step-builder">
                 <div className="agp-step-builder-header">
                   <h3>Steps</h3>
@@ -300,6 +320,152 @@ export default function AdminGuidedPaths() {
             </form>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Sprint 4 — Completions subview
+// Replaces the main list when user clicks "Completions" on a module row
+// ─────────────────────────────────────────────────────────────────────
+
+function CompletionsView({ module, onBack }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
+
+  useEffect(() => {
+    authFetch(`${API}/api/v1/guided-paths/admin/modules/${module.id}/completions`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (d) setData(d); setLoading(false); });
+  }, [module.id]);
+
+  async function handleExport() {
+    setExporting(true);
+    const res = await authFetch(
+      `${API}/api/v1/guided-paths/admin/modules/${module.id}/completions/export`
+    );
+    if (res.ok) {
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const cd = res.headers.get("content-disposition") || "";
+      const match = cd.match(/filename=([^;]+)/);
+      a.download = match ? match[1].trim() : "completions.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+    setExporting(false);
+  }
+
+  const completions = data?.completions || [];
+  const done = completions.filter((c) => c.completed_at);
+  const inProgress = completions.filter((c) => !c.completed_at);
+
+  const avgPre = done.filter((c) => c.pre_rating != null).length
+    ? (done.filter((c) => c.pre_rating != null).reduce((s, c) => s + c.pre_rating, 0) /
+       done.filter((c) => c.pre_rating != null).length).toFixed(1)
+    : null;
+
+  const avgPost = done.filter((c) => c.post_rating != null).length
+    ? (done.filter((c) => c.post_rating != null).reduce((s, c) => s + c.post_rating, 0) /
+       done.filter((c) => c.post_rating != null).length).toFixed(1)
+    : null;
+
+  return (
+    <div className="agp-page">
+      {/* Header */}
+      <div className="agp-header">
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+          <button className="btn btnTiny" onClick={onBack}>← Back</button>
+          <h1 style={{ margin: 0 }}>Completions: {module.name}</h1>
+        </div>
+        <button
+          className="btn btnPrimary"
+          onClick={handleExport}
+          disabled={exporting || loading}
+        >
+          {exporting ? "Exporting..." : "⬇ Export CSV"}
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="agp-empty" style={{ padding: "2rem" }}>Loading...</div>
+      ) : (
+        <>
+          {/* Stats row */}
+          <div className="agp-completions-stats">
+            <div className="agp-stat">
+              <span className="agp-stat-val">{done.length}</span>
+              <span className="agp-stat-label">Completed</span>
+            </div>
+            <div className="agp-stat">
+              <span className="agp-stat-val">{inProgress.length}</span>
+              <span className="agp-stat-label">In Progress</span>
+            </div>
+            <div className="agp-stat">
+              <span className="agp-stat-val">{data?.total_steps ?? "—"}</span>
+              <span className="agp-stat-label">Total Steps</span>
+            </div>
+            {avgPre && (
+              <div className="agp-stat">
+                <span className="agp-stat-val">{avgPre} → {avgPost ?? "—"}</span>
+                <span className="agp-stat-label">Avg Rating (pre → post)</span>
+              </div>
+            )}
+          </div>
+
+          {/* Table */}
+          <table className="agp-table">
+            <thead>
+              <tr>
+                <th>Employee</th>
+                <th>Started</th>
+                <th>Completed</th>
+                <th>Steps Reached</th>
+                <th>Pre Rating</th>
+                <th>Post Rating</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {completions.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="agp-empty">No completions yet for this module.</td>
+                </tr>
+              )}
+              {completions.map((c) => (
+                <tr key={c.completion_id}>
+                  <td>
+                    <strong>{c.employee_name || "Unknown"}</strong>
+                    {c.employee_email && (
+                      <div style={{ fontSize: "0.75rem", color: "var(--muted, #94a3b8)", marginTop: 1 }}>
+                        {c.employee_email}
+                      </div>
+                    )}
+                  </td>
+                  <td>{c.started_at ? new Date(c.started_at).toLocaleDateString() : "—"}</td>
+                  <td>{c.completed_at ? new Date(c.completed_at).toLocaleDateString() : "—"}</td>
+                  <td>
+                    {c.step_reached ?? 0} / {data?.total_steps ?? "?"}
+                  </td>
+                  <td>{c.pre_rating ?? "—"}</td>
+                  <td>{c.post_rating ?? "—"}</td>
+                  <td>
+                    {c.completed_at ? (
+                      <span className="agp-badge agp-badge-active">Done</span>
+                    ) : (
+                      <span className="agp-badge agp-badge-custom">In Progress</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
       )}
     </div>
   );
