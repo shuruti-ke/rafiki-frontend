@@ -1,25 +1,50 @@
-.mgr-team { max-width: 800px; }
-.mgr-team-title { font-weight: 800; font-size: 22px; margin-bottom: 4px; }
-.mgr-team-sub { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
+/* ═══════════════════════════════════════
+   ManagerTeam.css — Sprint 5 redesign
+   ═══════════════════════════════════════ */
 
+.mgr-team { max-width: 860px; }
+
+.mgr-team-title {
+  font-family: "Playfair Display", serif;
+  font-weight: 700;
+  font-size: 26px;
+  margin: 0 0 6px;
+  color: #1f2937;
+}
+
+.mgr-team-sub {
+  color: #9ca3af;
+  font-size: 14px;
+  margin: 0 0 28px;
+}
+
+/* Empty */
 .mgr-team-empty {
   text-align: center;
-  padding: 40px 0;
-  color: var(--muted);
+  padding: 60px 0;
+  color: #9ca3af;
 }
 .mgr-team-empty-hint { font-size: 13px; margin-top: 8px; }
 
+/* List */
 .mgr-team-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
+/* Card */
 .mgr-team-card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 14px;
+  background: #fff;
+  border: 1px solid #ede9fe;
+  border-radius: 16px;
   overflow: hidden;
+  box-shadow: 0 1px 6px rgba(139,92,246,.05);
+  transition: box-shadow 0.15s;
+}
+
+.mgr-team-card:hover {
+  box-shadow: 0 4px 16px rgba(139,92,246,.10);
 }
 
 .mgr-team-card-header {
@@ -28,88 +53,92 @@
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 14px 18px;
+  padding: 16px 20px;
   width: 100%;
   box-sizing: border-box;
+  transition: background 0.15s;
 }
 
 .mgr-team-card-header:hover {
-  background: rgba(0, 0, 0, 0.02);
+  background: #faf9ff;
 }
 
+/* Avatar */
 .mgr-team-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 999px;
-  background: rgba(31, 191, 184, 0.15);
-  color: #1fbfb8;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #8b5cf6, #1fbfb8);
+  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 800;
-  font-size: 15px;
+  font-family: "Playfair Display", serif;
+  font-weight: 700;
+  font-size: 17px;
   flex-shrink: 0;
 }
 
-.mgr-team-info {
-  flex: 1;
-  min-width: 0;
-}
+.mgr-team-info { flex: 1; min-width: 0; }
 
 .mgr-team-name {
   font-weight: 700;
   font-size: 15px;
+  color: #1f2937;
 }
 
 .mgr-team-meta {
-  color: var(--muted);
-  font-size: 13px;
-  margin-top: 1px;
+  color: #9ca3af;
+  font-size: 12px;
+  margin-top: 2px;
 }
 
-.mgr-team-rating {
-  flex-shrink: 0;
-}
+.mgr-team-rating { flex-shrink: 0; }
 
 .mgr-rating-badge {
   font-size: 12px;
   font-weight: 700;
-  padding: 3px 10px;
+  padding: 4px 12px;
   border-radius: 999px;
-  background: rgba(31, 191, 184, 0.12);
+  background: rgba(31,191,184,.12);
   color: #1fbfb8;
+  border: 1px solid rgba(31,191,184,.2);
 }
 
 .mgr-rating-none {
   font-size: 12px;
-  color: var(--muted);
+  color: #d1d5db;
 }
 
 .mgr-expand-icon {
-  color: var(--muted);
-  font-size: 14px;
-  transition: transform 0.15s;
+  color: #c4b5fd;
+  font-size: 13px;
+  transition: transform 0.2s;
+  flex-shrink: 0;
 }
-.mgr-expand-icon.open {
-  transform: rotate(180deg);
-}
+.mgr-expand-icon.open { transform: rotate(180deg); }
 
 /* Expanded detail */
 .mgr-team-detail {
-  padding: 0 18px 18px;
-  border-top: 1px solid var(--border);
+  padding: 0 20px 20px;
+  border-top: 1px solid #f3f0ff;
+  background: #faf9ff;
 }
 
 .mgr-team-detail h3 {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
   margin: 14px 0 10px;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .mgr-detail-loading,
 .mgr-detail-empty {
-  color: var(--muted);
+  color: #9ca3af;
   font-size: 13px;
+  padding: 8px 0;
 }
 
 .mgr-eval-list {
@@ -119,27 +148,32 @@
 }
 
 .mgr-eval-card {
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: rgba(0, 0, 0, 0.02);
+  padding: 14px 16px;
+  border: 1px solid #ede9fe;
+  border-radius: 12px;
+  background: #fff;
 }
 
 .mgr-eval-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
+}
+
+.mgr-eval-header strong {
+  font-size: 13px;
+  color: #1f2937;
 }
 
 .mgr-eval-field {
   font-size: 13px;
-  color: var(--muted);
-  margin-top: 4px;
-  line-height: 1.4;
+  color: #6b7280;
+  margin-top: 6px;
+  line-height: 1.5;
 }
 
 .mgr-eval-label {
-  color: var(--text);
-  font-weight: 600;
+  color: #374151;
+  font-weight: 700;
 }
