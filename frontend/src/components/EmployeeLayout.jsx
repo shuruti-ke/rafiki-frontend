@@ -597,7 +597,7 @@ export default function EmployeeLayout() {
       </div>
 
       {/* ── Messages slide-out panel ── */}
-      <div className={`emp-msg-panel${msgPanelOpen ? " open" : ""}`} onMouseDown={e => e.stopPropagation()}>
+      <div className={`emp-msg-panel${msgPanelOpen ? " open" : ""}`}>
         <div className="emp-msg-panel-header">
           <span className="emp-msg-panel-title">Messages</span>
           <button className="emp-msg-panel-close" onClick={() => setMsgPanelOpen(false)}>✕</button>

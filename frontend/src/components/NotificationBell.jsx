@@ -80,7 +80,11 @@ export default function NotificationBell() {
   useEffect(() => {
     if (!open) return;
     const handler = (e) => {
-      if (panelRef.current && !panelRef.current.contains(e.target)) setOpen(false);
+      if (panelRef.current && !panelRef.current.contains(e.target)) {
+        // Don't close if the click was inside the messages panel
+        if (e.target.closest && e.target.closest(".emp-msg-panel")) return;
+        setOpen(false);
+      }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
