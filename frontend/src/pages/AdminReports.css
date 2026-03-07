@@ -1,0 +1,429 @@
+/*
+ * frontend/src/pages/AdminReports.css
+ * Sprint 5 — Rafiki HR | HR Reporting Dashboard styles
+ * Matches AdminDashboard.css conventions exactly (light theme, same font vars).
+ */
+
+/* ── Layout ────────────────────────────────────────────────────────── */
+
+.ar-wrap {
+  padding: 32px 28px 60px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.ar-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 28px;
+  flex-wrap: wrap;
+}
+
+.ar-heading {
+  font-family: 'Playfair Display', serif;
+  font-size: 26px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0 0 4px;
+}
+
+.ar-subheading {
+  font-size: 14px;
+  color: #6b7280;
+  margin: 0;
+}
+
+.ar-refresh-note {
+  margin-left: 4px;
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.ar-refresh-btn {
+  padding: 9px 18px;
+  background: linear-gradient(135deg, #8b5cf6 0%, #1fbfb8 100%);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.15s;
+}
+.ar-refresh-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.ar-refresh-btn:not(:disabled):hover { opacity: 0.88; }
+
+/* ── Grid ──────────────────────────────────────────────────────────── */
+
+.ar-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+@media (max-width: 860px) {
+  .ar-grid { grid-template-columns: 1fr; }
+}
+
+/* Last panel (wellbeing, 5th) spans full width */
+.ar-grid > *:last-child {
+  grid-column: 1 / -1;
+}
+
+/* ── Panel shell ───────────────────────────────────────────────────── */
+
+.ar-panel {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.ar-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 20px;
+  border-bottom: 1px solid #f3f4f6;
+  background: #fafafa;
+}
+
+.ar-panel-header::before {
+  content: '';
+  display: block;
+  width: 3px;
+  height: 20px;
+  border-radius: 2px;
+  background: var(--panel-color, #8b5cf6);
+  flex-shrink: 0;
+}
+
+.ar-panel-icon {
+  font-size: 16px;
+}
+
+.ar-panel-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.ar-panel-body {
+  padding: 18px 20px 20px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* ── Skeleton loading ──────────────────────────────────────────────── */
+
+.ar-skeleton-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 6px 0;
+}
+
+.ar-skeleton {
+  height: 14px;
+  background: linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%);
+  background-size: 200% 100%;
+  animation: ar-shimmer 1.4s infinite;
+  border-radius: 6px;
+}
+
+.ar-skeleton--short { width: 55%; }
+
+@keyframes ar-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── Stat pills ────────────────────────────────────────────────────── */
+
+.ar-stat-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.ar-stat-pill {
+  flex: 1;
+  min-width: 90px;
+  background: #f9fafb;
+  border: 1px solid #f0f0f0;
+  border-radius: 12px;
+  padding: 10px 14px;
+  border-top: 3px solid var(--pill-color, #8b5cf6);
+}
+
+.ar-stat-val {
+  font-size: 22px;
+  font-weight: 700;
+  color: #111827;
+  line-height: 1.1;
+  margin-bottom: 2px;
+}
+
+.ar-stat-label {
+  font-size: 11px;
+  color: #6b7280;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  line-height: 1.3;
+}
+
+/* ── Horizontal bars ───────────────────────────────────────────────── */
+
+.ar-hbar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 7px;
+}
+
+.ar-hbar-label {
+  width: 110px;
+  font-size: 12.5px;
+  color: #374151;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+}
+
+.ar-hbar-track {
+  flex: 1;
+  height: 8px;
+  background: #f3f4f6;
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.ar-hbar-fill {
+  height: 100%;
+  border-radius: 99px;
+  transition: width 0.4s ease;
+}
+
+.ar-hbar-val {
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+  min-width: 32px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* ── Subsection labels ─────────────────────────────────────────────── */
+
+.ar-subsection-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #9ca3af;
+  margin-bottom: 10px;
+}
+
+/* ── Chip row ──────────────────────────────────────────────────────── */
+
+.ar-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.ar-chip {
+  background: color-mix(in srgb, var(--chip-color, #8b5cf6) 10%, #fff);
+  border: 1px solid color-mix(in srgb, var(--chip-color, #8b5cf6) 25%, #e5e7eb);
+  color: var(--chip-color, #8b5cf6);
+  border-radius: 100px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* ── Pie chart layout ──────────────────────────────────────────────── */
+
+.ar-pie-wrap {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.ar-pie-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 140px;
+}
+
+.ar-pie-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #374151;
+}
+
+.ar-pie-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.ar-pie-legend-item strong {
+  margin-left: auto;
+  font-size: 13px;
+  color: #111827;
+}
+
+/* ── Delta rows (guided paths) ─────────────────────────────────────── */
+
+.ar-delta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid #f3f4f6;
+  font-size: 13px;
+}
+
+.ar-delta-row:last-child { border-bottom: none; }
+
+.ar-delta-name {
+  color: #374151;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-right: 8px;
+}
+
+.ar-delta-val {
+  font-size: 14px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+/* ── Period toggle (wellbeing) ─────────────────────────────────────── */
+
+.ar-period-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.ar-period-btn {
+  padding: 5px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 100px;
+  background: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.ar-period-btn--active {
+  background: linear-gradient(135deg, #8b5cf6 0%, #1fbfb8 100%);
+  color: #fff;
+  border-color: transparent;
+}
+
+.ar-period-btn:not(.ar-period-btn--active):hover {
+  border-color: #8b5cf6;
+  color: #8b5cf6;
+}
+
+/* ── Alert banner ──────────────────────────────────────────────────── */
+
+.ar-alert-banner {
+  margin-top: 14px;
+  padding: 10px 14px;
+  background: color-mix(in srgb, var(--alert-color, #f87171) 8%, #fff);
+  border: 1px solid color-mix(in srgb, var(--alert-color, #f87171) 30%, #fff);
+  border-radius: 10px;
+  font-size: 12.5px;
+  color: #374151;
+  line-height: 1.5;
+}
+
+/* ── Tooltip ───────────────────────────────────────────────────────── */
+
+.ar-tooltip {
+  background: #111827;
+  color: #fff;
+  padding: 9px 13px;
+  border-radius: 10px;
+  font-size: 12px;
+  box-shadow: 0 8px 28px rgba(139,92,246,.18);
+  border: 1px solid rgba(139,92,246,.22);
+}
+
+.ar-tooltip-label {
+  font-weight: 700;
+  margin-bottom: 6px;
+  color: #a78bfa;
+}
+
+.ar-tooltip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+  color: #d1d5db;
+}
+
+.ar-tooltip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 99px;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+/* ── Error banner ──────────────────────────────────────────────────── */
+
+.ar-error-banner {
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-size: 13px;
+  color: #b91c1c;
+  margin-bottom: 20px;
+}
+
+.ar-error-retry {
+  background: none;
+  border: none;
+  color: #8b5cf6;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0;
+  text-decoration: underline;
+}
+
+/* ── Empty state ───────────────────────────────────────────────────── */
+
+.ar-empty {
+  font-size: 13px;
+  color: #9ca3af;
+  text-align: center;
+  padding: 24px 0;
+}
