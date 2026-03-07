@@ -1,21 +1,37 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
+import { useParams } from "react-router-dom";
 import { API, authFetch } from "../api.js";
 import "./EmployeeAnnouncements.css";
 
 export default function EmployeeAnnouncements() {
+  const { annId } = useParams(); // Sprint 2: deep-link from reminder email
+
   const [announcements, setAnnouncements] = useState([]);
   const [selected, setSelected] = useState(null);
   const [readIds, setReadIds] = useState(new Set());
   const [trainingAssignments, setTrainingAssignments] = useState([]);
 
+  // Used to auto-open the deep-linked announcement once the list loads
+  const deepLinkHandled = useRef(false);
+
   async function fetchAnnouncements() {
     const res = await authFetch(`${API}/api/v1/announcements/`);
     const data = await res.json();
-    // Only show published announcements
-    setAnnouncements(data.filter((a) => a.published_at));
+    return data.filter((a) => a.published_at);
   }
 
-  useEffect(() => { fetchAnnouncements(); }, []);
+  useEffect(() => {
+    fetchAnnouncements().then((data) => {
+      setAnnouncements(data);
+
+      // Sprint 2: if arriving from a reminder email deep-link, auto-open that announcement
+      if (annId && !deepLinkHandled.current) {
+        deepLinkHandled.current = true;
+        const target = data.find((a) => a.id === annId);
+        if (target) handleSelect(target);
+      }
+    });
+  }, []);
 
   async function handleSelect(ann) {
     // Auto-mark as read via GET detail endpoint
@@ -36,11 +52,9 @@ export default function EmployeeAnnouncements() {
 
   async function handleCompleteTraining(annId) {
     await authFetch(`${API}/api/v1/announcements/${annId}/complete-training`, { method: "POST" });
-    // Refresh
     if (selected) handleSelect(selected);
   }
 
-  // Check if current user (demo user 1) has a pending training assignment
   function getMyAssignment(annId) {
     return trainingAssignments.find((t) => t.announcement_id === annId && t.user_id === 1);
   }
