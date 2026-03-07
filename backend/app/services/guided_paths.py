@@ -111,8 +111,7 @@ def start_session(
     # UUID org_id for UUID tables
     org_uuid = _as_uuid(org_id)
 
-    # Use UUIDs directly (columns are UUID type)
-    user_uuid = _as_uuid(user_id)
+    # UUID org_id already set above for context_pack
 
     session_vars = {
         "language": language or "en",
@@ -128,7 +127,7 @@ def start_session(
     composed_steps = compose_module(blueprint_steps, context_pack, module.name)
 
     session = GuidedPathSession(
-        user_id=user_uuid,
+        user_id=_as_uuid(user_id),
         org_id=org_uuid,
         module_id=module_id,
         current_step=0,
