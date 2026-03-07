@@ -301,7 +301,7 @@ function MiniCalendar() {
 }
 
 /* ── SidebarMessages (unchanged logic, new panel wrapper) ── */
-function SidebarMessages({ onUnreadChange }) {
+function SidebarMessages({ onUnreadChange, onConvoChange }) {
   const user    = JSON.parse(localStorage.getItem("rafiki_user") || "{}");
   const myId    = user.id || user.user_id;
   const [conversations, setConversations] = useState([]);
@@ -323,6 +323,10 @@ function SidebarMessages({ onUnreadChange }) {
       onUnreadChange && onUnreadChange(total);
     }).catch(() => {});
   };
+
+  useEffect(() => {
+    onConvoChange && onConvoChange(!!activeConvo);
+  }, [activeConvo]);
 
   const loadThread = (id) => {
     authFetch(`${API}/api/v1/messages/conversations/${id}/messages`).then(r => r.ok ? r.json() : []).then(d => {
@@ -467,6 +471,8 @@ export default function EmployeeLayout() {
   const [msgPanelOpen, setMsgPanelOpen] = useState(false);
   const [unreadCount,  setUnreadCount]  = useState(0);
 
+  const [msgConvoOpen, setMsgConvoOpen] = useState(false);
+
   const user      = JSON.parse(localStorage.getItem("rafiki_user") || "{}");
   const name      = user.full_name || user.name || user.email || "Employee";
   const initials  = name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
@@ -602,8 +608,8 @@ export default function EmployeeLayout() {
           <span className="emp-msg-panel-title">Messages</span>
           <button className="emp-msg-panel-close" onClick={() => setMsgPanelOpen(false)}>✕</button>
         </div>
-        <SidebarMessages onUnreadChange={setUnreadCount} />
-        <MiniCalendar />
+        <SidebarMessages onUnreadChange={setUnreadCount} onConvoChange={setMsgConvoOpen} />
+        {!msgConvoOpen && <MiniCalendar />}
       </div>
     </div>
   );
