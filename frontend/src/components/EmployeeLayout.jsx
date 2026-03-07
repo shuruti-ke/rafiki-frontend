@@ -581,7 +581,7 @@ export default function EmployeeLayout() {
             {/* Messages icon */}
             <button
               className="emp-topbar-icon-btn"
-              onClick={() => setMsgPanelOpen(o => !o)}
+              onClick={(e) => { e.stopPropagation(); setMsgPanelOpen(o => !o); }}
               title="Messages"
             >
               💬
