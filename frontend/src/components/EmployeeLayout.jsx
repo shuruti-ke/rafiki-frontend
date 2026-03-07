@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { API, authFetch } from "../api.js";
 import NotificationBell from "./NotificationBell.jsx";
@@ -596,15 +597,18 @@ export default function EmployeeLayout() {
         </div>
       </div>
 
-      {/* ── Messages slide-out panel ── */}
-      <div className={`emp-msg-panel${msgPanelOpen ? " open" : ""}`}>
-        <div className="emp-msg-panel-header">
-          <span className="emp-msg-panel-title">Messages</span>
-          <button className="emp-msg-panel-close" onClick={() => setMsgPanelOpen(false)}>✕</button>
-        </div>
-        <SidebarMessages onUnreadChange={setUnreadCount} />
-        <MiniCalendar />
-      </div>
+      {/* ── Messages slide-out panel (portal → escapes any stacking context) ── */}
+      {createPortal(
+        <div className={`emp-msg-panel${msgPanelOpen ? " open" : ""}`}>
+          <div className="emp-msg-panel-header">
+            <span className="emp-msg-panel-title">Messages</span>
+            <button className="emp-msg-panel-close" onClick={() => setMsgPanelOpen(false)}>✕</button>
+          </div>
+          <SidebarMessages onUnreadChange={setUnreadCount} />
+          <MiniCalendar />
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
