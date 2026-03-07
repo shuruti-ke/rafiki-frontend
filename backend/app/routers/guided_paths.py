@@ -22,8 +22,7 @@ from app.services.guided_paths import (
 from app.services.module_router import suggest_modules
 from app.services.seed_modules import seed_canonical_modules
 from app.services.audit import log_action
-from app.models.guided_paths import GuidedModule, GuidedPathSession
-from app.models.module_completion import ModuleCompletion
+from app.models.guided_path import GuidedModule, GuidedPathSession
 from app.models.user import User
 
 router = APIRouter(prefix="/api/v1/guided-paths", tags=["Guided Paths"])
@@ -218,13 +217,13 @@ def admin_module_completions(
         raise HTTPException(403, "HR admin only")
 
     rows = (
-        db.query(ModuleCompletion, User)
-        .outerjoin(User, ModuleCompletion.user_id == User.user_id)
+        db.query(GuidedPathSession, User)
+        .outerjoin(User, GuidedPathSession.user_id == User.user_id)
         .filter(
-            ModuleCompletion.module_id == module_id,
-            ModuleCompletion.org_id == org_id,
+            GuidedPathSession.module_id == module_id,
+            GuidedPathSession.org_id == org_id,
         )
-        .order_by(ModuleCompletion.completed_at.desc().nullslast())
+        .order_by(GuidedPathSession.completed_at.desc().nullslast())
         .all()
     )
 
@@ -237,19 +236,17 @@ def admin_module_completions(
         "total_steps": total_steps,
         "completions": [
             {
-                "completion_id": str(c.completion_id),
-                "user_id": str(c.user_id),
+                "completion_id": str(s.id),
+                "user_id": str(s.user_id),
                 "employee_name": u.name if u else "Unknown",
                 "employee_email": u.email if u else None,
-                "started_at": c.started_at.isoformat() if c.started_at else None,
-                "completed_at": c.completed_at.isoformat() if c.completed_at else None,
-                "step_reached": c.step_reached,
-                "pre_rating": c.pre_rating,
-                "post_rating": c.post_rating,
-                "passed": getattr(c, "passed", None),
-                "exported_at": getattr(c, "exported_at", None),
+                "started_at": s.started_at.isoformat() if s.started_at else None,
+                "completed_at": s.completed_at.isoformat() if s.completed_at else None,
+                "step_reached": s.current_step,
+                "pre_rating": s.pre_rating,
+                "post_rating": s.post_rating,
             }
-            for c, u in rows
+            for s, u in rows
         ],
     }
 
@@ -274,46 +271,39 @@ def admin_export_completions(
     if not module:
         raise HTTPException(404, "Module not found")
 
+    now = datetime.utcnow()
     rows = (
-        db.query(ModuleCompletion, User)
-        .outerjoin(User, ModuleCompletion.user_id == User.user_id)
+        db.query(GuidedPathSession, User)
+        .outerjoin(User, GuidedPathSession.user_id == User.user_id)
         .filter(
-            ModuleCompletion.module_id == module_id,
-            ModuleCompletion.org_id == org_id,
+            GuidedPathSession.module_id == module_id,
+            GuidedPathSession.org_id == org_id,
         )
-        .order_by(ModuleCompletion.completed_at.desc().nullslast())
+        .order_by(GuidedPathSession.completed_at.desc().nullslast())
         .all()
     )
-
-    # Mark all exported rows
-    now = datetime.utcnow()
-    for c, _ in rows:
-        if not getattr(c, "exported_at", None):
-            c.exported_at = now
-    db.commit()
 
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow([
         "Employee Name", "Email", "Module", "Started At",
         "Completed At", "Steps Reached", "Total Steps",
-        "Pre Rating", "Post Rating", "Passed",
+        "Pre Rating", "Post Rating",
     ])
 
     total_steps = len(module.steps) if module.steps else 0
 
-    for c, u in rows:
+    for s, u in rows:
         writer.writerow([
             u.name if u else "",
             u.email if u else "",
             module.name,
-            c.started_at.strftime("%Y-%m-%d %H:%M") if c.started_at else "",
-            c.completed_at.strftime("%Y-%m-%d %H:%M") if c.completed_at else "Incomplete",
-            c.step_reached or 0,
+            s.started_at.strftime("%Y-%m-%d %H:%M") if s.started_at else "",
+            s.completed_at.strftime("%Y-%m-%d %H:%M") if s.completed_at else "Incomplete",
+            s.current_step or 0,
             total_steps,
-            c.pre_rating or "",
-            c.post_rating or "",
-            "Yes" if getattr(c, "passed", None) else ("No" if getattr(c, "passed", None) is False else ""),
+            s.pre_rating or "",
+            s.post_rating or "",
         ])
 
     output.seek(0)
