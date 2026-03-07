@@ -22,6 +22,7 @@ const NAV_GROUPS = [
     items: [
       { to: "/admin/announcements",  label: "Announcements" },
       { to: "/admin/knowledge-base", label: "Knowledge Base" },
+      { to: "/admin/toolkit",        label: "HR Toolkit" },
       { to: "/admin/guided-paths",   label: "Guided Paths" },
       { to: "/admin/wellbeing",      label: "Wellbeing" },
       { to: "/admin/calendar",       label: "Calendar" },
