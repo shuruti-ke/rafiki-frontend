@@ -24,6 +24,7 @@ from app.services.seed_modules import seed_canonical_modules
 from app.services.audit import log_action
 from app.models.guided_path import GuidedModule, GuidedPathSession
 from app.models.user import User
+from app.routers.notifications import _insert_notification
 
 router = APIRouter(prefix="/api/v1/guided-paths", tags=["Guided Paths"])
 
@@ -402,6 +403,17 @@ def advance_session_step(
 
     result = advance_step(db, session, module, payload.response)
     if result["completed"]:
+        # ── Sprint 5: notify employee of completion ───────────────────
+        try:
+            _insert_notification(db, user_id=session.user_id, org_id=session.org_id,
+                kind="guided_path_assigned",
+                title=f"You completed '{module.name}' 🎉",
+                body="Great work — your progress has been recorded.",
+                link="/guided-paths")
+            db.commit()
+        except Exception as _e:
+            pass  # non-fatal
+        # ── end Sprint 5 ─────────────────────────────────────────────
         return {"completed": True, "session_id": session.id, "message": "Module completed"}
 
     return SessionStepResponse(

@@ -26,6 +26,7 @@ from app.dependencies import (
     get_current_org_id,
     require_manager,
 )
+from app.routers.notifications import _insert_notification
 
 logger = logging.getLogger(__name__)
 
@@ -182,6 +183,19 @@ def create_session(
         },
     )
     db.commit()
+
+    # ── Sprint 5: remind manager when follow-up date arrives ─────────
+    if payload.follow_up_date:
+        try:
+            _insert_notification(db, user_id=user_id, org_id=org_id,
+                kind="coaching_followup_due",
+                title=f"Coaching follow-up due {payload.follow_up_date}",
+                body=f"Re: {payload.concern[:80]}{'…' if len(payload.concern) > 80 else ''}",
+                link="/manager/coaching")
+            db.commit()
+        except Exception as _e:
+            logger.warning(f"Coaching follow-up notification failed (non-fatal): {_e}")
+    # ── end Sprint 5 ─────────────────────────────────────────────────
 
     logger.info(f"Coaching session {session_id} created by manager {user_id}")
     return _get_session_or_404(session_id, user_id, org_id, db)

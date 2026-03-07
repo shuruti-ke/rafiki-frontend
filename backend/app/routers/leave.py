@@ -16,6 +16,7 @@ from app.dependencies import (
     get_current_user_id, get_current_org_id, get_current_role,
     require_admin, get_current_user
 )
+from app.routers.notifications import _insert_notification
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/leave", tags=["Leave"])
@@ -424,6 +425,24 @@ def apply_for_leave(
     )
     db.commit()
 
+    # ── Notify org HR admins that a new leave request needs approval ──
+    try:
+        from app.models.user import User as _User
+        managers = db.query(_User.user_id).filter(
+            _User.org_id == org_id,
+            _User.role.in_(["hr_admin", "super_admin"]),
+            _User.is_active == True,
+        ).all()
+        for (mgr_id,) in managers:
+            _insert_notification(db, user_id=mgr_id, org_id=org_id,
+                kind="leave_pending",
+                title=f"Leave request: {data.leave_type} ({data.start_date} → {data.end_date})",
+                body=f"{working:.0f} working day(s) · {data.reason or 'No reason given'}",
+                link="/admin/leave")
+        db.commit()
+    except Exception as _e:
+        logger.warning(f"Leave submit notification failed (non-fatal): {_e}")
+
     return {
         "message": "Leave application submitted successfully.",
         "application_id": app_id,
@@ -654,6 +673,19 @@ def review_application(
         db.commit()
     except Exception:
         pass
+
+    # ── Sprint 5: In-app notification to employee ────────────────────
+    try:
+        status_label = "approved ✅" if data.status == "approved" else "rejected ❌"
+        _insert_notification(db, user_id=row["user_id"], org_id=org_id,
+            kind="leave_pending",
+            title=f"Leave {status_label}: {row['leave_type']} ({row['start_date']} → {row['end_date']})",
+            body=data.comment or None,
+            link="/leave")
+        db.commit()
+    except Exception as _e:
+        logger.warning(f"Leave review notification failed (non-fatal): {_e}")
+    # ── end Sprint 5 ─────────────────────────────────────────────────
 
     return {"message": f"Application {data.status}.", "application_id": app_id}
 

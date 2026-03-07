@@ -17,7 +17,7 @@ from app.schemas.announcements import (
     TrainingAssignmentResponse,
 )
 from app.services.audit import log_action
-from app.services.notifications import send_reminder_notification  # implement per your notification layer
+from app.routers.notifications import _insert_notification
 
 # ✅ Use real auth deps (JWT or demo-header fallback)
 from app.dependencies import get_current_org_id, get_current_user_id, require_admin
@@ -50,6 +50,25 @@ def create_announcement(
     db.refresh(ann)
 
     log_action(db, org_id, user_id, "create", "announcement", ann.id, {"title": data.title})
+
+    # ── Sprint 5: notify all active org employees ─────────────────────
+    try:
+        employees = db.query(User.user_id).filter(
+            User.org_id == org_id,
+            User.is_active == True,
+            User.user_id != user_id,   # don't notify the creator
+        ).all()
+        for (emp_id,) in employees:
+            _insert_notification(db, user_id=emp_id, org_id=org_id,
+                kind="announcement_unread",
+                title=ann.title,
+                body=ann.content[:120] + "…" if ann.content and len(ann.content) > 120 else ann.content,
+                link=f"/announcements/{ann.id}")
+        db.commit()
+    except Exception as _e:
+        pass  # non-fatal — announcement was already saved
+    # ── end Sprint 5 ─────────────────────────────────────────────────
+
     return ann
 
 
@@ -255,13 +274,15 @@ def send_reminder(
     if not unread_employees:
         return {"ok": True, "reminded": 0, "message": "All employees have already read this announcement"}
 
-    # Dispatch notifications (in-app / email — implement per your stack)
+    # Dispatch in-app notifications to unread employees
     for employee in unread_employees:
-        send_reminder_notification(
-            user=employee,
-            announcement_id=ann_id,
-            announcement_title=ann.title,
-        )
+        _insert_notification(db, user_id=employee.user_id, org_id=org_id,
+            kind="announcement_unread",
+            title=f"Reminder: {ann.title}",
+            body="You haven't read this announcement yet.",
+            link=f"/announcements/{ann_id}")
+
+    db.commit()
 
     reminded_count = len(unread_employees)
 
