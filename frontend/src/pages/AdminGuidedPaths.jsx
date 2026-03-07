@@ -103,7 +103,7 @@ export default function AdminGuidedPaths() {
         : `${API}/api/v1/guided-paths/admin/modules`;
       const method = editingModule ? "PUT" : "POST";
 
-      const res = await authFetch(url, {
+      const res = await authfetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
