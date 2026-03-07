@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
+from uuid import UUID
 
 
 class ModuleStepDefinition(BaseModel):
@@ -36,14 +37,14 @@ class ModuleUpdate(BaseModel):
 
 class ModuleResponse(BaseModel):
     id: int
-    org_id: int | None
+    org_id: UUID | None
     name: str
     category: str
     description: str | None = None
     duration_minutes: int
     icon: str | None = None
     is_active: bool
-    created_by: int
+    created_by: UUID | None = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -68,8 +69,8 @@ class ModuleStepResponse(BaseModel):
 
 class SessionResponse(BaseModel):
     id: int
-    user_id: int
-    org_id: int
+    user_id: UUID | None
+    org_id: UUID | None
     module_id: int
     current_step: int
     status: str
