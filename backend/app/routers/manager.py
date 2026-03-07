@@ -58,14 +58,14 @@ def get_team(
     from app.models.user import User
     from app.models.objective import Objective
 
+    is_elevated = _role in ("super_admin", "hr_admin")
+
     config = get_manager_config(db, user_id, org_id)
-    if not config:
+    if not config and not is_elevated:
         raise HTTPException(status_code=403, detail="No active manager configuration found")
 
-    is_super = _role == "super_admin"
-
-    # super_admin: show all active users across all orgs
-    if is_super:
+    # super_admin/hr_admin: show all active org users
+    if is_elevated:
         direct_reports = (
             db.query(User)
             .filter(
@@ -154,7 +154,7 @@ def get_team(
 
 @router.get("/team/{member_id}/profile", response_model=TeamMemberResponse)
 def get_team_member_profile(
-    member_id: int,
+    member_id: uuid.UUID,
     db: Session = Depends(get_db),
     user_id: uuid.UUID = Depends(get_current_user_id),
     org_id: uuid.UUID = Depends(get_current_org_id),
