@@ -52,13 +52,13 @@ def suggest_modules(
     available_time: int | None = None,
 ) -> list[dict]:
     """Rules-based module suggestion. Returns ranked list of modules."""
-    legacy_org_id = _uuidish_to_int(org_id, fallback=0)
+    org_uuid = uuid.UUID(str(org_id)) if not isinstance(org_id, uuid.UUID) else org_id
 
     # Get all active modules for this org (including globals)
     modules = (
         db.query(GuidedModule)
         .filter(
-            (GuidedModule.org_id == legacy_org_id) | (GuidedModule.org_id.is_(None)),
+            (GuidedModule.org_id == org_uuid) | (GuidedModule.org_id.is_(None)),
             GuidedModule.is_active == True,
         )
         .all()
