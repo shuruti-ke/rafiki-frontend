@@ -39,6 +39,11 @@ class CalendarEvent(Base):
     assigned_to = Column(UUID(as_uuid=True), nullable=True)
     created_by = Column(UUID(as_uuid=True), nullable=True)
     is_completed = Column(Boolean, nullable=False, default=False)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Google Calendar sync
+    source = Column(String(20), nullable=True, default="native", server_default="native")
+    external_id = Column(String(500), nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=True)
