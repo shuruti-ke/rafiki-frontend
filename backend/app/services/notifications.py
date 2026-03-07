@@ -136,7 +136,7 @@ def _send_email_sendgrid(*, user, announcement_id: UUID, title: str) -> None:
     message = Mail(
         from_email=SENDGRID_FROM,
         to_emails=recipient_email,
-        subject=f"Reminder: Please read "{title}"",
+        subject=f"Reminder: Please read \"{title}\"",
         html_content=html_body,
     )
 
