@@ -1,4 +1,5 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import NotificationBell from "./NotificationBell.jsx";
 import "./ManagerLayout.css";
 
 export default function ManagerLayout() {
@@ -62,6 +63,9 @@ export default function ManagerLayout() {
       </aside>
 
       <main className="mgr-main">
+        <div className="mgr-topbar">
+          <NotificationBell />
+        </div>
         <Outlet />
       </main>
     </div>

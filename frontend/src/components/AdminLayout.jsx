@@ -1,6 +1,7 @@
 // frontend/src/components/AdminLayout.jsx
 import { useState, useEffect } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import NotificationBell from "./NotificationBell.jsx";
 import "./AdminLayout.css";
 
 const NAV_GROUPS = [
@@ -149,6 +150,9 @@ export default function AdminLayout() {
       </aside>
 
       <main className="admin-main">
+        <div className="admin-topbar">
+          <NotificationBell />
+        </div>
         <Outlet />
       </main>
     </div>

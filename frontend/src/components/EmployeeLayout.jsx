@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { API, authFetch } from "../api.js";
+import NotificationBell from "./NotificationBell.jsx";
 import "./EmployeeLayout.css";
 
 /* ══════════════════════════════════════
@@ -575,6 +576,8 @@ export default function EmployeeLayout() {
           <div className="emp-topbar-title">{pageTitle}</div>
 
           <div className="emp-topbar-actions">
+            {/* Notification bell */}
+            <NotificationBell />
             {/* Messages icon */}
             <button
               className="emp-topbar-icon-btn"
