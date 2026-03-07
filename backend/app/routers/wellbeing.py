@@ -387,3 +387,161 @@ def update_crisis_config(
 
     db.commit()
     return {"ok": True}
+
+
+# ── Sprint 3: Wellbeing Breakdown ──────────────────────────────────────────────
+
+class DimensionScore(BaseModel):
+    raw_score: float      # 0–100. Note: stress & workload are NOT inverted here.
+    question_count: int   # number of ChatAnalytics rows used as source
+
+
+class WellbeingBreakdownOut(BaseModel):
+    employee_id: UUID
+    overall_score: float
+    survey_date: Optional[str]   # ISO date string of most recent data point
+    total_questions: int         # total messages analysed
+    dimensions: dict             # keys: stress | workload | energy | meaning | relationships
+
+
+@router.get("/{employee_id}/breakdown", response_model=WellbeingBreakdownOut)
+def get_wellbeing_breakdown(
+    employee_id: UUID,
+    db: Session = Depends(get_db),
+    org_id: UUID = Depends(get_current_org_id),
+    user_id: UUID = Depends(get_current_user_id),
+    role: str = Depends(require_manager),
+):
+    """
+    Sprint 3 — Per-dimension wellbeing breakdown for an employee.
+    Source: ChatAnalytics rows (last 90 days).
+
+    Dimension derivations:
+      stress        — avg stress_level (1–5 → scaled 0–100). High = worse.
+                      Frontend WellbeingBreakdownModal.jsx inverts for display.
+      workload      — message volume vs org median (0–100). High = heavier load.
+                      Frontend inverts for display.
+      energy        — avg sentiment (-1..1 → 0..100). High = positive energy.
+      meaning       — ratio of purpose/growth/impact topics (0–100). High = good.
+      relationships — ratio of messages with social topics + non-negative sentiment
+                      (0–100). High = good.
+
+    Disclaimer: Indicative only. Does not constitute a clinical assessment.
+    """
+    since = datetime.now(timezone.utc) - timedelta(days=90)
+
+    # ── Manager scope check (mirrors stress-by-employee pattern) ──
+    if role == "manager":
+        is_report = db.query(User).filter(
+            User.user_id == employee_id,
+            User.manager_id == user_id,
+            User.org_id == org_id,
+        ).first()
+        if not is_report:
+            raise HTTPException(status_code=403, detail="Not your direct report")
+
+    # ── Fetch last 90 days of analytics for this employee ──
+    rows = db.query(
+        ChatAnalytics.stress_level,
+        ChatAnalytics.sentiment,
+        ChatAnalytics.sentiment_label,
+        ChatAnalytics.topics,
+        ChatAnalytics.created_at,
+    ).filter(
+        ChatAnalytics.user_id == employee_id,
+        ChatAnalytics.org_id == org_id,
+        ChatAnalytics.created_at >= since,
+    ).order_by(ChatAnalytics.created_at.desc()).all()
+
+    total = len(rows)
+
+    if total == 0:
+        raise HTTPException(
+            status_code=404,
+            detail="No wellbeing data found for this employee in the last 90 days"
+        )
+
+    survey_date = rows[0].created_at.date().isoformat() if rows[0].created_at else None
+
+    # ── Org median message count for workload normalisation ──
+    org_avg_count = db.query(
+        func.avg(func.count(ChatAnalytics.id))
+    ).filter(
+        ChatAnalytics.org_id == org_id,
+        ChatAnalytics.created_at >= since,
+    ).group_by(ChatAnalytics.user_id).scalar() or total
+
+    # ── Dimension: stress ──
+    stress_values = [r.stress_level for r in rows if r.stress_level is not None]
+    if stress_values:
+        avg_stress_raw = sum(stress_values) / len(stress_values)  # 1–5
+        stress_score = round((avg_stress_raw - 1) / 4 * 100, 1)  # scale to 0–100
+    else:
+        stress_score = 50.0
+    stress_qc = len(stress_values)
+
+    # ── Dimension: workload ──
+    # Normalise this employee's message volume against org average (capped at 100)
+    workload_score = round(min((total / max(float(org_avg_count), 1)) * 50, 100), 1)
+    workload_qc = total
+
+    # ── Dimension: energy ──
+    sentiment_values = [r.sentiment for r in rows if r.sentiment is not None]
+    if sentiment_values:
+        avg_sent = sum(sentiment_values) / len(sentiment_values)  # -1 to 1
+        energy_score = round((avg_sent + 1) / 2 * 100, 1)         # scale to 0–100
+    else:
+        energy_score = 50.0
+    energy_qc = len(sentiment_values)
+
+    # ── Dimension: meaning ──
+    MEANING_TOPICS = {"growth", "purpose", "impact", "achievement", "learning",
+                      "career", "recognition", "development"}
+    meaning_hits = 0
+    meaning_qc = 0
+    for r in rows:
+        if isinstance(r.topics, list) and r.topics:
+            meaning_qc += 1
+            if any(t.lower() in MEANING_TOPICS for t in r.topics):
+                meaning_hits += 1
+    meaning_score = round(meaning_hits / meaning_qc * 100, 1) if meaning_qc else 50.0
+
+    # ── Dimension: relationships ──
+    SOCIAL_TOPICS = {"teamwork", "collaboration", "manager", "colleague", "conflict",
+                     "communication", "support", "belonging", "inclusion"}
+    social_positive = 0
+    social_total = 0
+    for r in rows:
+        if isinstance(r.topics, list):
+            has_social = any(t.lower() in SOCIAL_TOPICS for t in r.topics)
+            if has_social:
+                social_total += 1
+                if r.sentiment_label in ("positive", "neutral"):
+                    social_positive += 1
+    relationships_score = round(social_positive / social_total * 100, 1) if social_total else 50.0
+    relationships_qc = social_total
+
+    # ── Overall: simple mean of all 5 display scores ──
+    # For overall, we flip stress/workload so high always = good
+    display_scores = [
+        100 - stress_score,
+        100 - workload_score,
+        energy_score,
+        meaning_score,
+        relationships_score,
+    ]
+    overall = round(sum(display_scores) / len(display_scores), 1)
+
+    return {
+        "employee_id": employee_id,
+        "overall_score": overall,
+        "survey_date": survey_date,
+        "total_questions": total,
+        "dimensions": {
+            "stress":        {"raw_score": stress_score,        "question_count": stress_qc},
+            "workload":      {"raw_score": workload_score,       "question_count": workload_qc},
+            "energy":        {"raw_score": energy_score,         "question_count": energy_qc},
+            "meaning":       {"raw_score": meaning_score,        "question_count": meaning_qc},
+            "relationships": {"raw_score": relationships_score,  "question_count": relationships_qc},
+        },
+    }
