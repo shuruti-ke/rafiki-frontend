@@ -426,7 +426,7 @@ function SidebarMessages({ onUnreadChange, onConvoChange }) {
       <div className="emp-msg-list">
         {conversations.length === 0 && <div className="emp-msg-empty">No conversations yet</div>}
         {conversations.map(c => (
-          <div key={c.id} className="emp-msg-item" onClick={() => { setActiveConvo(c); setShowNewMsg(false); }}>
+          <div key={c.id} className="emp-msg-item" onClick={() => { setThread([]); setActiveConvo(c); loadThread(c.id); setShowNewMsg(false); }}>
             <div className="emp-msg-item-top">
               <span className="emp-msg-item-name">{c.is_group && <span className="emp-msg-group-icon">G</span>}{c.display_name}</span>
               <span className="emp-msg-item-time">{timeAgo(c.last_message_at)}</span>
