@@ -12,11 +12,9 @@ class GuidedModule(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
 
-    # ✅ org_id is UUID in your platform
-    # nullable=True means "global module" (not tied to a specific org)
+    # DB column is INTEGER (legacy) — stores CRC32 of org UUID
     org_id = Column(
-        PGUUID(as_uuid=True),
-        ForeignKey("orgs.org_id", ondelete="CASCADE"),
+        Integer,
         nullable=True,
         index=True,
     )
@@ -31,10 +29,9 @@ class GuidedModule(Base):
     safety_checks = Column(JSONB, nullable=True, default=list)
     is_active = Column(Boolean, nullable=False, default=True)
 
-    # ✅ created_by should be UUID user_id
+    # DB column is INTEGER (legacy) — stores CRC32 of user UUID
     created_by = Column(
-        PGUUID(as_uuid=True),
-        ForeignKey("users_legacy.user_id", ondelete="SET NULL"),
+        Integer,
         nullable=True,
     )
 
@@ -47,21 +44,9 @@ class GuidedPathSession(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
 
-    # ✅ user_id is UUID
-    user_id = Column(
-        PGUUID(as_uuid=True),
-        ForeignKey("users_legacy.user_id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-
-    # ✅ org_id is UUID
-    org_id = Column(
-        PGUUID(as_uuid=True),
-        ForeignKey("orgs.org_id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
+    # DB columns are INTEGER (legacy) — store CRC32 of UUIDs
+    user_id = Column(Integer, nullable=False, index=True)
+    org_id = Column(Integer, nullable=False, index=True)
 
     # module_id stays integer (guided_modules.id)
     module_id = Column(
