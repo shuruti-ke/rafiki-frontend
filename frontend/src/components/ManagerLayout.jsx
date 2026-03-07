@@ -27,37 +27,37 @@ export default function ManagerLayout() {
 
         <nav className="mgr-nav">
           <NavLink to="/manager" end className={({ isActive }) => `mgr-nav-link ${isActive ? "active" : ""}`}>
-            Dashboard
+            <span>🏠</span> Dashboard
           </NavLink>
           <NavLink to="/manager/team" className={({ isActive }) => `mgr-nav-link ${isActive ? "active" : ""}`}>
-            My Team
+            <span>👥</span> My Team
           </NavLink>
           <NavLink to="/manager/coaching" className={({ isActive }) => `mgr-nav-link ${isActive ? "active" : ""}`}>
-            Coaching Assistant
+            <span>🧠</span> Coaching Assistant
           </NavLink>
           <NavLink to="/manager/toolkit" className={({ isActive }) => `mgr-nav-link ${isActive ? "active" : ""}`}>
-            HR Toolkit
+            <span>🛠️</span> HR Toolkit
           </NavLink>
           <NavLink to="/manager/calendar" className={({ isActive }) => `mgr-nav-link ${isActive ? "active" : ""}`}>
-            Calendar
+            <span>📅</span> Calendar
           </NavLink>
           <NavLink to="/manager/timesheets" className={({ isActive }) => `mgr-nav-link ${isActive ? "active" : ""}`}>
-            Team Timesheets
+            <span>⏱️</span> Team Timesheets
           </NavLink>
         </nav>
 
         <div className="mgr-nav-footer">
           <NavLink to="/chat" className="mgr-nav-link">
-            Employee Portal
+            <span>💬</span> Employee Portal
           </NavLink>
           {isAdmin && (
             <NavLink to="/admin" className="mgr-nav-link">
-              HR Portal
+              <span>⚙️</span> HR Portal
             </NavLink>
           )}
           <button onClick={handleLogout} className="mgr-nav-link"
             style={{ background: "none", border: "none", cursor: "pointer", textAlign: "left", width: "100%", font: "inherit" }}>
-            Logout
+            <span>👋</span> Logout
           </button>
         </div>
       </aside>

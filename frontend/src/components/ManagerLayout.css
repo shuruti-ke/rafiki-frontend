@@ -1,91 +1,152 @@
+/* ═══════════════════════════════════════════
+   ManagerLayout.css — Sprint 5 redesign
+   ═══════════════════════════════════════════ */
+
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Source+Sans+3:wght@400;500;600;700&display=swap');
+
 .mgr-layout {
   height: 100%;
   display: grid;
-  grid-template-columns: 240px 1fr;
+  grid-template-columns: 220px 1fr;
+  font-family: "Source Sans 3", "Source Sans Pro", sans-serif;
+  background: #f8f7ff;
 }
 
+/* ── Sidebar ── */
 .mgr-sidebar {
-  background: var(--panel);
-  border-right: 1px solid var(--border);
+  background: #ffffff;
+  border-right: 1px solid #ede9fe;
   display: flex;
   flex-direction: column;
-  padding: 20px 0;
+  padding: 0;
+  position: relative;
+  z-index: 10;
 }
 
+/* Brand */
 .mgr-brand {
   display: flex;
   gap: 12px;
   align-items: center;
-  padding: 0 20px 20px;
-  border-bottom: 1px solid var(--border);
+  padding: 20px 18px;
+  border-bottom: 1px solid #ede9fe;
+  background: linear-gradient(135deg, #8b5cf6 0%, #1fbfb8 100%);
 }
 
 .mgr-logo-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 999px;
-  background: var(--accent-teal, #1fbfb8);
-  box-shadow: 0 0 24px rgba(31, 191, 184, 0.3);
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: rgba(255,255,255,.25);
+  border: 2px solid rgba(255,255,255,.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.mgr-logo-dot::after {
+  content: "R";
+  font-family: "Playfair Display", serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
 }
 
 .mgr-brand-title {
-  font-weight: 800;
+  font-family: "Playfair Display", serif;
+  font-weight: 700;
+  font-size: 16px;
+  color: #fff;
   letter-spacing: 0.2px;
 }
 
 .mgr-brand-sub {
-  color: var(--muted);
-  font-size: 12px;
-  margin-top: 2px;
+  color: rgba(255,255,255,.75);
+  font-size: 11px;
+  margin-top: 1px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
 }
 
+/* Nav */
 .mgr-nav {
   flex: 1;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 12px 8px;
+  padding: 14px 10px;
 }
 
 .mgr-nav-link {
-  display: block;
-  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
   border-radius: 10px;
-  color: var(--muted);
+  color: #6b7280;
   text-decoration: none;
   font-weight: 600;
-  font-size: 14px;
+  font-size: 13.5px;
   transition: all 0.15s;
+  position: relative;
 }
 
 .mgr-nav-link:hover {
-  background: rgba(0, 0, 0, 0.03);
-  color: var(--text);
+  background: #f5f3ff;
+  color: #1f2937;
 }
 
 .mgr-nav-link.active {
-  background: rgba(31, 191, 184, 0.10);
-  color: #1fbfb8;
+  background: linear-gradient(135deg, rgba(139,92,246,.12), rgba(31,191,184,.08));
+  color: #8b5cf6;
+  border: 1px solid rgba(139,92,246,.18);
 }
 
+.mgr-nav-link.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 60%;
+  background: linear-gradient(180deg, #8b5cf6, #1fbfb8);
+  border-radius: 0 3px 3px 0;
+}
+
+/* Footer */
 .mgr-nav-footer {
-  padding: 12px 8px;
-  border-top: 1px solid var(--border);
+  padding: 10px 10px 16px;
+  border-top: 1px solid #ede9fe;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
+/* Main */
 .mgr-main {
   overflow: auto;
-  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  background: #f8f7ff;
+}
+
+.mgr-topbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 24px 0;
+  flex-shrink: 0;
+}
+
+/* Content pages get padding from mgr-main */
+.mgr-main > *:not(.mgr-topbar) {
+  padding: 8px 28px 40px;
 }
 
 @media (max-width: 768px) {
-  .mgr-layout {
-    grid-template-columns: 1fr;
-  }
-  .mgr-sidebar {
-    display: none;
-  }
+  .mgr-layout { grid-template-columns: 1fr; }
+  .mgr-sidebar { display: none; }
+  .mgr-main > *:not(.mgr-topbar) { padding: 8px 16px 32px; }
 }
