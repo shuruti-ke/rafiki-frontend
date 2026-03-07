@@ -114,11 +114,11 @@ export default function LandingPage() {
             while HR teams save time and scale care across the organisation.
           </p>
           <div className="landing-hero__ctas">
-            <a href="mailto:demo@rafikihr.com" className="landing-hero__btn-primary lp-btn-arrow">
+            <a href="mailto:hr@rafikihr.com?subject=Book a Demo — Rafiki@Work" className="landing-hero__btn-primary lp-btn-arrow">
               Book a demo
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
             </a>
-            <a href="#how-it-works" className="landing-hero__btn-outline" onClick={e=>{e.preventDefault();document.querySelector('#how-it-works')?.scrollIntoView({behavior:'smooth'});}}>
+            <a href="#demo" className="landing-hero__btn-outline" onClick={e=>{e.preventDefault();document.querySelector('#demo')?.scrollIntoView({behavior:'smooth'});}}>
               See how it works
             </a>
           </div>
@@ -132,7 +132,8 @@ export default function LandingPage() {
           </div>
         </div>
 
-        <div className="landing-hero__visual">
+        <div className="landing-hero__visual lp-hero-visual-v2">
+          <img src="/hero-meeting.png" alt="Team collaborating" className="lp-hero-main-img" />
           <div className="lp-hero-card-wrap">
             <div className="lp-hero-card lp-hero-card--shadow" />
             <div className="lp-hero-card">
@@ -145,7 +146,7 @@ export default function LandingPage() {
               </div>
               <div className="lp-chat-msgs">
                 <div className="lp-chat-bubble lp-chat-bubble--user">How many days of annual leave do I have left?</div>
-                <div className="lp-chat-bubble lp-chat-bubble--ai">You have <strong>12 days</strong> remaining for this year. Your next public holiday is in 8 days. Would you like to submit a leave request?</div>
+                <div className="lp-chat-bubble lp-chat-bubble--ai">You have <strong>12 days</strong> remaining for this year. Would you like to submit a leave request?</div>
                 <div className="lp-chat-bubble lp-chat-bubble--user">Yes, I need next Friday off</div>
                 <div className="lp-chat-bubble lp-chat-bubble--ai">Done — leave request submitted for Friday 14 March. Your manager will be notified. ✓</div>
               </div>
@@ -160,6 +161,39 @@ export default function LandingPage() {
             </div>
           </div>
         </div>
+      </section>
+
+
+      {/* ══════════════════════════════════════
+          DEMO SHOWCASE
+      ══════════════════════════════════════ */}
+      <section className="lp-demo-section" id="demo">
+        <Reveal>
+          <p className="lp-eyebrow-label">Live Demo</p>
+          <h2 className="landing-section__heading">See how it works</h2>
+          <p className="landing-section__subtitle">Explore the platform through the eyes of an employee, HR admin, or manager. No sign-up required.</p>
+        </Reveal>
+        <div className="lp-demo-tabs">
+          <Link to="/demo/employee" className="lp-demo-tab">
+            <span className="lp-demo-tab__emoji">🧑‍💼</span>
+            <span className="lp-demo-tab__title">Employee Portal</span>
+            <span className="lp-demo-tab__desc">AI chat, documents, leave, objectives, calendar</span>
+            <span className="lp-demo-tab__cta">Try employee demo →</span>
+          </Link>
+          <Link to="/demo/hr" className="lp-demo-tab lp-demo-tab--hr">
+            <span className="lp-demo-tab__emoji">⚙️</span>
+            <span className="lp-demo-tab__title">HR Admin Portal</span>
+            <span className="lp-demo-tab__desc">Analytics, payroll, employees, wellbeing insights</span>
+            <span className="lp-demo-tab__cta">Try HR demo →</span>
+          </Link>
+          <Link to="/demo/manager" className="lp-demo-tab lp-demo-tab--mgr">
+            <span className="lp-demo-tab__emoji">📈</span>
+            <span className="lp-demo-tab__title">Manager Portal</span>
+            <span className="lp-demo-tab__desc">Team overview, coaching AI, timesheets, HR toolkit</span>
+            <span className="lp-demo-tab__cta">Try manager demo →</span>
+          </Link>
+        </div>
+        <p className="lp-demo-note">All demo data is fictional. No account needed.</p>
       </section>
 
       {/* ══════════════════════════════════════
@@ -416,7 +450,7 @@ export default function LandingPage() {
         <h2 className="landing-cta-banner__heading">Ready to transform how your team works?</h2>
         <p className="landing-cta-banner__subtitle">Book a 30-minute demo and see Rafiki in action with your own use cases.</p>
         <div className="landing-cta-banner__btns">
-          <a href="mailto:demo@rafikihr.com" className="landing-cta-banner__btn">Book a demo</a>
+          <a href="mailto:hr@rafikihr.com?subject=Book a Demo — Rafiki@Work" className="landing-cta-banner__btn">Book a demo</a>
           <Link to="/login" className="landing-cta-banner__btn landing-cta-banner__btn--outline">Log in</Link>
         </div>
       </section>
@@ -443,7 +477,7 @@ export default function LandingPage() {
           <div className="landing-footer__col">
             <h4 className="landing-footer__col-title">Company</h4>
             <span>About Shoulder2LeanOn</span>
-            <a href="mailto:demo@rafikihr.com">Book a demo</a>
+            <a href="mailto:hr@rafikihr.com?subject=Book a Demo — Rafiki@Work">Book a demo</a>
             <a href="mailto:sales@rafikihr.com">Contact sales</a>
             <Link to="/login">Login</Link>
             <Link to="/super-admin/login">Platform Admin</Link>
