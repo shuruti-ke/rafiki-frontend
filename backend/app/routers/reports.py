@@ -234,7 +234,7 @@ def _guided_paths(db: Session, org_id: UUID) -> dict:
     """
     module_rows = db.execute(text("""
         SELECT
-            gm.title                                   AS module_title,
+            gm.name                                    AS module_title,
             COUNT(gps.id)                              AS total_sessions,
             COUNT(gps.id) FILTER (WHERE gps.status = 'completed') AS completed,
             AVG(gps.post_rating - gps.pre_rating)
@@ -244,7 +244,7 @@ def _guided_paths(db: Session, org_id: UUID) -> dict:
         JOIN guided_modules gm ON gm.id = gps.module_id
         WHERE gps.org_id  = :org
           AND gps.user_id IS NOT NULL
-        GROUP BY gm.id, gm.title
+        GROUP BY gm.id, gm.name
         ORDER BY completed DESC
         LIMIT 10
     """), {"org": str(org_id)}).mappings().all()
