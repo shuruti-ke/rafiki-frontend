@@ -76,9 +76,11 @@ def get_current_user_id(
 ) -> uuid.UUID:
     """Extract user UUID from JWT token, or fall back to demo header."""
     if authorization:
+        # Token present — must succeed, never fall through to demo
         user = get_current_user(authorization, db)
         if user:
             return user.user_id
+        raise HTTPException(status_code=401, detail="Not authenticated")
 
     if AUTH_MODE == "demo":
         try:
@@ -96,9 +98,11 @@ def get_current_org_id(
 ) -> uuid.UUID:
     """Extract org UUID from JWT token, or fall back to demo header."""
     if authorization:
+        # Token present — must succeed, never fall through to demo
         user = get_current_user(authorization, db)
         if user and user.org_id:
             return user.org_id
+        raise HTTPException(status_code=401, detail="Not authenticated")
 
     if AUTH_MODE == "demo":
         try:
