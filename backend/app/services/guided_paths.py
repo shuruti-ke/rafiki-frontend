@@ -42,9 +42,9 @@ def _as_uuid(value: Any) -> UUID:
 # ─────────────────────────────────────────────────────────────────────
 
 def list_modules(db: Session, org_id: Union[int, UUID, str], active_only: bool = True):
-    legacy_org_id = _uuidish_to_int(org_id, fallback=0)
+    org_uuid = _as_uuid(org_id)
     q = db.query(GuidedModule).filter(
-        (GuidedModule.org_id == legacy_org_id) | (GuidedModule.org_id.is_(None))
+        (GuidedModule.org_id == org_uuid) | (GuidedModule.org_id.is_(None))
     )
     if active_only:
         q = q.filter(GuidedModule.is_active == True)
@@ -56,11 +56,8 @@ def get_module(db: Session, module_id: int):
 
 
 def create_module(db: Session, org_id: Union[int, UUID, str], created_by: Any, data: dict):
-    legacy_org_id = _uuidish_to_int(org_id, fallback=0)
-    legacy_created_by = _uuidish_to_int(created_by, fallback=0)
-
     module = GuidedModule(
-        org_id=legacy_org_id,
+        org_id=_as_uuid(org_id),
         name=data["name"],
         category=data["category"],
         description=data.get("description"),
@@ -69,7 +66,7 @@ def create_module(db: Session, org_id: Union[int, UUID, str], created_by: Any, d
         steps=data.get("steps", []),
         triggers=data.get("triggers", []),
         safety_checks=data.get("safety_checks", []),
-        created_by=legacy_created_by,
+        created_by=_as_uuid(created_by),
     )
     db.add(module)
     db.commit()
@@ -114,9 +111,8 @@ def start_session(
     # UUID org_id for UUID tables
     org_uuid = _as_uuid(org_id)
 
-    # Legacy ints for legacy session table
-    legacy_org_id = _uuidish_to_int(org_id, fallback=0)
-    legacy_user_id = _uuidish_to_int(user_id, fallback=0)
+    # Use UUIDs directly (columns are UUID type)
+    user_uuid = _as_uuid(user_id)
 
     session_vars = {
         "language": language or "en",
@@ -132,8 +128,8 @@ def start_session(
     composed_steps = compose_module(blueprint_steps, context_pack, module.name)
 
     session = GuidedPathSession(
-        user_id=legacy_user_id,
-        org_id=legacy_org_id,
+        user_id=user_uuid,
+        org_id=org_uuid,
         module_id=module_id,
         current_step=0,
         status="in_progress",
