@@ -109,9 +109,7 @@ export default function AdminLayout() {
               >
                 <span className="admin-nav-group-icon">{group.icon}</span>
                 <span className="admin-nav-group-label">{group.label}</span>
-                <span className={`admin-nav-chevron${openSections[group.key] ? " admin-nav-chevron--open" : ""}`}>
-                  ‹
-                </span>
+                <span className={`admin-nav-chevron${openSections[group.key] ? " admin-nav-chevron--open" : ""}`} />
               </button>
 
               {openSections[group.key] && (
