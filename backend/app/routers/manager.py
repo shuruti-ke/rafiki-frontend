@@ -64,13 +64,25 @@ def get_team(
     if not config and not is_elevated:
         raise HTTPException(status_code=403, detail="No active manager configuration found")
 
-    # super_admin/hr_admin: show all active org users
-    if is_elevated:
+    # super_admin: all users platform-wide
+    # hr_admin: all active users in their org (must have name or email)
+    if _role == "super_admin":
         direct_reports = (
             db.query(User)
             .filter(
                 User.user_id != user_id,
                 User.is_active == True,
+            )
+            .all()
+        )
+    elif _role == "hr_admin":
+        direct_reports = (
+            db.query(User)
+            .filter(
+                User.user_id != user_id,
+                User.org_id == org_id,
+                User.is_active == True,
+                (User.name.isnot(None)) | (User.email.isnot(None)),
             )
             .all()
         )
@@ -697,4 +709,4 @@ def seed_toolkit(
 ):
     """Seed default platform toolkit modules."""
     count = seed_default_modules(db)
-    return {"ok": True, "modules_created": count}
+    return {"ok": True, "created": count, "modules_created": count}
