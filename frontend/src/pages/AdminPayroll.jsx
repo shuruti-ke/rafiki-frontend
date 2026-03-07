@@ -446,6 +446,7 @@ function BatchesTab() {
         if (r.ok) setDetail(await r.json());
       } catch {}
     }
+    // Also show distribute button for parsed batches
     setLoadingDetail(false);
   }
 
@@ -453,11 +454,12 @@ function BatchesTab() {
     setParsing(true);
     setDetail(null);
     try {
-      const r = await authFetch(`${API}/api/v1/payroll/batches/${batchId}/verify`);
+      // POST /parse transitions status uploaded→parsed and returns results
+      const r = await authFetch(`${API}/api/v1/payroll/batches/${batchId}/parse`, { method: "POST" });
       const data = await r.json();
       if (r.ok) {
         setDetail(data);
-        // refresh batch status
+        // refresh batch list so status shows "parsed"
         const br = await authFetch(`${API}/api/v1/payroll/batches`);
         const bdata = await br.json();
         if (Array.isArray(bdata)) {
@@ -465,8 +467,12 @@ function BatchesTab() {
           const updated = bdata.find(b => b.batch_id === batchId);
           if (updated) setSelectedBatch(updated);
         }
+      } else {
+        setDetail({ error: data.detail || "Parse failed" });
       }
-    } catch {}
+    } catch (e) {
+      setDetail({ error: e.message });
+    }
     setParsing(false);
   }
 
@@ -585,8 +591,8 @@ function BatchesTab() {
             </>
           )}
 
-          {/* Action buttons for uploaded batches */}
-          {selectedBatch.status === "uploaded" && (
+          {/* Action buttons for uploaded or parsed batches */}
+          {(selectedBatch.status === "uploaded" || selectedBatch.status === "parsed") && (
             <div className="ap-step" style={{ marginTop: 16 }}>
               {!detail && (
                 <>
@@ -599,6 +605,9 @@ function BatchesTab() {
                     {parsing ? "Parsing…" : "Parse & Verify"}
                   </button>
                 </>
+              )}
+              {detail?.error && (
+                <div className="ap-error" style={{ marginTop: 8 }}>{detail.error}</div>
               )}
               {detail && (
                 <>
