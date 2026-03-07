@@ -57,7 +57,7 @@ def _timesheet_anomalies(db: Session, org_id: UUID) -> dict:
     current_rows = db.execute(text("""
         SELECT te.user_id, SUM(te.hours) AS total_hours, u.department
         FROM timesheet_entries te
-        JOIN users u ON u.user_id = te.user_id
+        JOIN users_legacy u ON u.user_id = te.user_id
         WHERE te.org_id  = :org
           AND te.date   >= :ws
           AND te.date   <= :we
@@ -129,7 +129,7 @@ def _leave_balances(db: Session, org_id: UUID) -> dict:
                AVG(lb.entitled_days + lb.carried_over_days - lb.used_days) AS avg_remaining,
                COUNT(DISTINCT lb.user_id) AS employee_count
         FROM leave_balances lb
-        JOIN users u ON u.user_id = lb.user_id
+        JOIN users_legacy u ON u.user_id = lb.user_id
         WHERE lb.org_id    = :org
           AND lb.leave_year = :yr
         GROUP BY u.department
