@@ -190,7 +190,7 @@ def get_team_member_profile(
 
 @router.get("/team/{member_id}/evaluations", response_model=list)
 def get_team_member_evaluations(
-    member_id: int,
+    member_id: uuid.UUID,
     db: Session = Depends(get_db),
     user_id: uuid.UUID = Depends(get_current_user_id),
     org_id: uuid.UUID = Depends(get_current_org_id),
