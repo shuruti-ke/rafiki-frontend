@@ -613,14 +613,21 @@ def chat(
         messages.append({"role": "user", "content": user_content})
 
         # ── Run agentic loop ──
-        reply_text, action_cards = _run_agentic_loop(
-            messages=messages,
-            system_prompt=system_prompt,
-            chosen_model=chosen,
-            user_id=user_id,
-            org_id=org_id,
-            db=db,
-        )
+        # Use a fresh session so that any failed transaction in the prompt-assembly
+        # phase (assemble_prompt, crisis detection, etc.) does not poison tool queries.
+        from app.database import SessionLocal as _AgentSessionLocal
+        agent_db = _AgentSessionLocal()
+        try:
+            reply_text, action_cards = _run_agentic_loop(
+                messages=messages,
+                system_prompt=system_prompt,
+                chosen_model=chosen,
+                user_id=user_id,
+                org_id=org_id,
+                db=agent_db,
+            )
+        finally:
+            agent_db.close()
 
         reply_text = reply_text or "..."
 
