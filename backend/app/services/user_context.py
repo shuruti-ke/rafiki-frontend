@@ -847,7 +847,165 @@ def _get_user_doc_titles(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) -> 
 # MAIN AGGREGATOR
 # ══════════════════════════════════════
 
-def build_user_context(
+def _get_direct_reports(db: Session, org_id: uuid.UUID, manager_id: uuid.UUID) -> list:
+    """Return active direct reports for a manager. Used for both context and security checks."""
+    try:
+        from app.models.user import User
+        return (
+            db.query(User)
+            .filter(
+                User.manager_id == manager_id,
+                User.org_id == org_id,
+                User.is_active == True,
+            )
+            .all()
+        )
+    except Exception as e:
+        logger.warning("_get_direct_reports failed: %s", e)
+        return []
+
+
+def _build_direct_report_context(
+    db: Session,
+    org_id: uuid.UUID,
+    manager_id: uuid.UUID,
+    user_message: str,
+) -> str:
+    """
+    When a manager's message mentions a direct report by name, load that
+    person's summary (objectives, timesheet, leave balance) into context.
+
+    Security: only loads data for users whose manager_id == manager_id AND
+    org_id matches. Employees outside this manager's direct reports are
+    never surfaced.
+    """
+    try:
+        reports = _get_direct_reports(db, org_id, manager_id)
+        if not reports:
+            return ""
+
+        msg_lower = user_message.lower()
+
+        # Find which report(s) the message is asking about
+        matched = []
+        for r in reports:
+            name = getattr(r, "name", "") or ""
+            # Match on full name or any individual word (e.g. "Thomas" matches "Thomas Mwangi")
+            name_parts = [p.lower() for p in name.split() if len(p) > 2]
+            if name.lower() in msg_lower or any(p in msg_lower for p in name_parts):
+                matched.append(r)
+
+        if not matched:
+            return ""
+
+        sections = []
+        for report in matched[:2]:  # cap at 2 to keep context size reasonable
+            report_uuid = _as_uuid(report.user_id)
+            parts = [f"DIRECT REPORT PROFILE — {report.name or report.email}:"]
+            if report.job_title:
+                parts.append(f"  Job Title: {report.job_title}")
+            if report.department:
+                parts.append(f"  Department: {report.department}")
+            if report.created_at:
+                try:
+                    days = (date.today() - report.created_at.date()).days
+                    parts.append(f"  Tenure: ~{days // 30} months")
+                except Exception:
+                    pass
+
+            # Objectives
+            try:
+                from app.models.objective import Objective, KeyResult
+                objectives = (
+                    db.query(Objective)
+                    .filter(
+                        Objective.user_id == report_uuid,
+                        Objective.status.in_(["active", "pending_review", "draft"]),
+                    )
+                    .order_by(desc(Objective.created_at))
+                    .limit(5)
+                    .all()
+                )
+                if objectives:
+                    parts.append("  Objectives:")
+                    for obj in objectives:
+                        icon = {"active": "●", "pending_review": "◐", "draft": "○"}.get(obj.status, "?")
+                        parts.append(f"    {icon} {obj.title} — {obj.progress}% complete")
+                        if obj.target_date:
+                            try:
+                                days_left = (obj.target_date - date.today()).days
+                                parts.append(f"      Due: {obj.target_date} ({days_left}d remaining)")
+                            except Exception:
+                                pass
+                        krs = db.query(KeyResult).filter(KeyResult.objective_id == obj.id).all()
+                        for kr in krs:
+                            pct = min(int(kr.current_value / kr.target_value * 100), 100) if kr.target_value else 0
+                            parts.append(f"      → {kr.title}: {kr.current_value}/{kr.target_value} {kr.unit or ''} ({pct}%)")
+                else:
+                    parts.append("  Objectives: None on record")
+            except Exception as e:
+                logger.debug("Direct report objectives failed: %s", e)
+
+            # Timesheet — last 30 days
+            try:
+                from app.models.timesheet import TimesheetEntry
+                cutoff = date.today() - timedelta(days=30)
+                entries = (
+                    db.query(TimesheetEntry)
+                    .filter(
+                        TimesheetEntry.user_id == report_uuid,
+                        TimesheetEntry.date >= cutoff,
+                    )
+                    .all()
+                )
+                if entries:
+                    total_h = sum(float(e.hours) for e in entries)
+                    work_days = len(set(e.date for e in entries))
+                    submitted = sum(1 for e in entries if e.status in ("submitted", "approved"))
+                    draft = sum(1 for e in entries if e.status == "draft")
+                    parts.append(f"  Timesheet (last 30d): {total_h:.1f}h across {work_days} days")
+                    if draft:
+                        parts.append(f"    ⚠ {draft} draft entries not yet submitted")
+                    by_project = {}
+                    for e in entries:
+                        by_project[e.project] = by_project.get(e.project, 0) + float(e.hours)
+                    top = sorted(by_project.items(), key=lambda x: -x[1])[:3]
+                    parts.append("    Top projects: " + ", ".join(f"{p} ({h:.1f}h)" for p, h in top))
+                else:
+                    parts.append("  Timesheet (last 30d): No entries logged")
+            except Exception as e:
+                logger.debug("Direct report timesheet failed: %s", e)
+
+            # Leave balance
+            try:
+                from sqlalchemy import text as _text
+                bal_rows = db.execute(
+                    _text("""
+                        SELECT leave_type, entitled_days, used_days, carried_over_days
+                        FROM leave_balances
+                        WHERE user_id = :uid AND leave_year = :yr
+                        ORDER BY leave_type
+                    """),
+                    {"uid": str(report_uuid), "yr": date.today().year},
+                ).mappings().all()
+                if bal_rows:
+                    parts.append("  Leave balances (this year):")
+                    for b in bal_rows:
+                        available = float(b["entitled_days"]) + float(b["carried_over_days"]) - float(b["used_days"])
+                        parts.append(f"    {b['leave_type']}: {max(0, available):.1f} days remaining")
+            except Exception as e:
+                logger.debug("Direct report leave balance failed: %s", e)
+
+            sections.append("\n".join(parts))
+
+        return "\n\n".join(sections)
+
+    except Exception as e:
+        logger.warning("_build_direct_report_context failed: %s", e)
+        return ""
+
+
+
     db: Session,
     org_id,
     user_id=None,
@@ -942,6 +1100,14 @@ def build_user_context(
 
         if "coaching" in intents:
             ctx = _build_coaching_context(db, org_uuid, user_uuid)
+            if ctx:
+                sections.append(ctx)
+
+        # Direct report lookup — triggered whenever message names a report
+        # Security: _build_direct_report_context only loads data for confirmed
+        # direct reports (manager_id == user_uuid AND same org).
+        if user_message:
+            ctx = _build_direct_report_context(db, org_uuid, user_uuid, user_message)
             if ctx:
                 sections.append(ctx)
 
