@@ -72,6 +72,28 @@ DEFAULT_INTENTS = {"objectives", "calendar"}
 _DOC_EXTENSIONS = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".csv"}
 
 
+def _detect_intents(user_message: str, user_doc_titles: list[str] = None) -> set[str]:
+    """Detect which context modules to load based on user message"""
+    msg_lower = (user_message or "").lower()
+    matched = set()
+
+    for intent, keywords in INTENT_KEYWORDS.items():
+        if any(kw in msg_lower for kw in keywords):
+            matched.add(intent)
+
+    if any(ext in msg_lower for ext in _DOC_EXTENSIONS):
+        matched.add("documents")
+
+    if user_doc_titles:
+        for title in user_doc_titles:
+            if title and title.lower() in msg_lower:
+                matched.add("documents")
+                break
+        matched.add("documents")
+
+    return matched if matched else DEFAULT_INTENTS
+
+
 def _extract_names_from_context(text: str, chat_history: list[dict] = None) -> set[str]:
     """
     Extract potential person names from user message and recent chat history.
