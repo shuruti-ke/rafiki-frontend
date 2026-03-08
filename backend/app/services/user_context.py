@@ -168,6 +168,7 @@ def _build_data_inventory(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) ->
                 .scalar() or 0
             )
         except Exception:
+            db.rollback()
             counts["Objectives"] = 0
 
         try:
@@ -179,6 +180,7 @@ def _build_data_inventory(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) ->
                 .scalar() or 0
             )
         except Exception:
+            db.rollback()
             counts["Timesheet entries (30d)"] = 0
 
         try:
@@ -189,6 +191,7 @@ def _build_data_inventory(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) ->
                 .scalar() or 0
             )
         except Exception:
+            db.rollback()
             counts["Documents"] = 0
 
         try:
@@ -199,6 +202,7 @@ def _build_data_inventory(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) ->
                 .scalar() or 0
             )
         except Exception:
+            db.rollback()
             counts["Payslips"] = 0
 
         try:
@@ -216,6 +220,7 @@ def _build_data_inventory(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) ->
                 .scalar() or 0
             )
         except Exception:
+            db.rollback()
             counts["Calendar events (7d)"] = 0
 
         try:
@@ -241,6 +246,7 @@ def _build_data_inventory(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) ->
             unread = max(total_active - read_count, 0)
             counts["Announcements"] = f"{unread} unread" if unread else "all read"
         except Exception:
+            db.rollback()
             counts["Announcements"] = 0
 
         try:
@@ -251,6 +257,7 @@ def _build_data_inventory(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) ->
                 .scalar() or 0
             )
         except Exception:
+            db.rollback()
             counts["Evaluations"] = 0
 
         try:
@@ -264,6 +271,7 @@ def _build_data_inventory(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) ->
                 .scalar() or 0
             )
         except Exception:
+            db.rollback()
             counts["Guided path sessions"] = 0
 
         items = [f"  {k}: {v}" for k, v in counts.items() if v and v != 0]
