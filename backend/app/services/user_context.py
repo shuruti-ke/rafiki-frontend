@@ -139,22 +139,35 @@ def _find_direct_report_by_name(
     try:
         from app.models.user import User
         
+        name_lower = name.lower().strip()
+        if not name_lower:
+            return None
+        
         # Try exact match first
         user = (
             db.query(User)
             .filter(
                 User.manager_id == manager_id,
-                User.org_id == org_id,
-                User.is_active == True,
-                or_(
-                    func.lower(User.name) == name.lower(),
-                    func.lower(User.name).like(f"%{name.lower()}%"),
-                    func.lower(User.email).like(f"%{name.lower()}%")
-                )
+                func.lower(User.name) == name_lower
             )
             .first()
         )
+        
+        if user:
+            return user
+        
+        # Try partial/contains match
+        user = (
+            db.query(User)
+            .filter(
+                User.manager_id == manager_id,
+                func.lower(User.name).ilike(f"%{name_lower}%")
+            )
+            .first()
+        )
+        
         return user
+        
     except Exception as e:
         logger.debug("Direct report lookup by name failed for '%s': %s", name, e)
         return None
@@ -984,88 +997,7 @@ def _extract_names_from_context(text: str, chat_history: list[dict] = None) -> s
     return names
 
 
-def _find_direct_report_by_name(
-    db: Session, 
-    org_id: uuid.UUID, 
-    manager_id: uuid.UUID, 
-    name: str
-) -> Optional[Any]:
-    """
-    Find a direct report by partial name match (case-insensitive).
-    Returns the User object if found, None otherwise.
-    Priority: exact match > starts with > contains
-    """
-    try:
-        from app.models.user import User
-        
-        name_lower = name.lower().strip()
-        if not name_lower:
-            return None
-        
-        # Try exact full-name match first
-        user = (
-            db.query(User)
-            .filter(
-                User.manager_id == manager_id,
-                User.org_id == org_id,
-                User.is_active == True,
-                func.lower(User.name) == name_lower
-            )
-            .first()
-        )
-        
-        if user:
-            return user
-        
-        # Try first name match
-        first_word = name_lower.split()[0] if name_lower else ""
-        if len(first_word) > 2:
-            user = (
-                db.query(User)
-                .filter(
-                    User.manager_id == manager_id,
-                    User.org_id == org_id,
-                    User.is_active == True,
-                    func.lower(User.name).startswith(first_word)
-                )
-                .first()
-            )
-            
-            if user:
-                return user
-        
-        # Try partial match (contains)
-        user = (
-            db.query(User)
-            .filter(
-                User.manager_id == manager_id,
-                User.org_id == org_id,
-                User.is_active == True,
-                func.lower(User.name).contains(name_lower)
-            )
-            .first()
-        )
-        
-        if user:
-            return user
-        
-        # Try email match
-        user = (
-            db.query(User)
-            .filter(
-                User.manager_id == manager_id,
-                User.org_id == org_id,
-                User.is_active == True,
-                func.lower(User.email).like(f"%{name_lower}%")
-            )
-            .first()
-        )
-        
-        return user
-        
-    except Exception as e:
-        logger.debug("Direct report lookup by name '%s' failed: %s", name, e)
-        return None
+
 
 
 def _get_direct_reports(db: Session, org_id: uuid.UUID, manager_id: uuid.UUID) -> list:
