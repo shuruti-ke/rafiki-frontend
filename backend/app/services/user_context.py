@@ -1029,6 +1029,14 @@ def build_user_context(
         logger.error("build_user_context: invalid org_id=%r — %s", org_id, e)
         return ""
 
+    # Clear any aborted transaction left by previous queries on this session
+    # (e.g. from FastAPI dependencies or earlier middleware). All context
+    # builders are read-only so a rollback here is always safe.
+    try:
+        db.rollback()
+    except Exception:
+        pass
+
     user_uuid: uuid.UUID | None = None
     if user_id is not None:
         try:
