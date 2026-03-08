@@ -870,10 +870,11 @@ def _build_direct_report_context(
     org_id: uuid.UUID,
     manager_id: uuid.UUID,
     user_message: str,
+    chat_history: list[dict] | None = None,
 ) -> str:
     """
-    When a manager's message mentions a direct report by name, load that
-    person's summary (objectives, timesheet, leave balance) into context.
+    When a manager's message (or recent history) mentions a direct report by
+    name, load that person's summary into context.
 
     Security: only loads data for users whose manager_id == manager_id AND
     org_id matches. Employees outside this manager's direct reports are
@@ -884,15 +885,18 @@ def _build_direct_report_context(
         if not reports:
             return ""
 
-        msg_lower = user_message.lower()
+        # Build a single search string from current message + last 6 history turns
+        search_text = user_message.lower()
+        if chat_history:
+            for turn in chat_history[-6:]:
+                search_text += " " + (turn.get("content") or "").lower()
 
-        # Find which report(s) the message is asking about
+        # Find which report(s) are mentioned
         matched = []
         for r in reports:
             name = getattr(r, "name", "") or ""
-            # Match on full name or any individual word (e.g. "Thomas" matches "Thomas Mwangi")
             name_parts = [p.lower() for p in name.split() if len(p) > 2]
-            if name.lower() in msg_lower or any(p in msg_lower for p in name_parts):
+            if name.lower() in search_text or any(p in search_text for p in name_parts):
                 matched.append(r)
 
         if not matched:
@@ -1104,11 +1108,14 @@ def build_user_context(
             if ctx:
                 sections.append(ctx)
 
-        # Direct report lookup — triggered whenever message names a report
-        # Security: _build_direct_report_context only loads data for confirmed
-        # direct reports (manager_id == user_uuid AND same org).
+        # Direct report lookup — triggered whenever message names a report.
+        # Also scans recent chat history so follow-up turns like "tell me about
+        # thomas" work even when the name only appeared in a prior turn.
+        # Security: only loads data for confirmed direct reports (manager_id == user_uuid).
         if user_message:
-            ctx = _build_direct_report_context(db, org_uuid, user_uuid, user_message)
+            ctx = _build_direct_report_context(
+                db, org_uuid, user_uuid, user_message, chat_history=chat_history
+            )
             if ctx:
                 sections.append(ctx)
 
