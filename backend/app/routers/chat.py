@@ -17,6 +17,7 @@ from app.services.document_processor import extract_text_from_bytes
 from app.services.crisis_detector import quick_safety_screen, analyze_safety, get_safety_prompt_injection, analyze_sentiment_background
 from app.services.helpline_directory import get_helplines, format_helplines_for_prompt
 from app.services.agent_tools import TOOL_DEFINITIONS, execute_tool
+from app.services.user_context import build_user_context
 
 logger = logging.getLogger(__name__)
 
@@ -433,41 +434,30 @@ def _build_action_card(tool_name: str, tool_input: dict, result: dict) -> dict |
             "type": "calendar_events",
             "title": "Upcoming Events",
             "events": result.get("events", []),
-            "range": result.get("range", {}),
         }
 
     if tool_name == "submit_timesheet_entry" and result.get("success"):
         return {
-            "type": "timesheet_logged",
-            "title": "Timesheet Entry Logged",
-            "work_date": result.get("work_date", ""),
+            "type": "timesheet_submitted",
+            "title": "Timesheet Entry Submitted",
+            "date": result.get("date", ""),
             "hours": result.get("hours", 0),
             "project": result.get("project", ""),
+            "entry_id": result.get("entry_id", ""),
         }
 
-    if tool_name == "check_timesheet" and result.get("entries") is not None:
+    if tool_name == "check_timesheet" and result.get("entries"):
         return {
-            "type": "timesheet_summary",
-            "title": "Timesheet Summary",
-            "week_start": result.get("week_start", ""),
-            "week_end": result.get("week_end", ""),
+            "type": "timesheet_entries",
+            "title": "Recent Timesheet",
             "entries": result.get("entries", []),
-            "total_hours": result.get("total_hours", 0),
-            "expected_hours": result.get("expected_hours", 40),
         }
 
-    if tool_name == "check_objectives" and result.get("objectives") is not None:
+    if tool_name == "check_objectives" and result.get("objectives"):
         return {
             "type": "objectives",
             "title": "Your Objectives",
             "objectives": result.get("objectives", []),
-        }
-
-    if tool_name == "search_knowledge_base" and result.get("results") is not None:
-        return {
-            "type": "knowledge_results",
-            "title": f"Knowledge Base: \"{tool_input.get('query', '')}\"",
-            "results": result.get("results", []),
         }
 
     return None
@@ -477,29 +467,40 @@ def _build_action_card(tool_name: str, tool_input: dict, result: dict) -> dict |
 # Main chat endpoint
 # ──────────────────────────────────────────────────────────────────────────────
 
-@router.post("/chat", response_model=ChatResponse)
-def chat(
+@router.post("/chat")
+async def chat(
     req: ChatRequest,
     db: Session = Depends(get_db),
     user_id: UUID = Depends(get_current_user_id),
     org_id: UUID = Depends(get_current_org_id),
 ):
+    """
+    Chat endpoint with agentic tool-calling and context from user_context_updated.
+    """
     try:
-        project_files = _read_project_manifest()
-        requested = req.context_files or []
-        combined = list(dict.fromkeys([*project_files, *requested]))
-        context_blob = load_context_files(combined)
+        content = (req.message or "").strip()
+        if not content:
+            raise HTTPException(status_code=400, detail="Message cannot be empty")
 
-        content = req.message
+        # ── Load context files ──
+        file_context = load_context_files(req.context_files)
 
-        attachment_text_parts = []
+        # ── Convert history to dicts ──
+        history_dicts = []
+        if req.history:
+            for h in req.history:
+                history_dicts.append({"role": h.role, "content": h.content})
+
+        # ── Web search ──
+        web_search_context = ""
+        if _should_search(content, history_dicts):
+            search_query = _build_search_query(content, history_dicts)
+            web_search_context = _tavily_search(search_query)
+
+        # ── Process attachments ──
         image_blocks = []
         if req.attachments:
             for att in req.attachments:
-                if att.extracted_text:
-                    attachment_text_parts.append(
-                        f"\n\n### ATTACHED FILE: {att.filename}\n{att.extracted_text}"
-                    )
                 if att.image_base64 and att.media_type:
                     image_blocks.append({
                         "type": "image",
@@ -509,41 +510,30 @@ def chat(
                             "data": att.image_base64,
                         },
                     })
+                elif att.extracted_text:
+                    content += f"\n\n[Attached file: {att.filename}]\n{att.extracted_text}"
 
-        text_with_attachments = content
-        if attachment_text_parts:
-            text_with_attachments += "".join(attachment_text_parts)
-        if context_blob:
-            text_with_attachments += f"\n\n{context_blob}"
+        final_user_message = content
+        if file_context:
+            final_user_message = file_context + "\n\n" + content
 
-        final_user_message = text_with_attachments
+        # ── Choose model ──
+        chosen = req.model or ANTHROPIC_MODEL
+        if chosen not in ["claude-sonnet-4-5-20250929", "claude-opus-4-20250514", "claude-haiku-4-5-20251001"]:
+            chosen = ANTHROPIC_MODEL
 
-        if not ANTHROPIC_API_KEY:
-            raise HTTPException(
-                status_code=503,
-                detail="Anthropic API not configured. Set ANTHROPIC_API_KEY in environment.",
+        # ── Build enhanced user context (direct report data, objectives, etc.) ──
+        user_context = ""
+        try:
+            user_context = build_user_context(
+                db=db,
+                org_id=org_id,
+                user_id=user_id,
+                user_message=content,
+                chat_history=history_dicts,
             )
-
-        chosen = ANTHROPIC_MODEL
-
-        MAX_USER_CHARS_HARD = 10_000
-        if len(final_user_message) > MAX_USER_CHARS_HARD:
-            final_user_message = final_user_message[:MAX_USER_CHARS_HARD] + "\n\n[TRUNCATED]"
-
-        history_dicts = None
-        if req.history:
-            history_dicts = [{"role": h.role, "content": h.content} for h in req.history[-10:]]
-
-        # ── Tavily web search (runs before prompt assembly) ──
-        web_search_context = ""
-        if _should_search(content, history_dicts):
-            search_query = _build_search_query(content, history_dicts)
-            logger.info("Tavily search triggered for: %s", search_query[:100])
-            web_search_context = _tavily_search(search_query)
-            if web_search_context:
-                logger.info("Tavily returned %d chars of results", len(web_search_context))
-            else:
-                logger.warning("Tavily search returned no results for: %s", search_query[:100])
+        except Exception as e:
+            logger.warning("Failed to build user context: %s", e)
 
         # ── Assemble system prompt ──
         system_prompt = assemble_prompt(
@@ -553,6 +543,10 @@ def chat(
             user_message=content,
             chat_history=history_dicts,
         )
+
+        # ── Append enhanced context to system prompt ──
+        if user_context:
+            system_prompt = system_prompt + "\n\n" + user_context
 
         # Sprint 6: inject agentic capability instructions
         system_prompt += (
