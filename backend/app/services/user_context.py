@@ -147,8 +147,8 @@ def _build_employee_profile(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) 
                 parts.append(f"  Direct reports ({len(reports)}): {', '.join(names)}")
             else:
                 parts.append("  Direct reports: None")
-        except Exception:
-            pass
+        except Exception as _dr_err:
+            logger.warning("Direct reports query failed for user %s: %s", user_id, _dr_err)
 
         return "\n".join(parts) if len(parts) > 1 else ""
     except Exception as e:
