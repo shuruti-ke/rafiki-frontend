@@ -166,7 +166,18 @@ def analyze_safety(text: str, history: list | None = None) -> dict:
                 if block.get("type") == "text":
                     ai_text += block.get("text", "")
 
-            parsed = json.loads(ai_text.strip())
+            ai_text = ai_text.strip()
+            if not ai_text:
+                logger.warning("Safety analysis: empty response body, falling back")
+                return _keyword_safety_result(text)
+
+            if ai_text.startswith("```"):
+                ai_text = ai_text.split("```")[1]
+                if ai_text.startswith("json"):
+                    ai_text = ai_text[4:]
+                ai_text = ai_text.strip()
+
+            parsed = json.loads(ai_text)
             action = parsed.get("recommended_action", "proceed")
             return {
                 "risk_level": parsed.get("risk_level", "none"),
@@ -290,7 +301,19 @@ def _run_sentiment_analysis(
             if block.get("type") == "text":
                 ai_text += block.get("text", "")
 
-        parsed = json.loads(ai_text.strip())
+        ai_text = ai_text.strip()
+        if not ai_text:
+            logger.warning("Sentiment analysis: empty response body, skipping")
+            return
+
+        # Strip markdown fences if Haiku wrapped the JSON
+        if ai_text.startswith("```"):
+            ai_text = ai_text.split("```")[1]
+            if ai_text.startswith("json"):
+                ai_text = ai_text[4:]
+            ai_text = ai_text.strip()
+
+        parsed = json.loads(ai_text)
         stress_level = max(1, min(5, int(parsed.get("stress_level", 1))))
         sentiment = max(-1.0, min(1.0, float(parsed.get("sentiment", 0))))
         sentiment_label = parsed.get("sentiment_label", "neutral")
