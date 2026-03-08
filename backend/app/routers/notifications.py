@@ -158,10 +158,10 @@ def mark_read(
     if body.notification_ids:
         db.execute(text("""
             UPDATE notifications
-            SET read_at = :now
-            WHERE user_id = :uid
-              AND org_id  = :org
-              AND id      = ANY(:ids::uuid[])
+            SET read_at = %(now)s
+            WHERE user_id = %(uid)s
+              AND org_id  = %(org)s
+              AND id      = ANY(%(ids)s::uuid[])
               AND read_at IS NULL
         """), {
             "now": now,
