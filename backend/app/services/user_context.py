@@ -1006,6 +1006,7 @@ def _build_direct_report_context(
 
 
 
+def build_user_context(
     db: Session,
     org_id,
     user_id=None,
