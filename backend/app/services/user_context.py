@@ -53,7 +53,9 @@ INTENT_KEYWORDS = {
     "announcements": ["announcement", "news", "update", "training", "notice", "policy change", "unread"],
     "performance": ["evaluation", "review", "rating", "strengths", "improvement", "feedback", "appraisal", "performance eval"],
     "guided_paths": ["guided", "module", "wellness", "breathing", "burnout", "stress path", "mindfulness session"],
-    "coaching": ["coaching", "report", "team member", "direct report", "mentoring", "one-on-one"],
+    "coaching": ["coaching", "report", "team member", "direct report", "mentoring", "one-on-one",
+                 "my team", "who do i manage", "managing", "people i manage", "my staff",
+                 "my reports", "subordinate", "reportee"],
     "web_search": [
         "hotel", "hotels", "restaurant", "restaurants", "flight", "flights",
         "price", "prices", "cost", "how much", "where can i", "recommend",
@@ -131,6 +133,22 @@ def _build_employee_profile(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) 
                     parts.append(f"  Reports to: {getattr(mgr, 'name', None) or 'their manager'}")
             except Exception:
                 pass
+
+        # Direct reports — anyone whose manager_id == this user
+        try:
+            reports = (
+                db.query(User)
+                .filter(User.manager_id == user_id, User.org_id == org_id, User.is_active == True)
+                .order_by(User.name)
+                .all()
+            )
+            if reports:
+                names = [getattr(r, "name", None) or getattr(r, "email", "Unknown") for r in reports]
+                parts.append(f"  Direct reports ({len(reports)}): {', '.join(names)}")
+            else:
+                parts.append("  Direct reports: None")
+        except Exception:
+            pass
 
         return "\n".join(parts) if len(parts) > 1 else ""
     except Exception as e:
