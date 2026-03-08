@@ -73,9 +73,11 @@ def assemble_prompt(
         parts.append(f"\nORGANIZATION CONTEXT:\n{user_context}")
 
     if db:
+        from app.database import SessionLocal as _ContextSessionLocal
+        context_db = _ContextSessionLocal()
         try:
             rich_context = build_user_context(
-                db=db,
+                db=context_db,
                 org_id=org_id,
                 user_id=user_id,
                 user_message=user_message or "",
@@ -90,6 +92,8 @@ def assemble_prompt(
                 )
         except Exception as e:
             logger.error("Failed to build user context: %s", e)
+        finally:
+            context_db.close()
 
     parts.append(
         "\n══════════════════════════════════════\n"
