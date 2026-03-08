@@ -16,6 +16,7 @@ from app.services.prompt import assemble_prompt
 from app.services.document_processor import extract_text_from_bytes
 from app.services.crisis_detector import quick_safety_screen, analyze_safety, get_safety_prompt_injection, analyze_sentiment_background
 from app.services.helpline_directory import get_helplines, format_helplines_for_prompt
+from app.services.agent_tools import TOOL_DEFINITIONS, execute_tool
 
 logger = logging.getLogger(__name__)
 
@@ -34,22 +35,20 @@ MAX_TOTAL_CONTEXT_CHARS = 20000
 
 _PRIVILEGED_ROLES = {"hr_admin", "super_admin"}
 
+# Maximum tool-call iterations to prevent runaway loops
+MAX_TOOL_ITERATIONS = 6
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Search helpers (unchanged from Sprint 5)
+# ──────────────────────────────────────────────────────────────────────────────
 
 def _should_search(message: str, chat_history: list | None = None) -> bool:
-    """
-    Use Claude to intelligently decide if a web search is needed.
-    Returns True if the message requires real-time, factual, or external information
-    that Claude wouldn't reliably know — regardless of topic.
-    Falls back to False if the classifier call fails.
-    """
     if not TAVILY_API_KEY or not ANTHROPIC_API_KEY:
         return False
-
-    # Skip search for very short conversational messages
     if len(message.strip()) < 8:
         return False
 
-    # Build recent context for the classifier
     history_snippet = ""
     if chat_history:
         recent = chat_history[-3:]
@@ -111,7 +110,6 @@ def _should_search(message: str, chat_history: list | None = None) -> bool:
 
 
 def _tavily_search(query: str, max_results: int = 5) -> str:
-    """Call Tavily search API and return formatted results string."""
     if not TAVILY_API_KEY:
         return ""
     try:
@@ -133,20 +131,15 @@ def _tavily_search(query: str, max_results: int = 5) -> str:
 
         data = resp.json()
         parts = []
-
-        # Include Tavily's own answer summary if present
         if data.get("answer"):
             parts.append(f"SUMMARY: {data['answer']}\n")
-
         for i, result in enumerate(data.get("results", []), 1):
             title = result.get("title", "")
             url = result.get("url", "")
             snippet = result.get("content", "")[:600]
             parts.append(f"[{i}] {title}\nURL: {url}\n{snippet}\n")
-
         if not parts:
             return ""
-
         return (
             "\n══════════════════════════════════════\n"
             "WEB SEARCH RESULTS (use these for accurate, factual answers):\n"
@@ -161,22 +154,23 @@ def _tavily_search(query: str, max_results: int = 5) -> str:
 
 
 def _build_search_query(message: str, chat_history: list | None) -> str:
-    """Build a clean search query from the user message + recent context."""
-    # Use last assistant message for context if relevant
     context = ""
     if chat_history:
         for msg in reversed(chat_history[-4:]):
             if msg.get("role") == "user":
                 context = msg.get("content", "")[:100]
                 break
-    # Keep query focused — strip conversational filler
     query = message.strip()
-    # Add East Africa context if location not specified but seems relevant
     location_words = ["mombasa", "nairobi", "kenya", "uganda", "tanzania", "rwanda", "east africa"]
     if not any(w in query.lower() for w in location_words):
         if any(w in query.lower() for w in ["hotel", "restaurant", "hospital", "clinic", "price"]):
             query += " Kenya East Africa"
     return query[:300]
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Pydantic models
+# ──────────────────────────────────────────────────────────────────────────────
 
 class HistoryMessage(BaseModel):
     role: str
@@ -200,11 +194,16 @@ class ChatRequest(BaseModel):
     attachments: Optional[List[AttachmentData]] = None
 
 
-
 class ChatResponse(BaseModel):
     reply: str
     session_id: Optional[str] = None
+    # Sprint 6: surface structured action cards to the frontend
+    action_cards: Optional[List[dict]] = None
 
+
+# ──────────────────────────────────────────────────────────────────────────────
+# File context helpers (unchanged)
+# ──────────────────────────────────────────────────────────────────────────────
 
 def load_context_files(names):
     if not names:
@@ -256,6 +255,10 @@ ATTACHMENT_IMAGE_MIMES = {"image/png", "image/jpeg", "image/jpg", "image/webp", 
 ATTACHMENT_MAX_SIZE = 20 * 1024 * 1024  # 20 MB
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Upload endpoint (unchanged)
+# ──────────────────────────────────────────────────────────────────────────────
+
 @router.post("/chat/upload-attachment")
 async def upload_chat_attachment(file: UploadFile = File(...)):
     """Upload a file for Rafiki to review in the current chat turn."""
@@ -290,6 +293,189 @@ async def upload_chat_attachment(file: UploadFile = File(...)):
         result["extracted_text"] = text if text else f"[Could not extract text from {filename}]"
     return result
 
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Agentic tool-calling loop
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _run_agentic_loop(
+    messages: list,
+    system_prompt: str,
+    chosen_model: str,
+    user_id: UUID,
+    org_id: UUID,
+    db: Session,
+) -> tuple[str, list]:
+    """
+    Run the Claude tool-calling loop.
+
+    Returns:
+        (final_reply_text, action_cards)
+        action_cards is a list of structured dicts for the frontend to render.
+    """
+    headers = {
+        "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+    }
+
+    action_cards: list[dict] = []
+    iteration = 0
+
+    while iteration < MAX_TOOL_ITERATIONS:
+        iteration += 1
+
+        payload = {
+            "model": chosen_model,
+            "max_tokens": 4096,
+            "system": system_prompt,
+            "tools": TOOL_DEFINITIONS,
+            "messages": messages,
+        }
+
+        r = httpx.post(
+            "https://api.anthropic.com/v1/messages",
+            headers=headers,
+            json=payload,
+            timeout=90,
+        )
+
+        if r.status_code >= 400:
+            logger.error("Anthropic API error (%d): %s", r.status_code, r.text[:500])
+            return f"AI service error ({r.status_code}). Please try again.", action_cards
+
+        data = r.json()
+        stop_reason = data.get("stop_reason")
+        content_blocks = data.get("content", [])
+
+        # ── No tool calls → final text response ──
+        if stop_reason != "tool_use":
+            reply_text = ""
+            for block in content_blocks:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    reply_text += block.get("text", "")
+            return reply_text.strip() or "...", action_cards
+
+        # ── Process tool calls ──
+        # Append the assistant's response (with tool_use blocks) to messages
+        messages.append({"role": "assistant", "content": content_blocks})
+
+        tool_results = []
+        for block in content_blocks:
+            if not isinstance(block, dict) or block.get("type") != "tool_use":
+                continue
+
+            tool_name = block.get("name", "")
+            tool_use_id = block.get("id", "")
+            tool_input = block.get("input", {})
+
+            logger.info("Tool call: %s | input: %s", tool_name, json.dumps(tool_input)[:200])
+
+            result = execute_tool(tool_name, tool_input, user_id, org_id, db)
+
+            logger.info("Tool result: %s | %s", tool_name, json.dumps(result)[:200])
+
+            # Build action card for the frontend
+            card = _build_action_card(tool_name, tool_input, result)
+            if card:
+                action_cards.append(card)
+
+            tool_results.append({
+                "type": "tool_result",
+                "tool_use_id": tool_use_id,
+                "content": json.dumps(result),
+            })
+
+        # Append all tool results as a single user turn
+        messages.append({"role": "user", "content": tool_results})
+
+    # Exceeded iteration limit — ask Claude for a graceful wrap-up
+    logger.warning("Tool loop hit MAX_TOOL_ITERATIONS=%d", MAX_TOOL_ITERATIONS)
+    return "I've gathered all the information I need. Let me summarise what I found for you.", action_cards
+
+
+def _build_action_card(tool_name: str, tool_input: dict, result: dict) -> dict | None:
+    """
+    Convert a tool result into a structured action card for the frontend.
+    Returns None if no card is appropriate.
+    """
+    if tool_name == "submit_leave_request" and result.get("success"):
+        return {
+            "type": "leave_submitted",
+            "title": "Leave Request Submitted",
+            "leave_type": result.get("leave_type", ""),
+            "start_date": result.get("start_date", ""),
+            "end_date": result.get("end_date", ""),
+            "days": result.get("days_requested", 0),
+            "status": result.get("status", "pending"),
+            "request_id": result.get("request_id", ""),
+        }
+
+    if tool_name == "check_leave_balance" and result.get("balances"):
+        return {
+            "type": "leave_balance",
+            "title": "Leave Balance",
+            "balances": result["balances"],
+        }
+
+    if tool_name == "create_calendar_event" and result.get("success"):
+        return {
+            "type": "event_created",
+            "title": "Calendar Event Created",
+            "event_title": result.get("title", ""),
+            "start": result.get("start", ""),
+            "end": result.get("end", ""),
+            "event_id": result.get("event_id", ""),
+        }
+
+    if tool_name == "check_calendar_events" and result.get("events") is not None:
+        return {
+            "type": "calendar_events",
+            "title": "Upcoming Events",
+            "events": result.get("events", []),
+            "range": result.get("range", {}),
+        }
+
+    if tool_name == "submit_timesheet_entry" and result.get("success"):
+        return {
+            "type": "timesheet_logged",
+            "title": "Timesheet Entry Logged",
+            "work_date": result.get("work_date", ""),
+            "hours": result.get("hours", 0),
+            "project": result.get("project", ""),
+        }
+
+    if tool_name == "check_timesheet" and result.get("entries") is not None:
+        return {
+            "type": "timesheet_summary",
+            "title": "Timesheet Summary",
+            "week_start": result.get("week_start", ""),
+            "week_end": result.get("week_end", ""),
+            "entries": result.get("entries", []),
+            "total_hours": result.get("total_hours", 0),
+            "expected_hours": result.get("expected_hours", 40),
+        }
+
+    if tool_name == "check_objectives" and result.get("objectives") is not None:
+        return {
+            "type": "objectives",
+            "title": "Your Objectives",
+            "objectives": result.get("objectives", []),
+        }
+
+    if tool_name == "search_knowledge_base" and result.get("results") is not None:
+        return {
+            "type": "knowledge_results",
+            "title": f"Knowledge Base: \"{tool_input.get('query', '')}\"",
+            "results": result.get("results", []),
+        }
+
+    return None
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Main chat endpoint
+# ──────────────────────────────────────────────────────────────────────────────
 
 @router.post("/chat", response_model=ChatResponse)
 def chat(
@@ -368,17 +554,29 @@ def chat(
             chat_history=history_dicts,
         )
 
-        # Inject web search results into system prompt if available
+        # Sprint 6: inject agentic capability instructions
+        system_prompt += (
+            "\n\n## Agentic Capabilities\n"
+            "You have tools to take actions on the employee's behalf:\n"
+            "- **check_leave_balance** / **submit_leave_request** — check and request leave\n"
+            "- **check_calendar_events** / **create_calendar_event** — view and create events\n"
+            "- **check_timesheet** / **submit_timesheet_entry** — view and log timesheets\n"
+            "- **check_objectives** — view OKRs and progress\n"
+            "- **search_knowledge_base** — find HR policies and company information\n\n"
+            "Use these tools proactively when the employee's request implies an action. "
+            "Always confirm key details with the employee before submitting leave or timesheet entries. "
+            "After completing an action, summarise what was done in a friendly, concise message."
+        )
+
         if web_search_context:
             system_prompt = system_prompt + "\n" + web_search_context
 
-        # ── Crisis detection (safety layer) ──
+        # ── Crisis detection ──
         crisis_result = None
         screen_level = quick_safety_screen(content)
         if screen_level != "none":
             crisis_result = analyze_safety(content, history_dicts)
             if crisis_result["recommended_action"] in ("safety_check", "crisis_response"):
-                # Get org crisis config for custom helplines
                 try:
                     from app.models.wellbeing import OrgCrisisConfig
                     org_config = db.query(OrgCrisisConfig).filter(OrgCrisisConfig.org_id == org_id).first()
@@ -397,17 +595,15 @@ def chat(
             "yes" if web_search_context else "no",
         )
 
-        headers = {
-            "Content-Type": "application/json",
-            "x-api-key": ANTHROPIC_API_KEY,
-            "anthropic-version": "2023-06-01",
-        }
-
+        # ── Build messages list ──
         messages = []
         if req.history:
             for h in req.history[-20:]:
                 role_label = "assistant" if h.role == "assistant" else "user"
-                messages.append({"role": role_label, "content": h.content})
+                # History messages that are plain strings — tool_use turns in history
+                # are complex; for simplicity we only replay text turns.
+                if isinstance(h.content, str):
+                    messages.append({"role": role_label, "content": h.content})
 
         if image_blocks:
             user_content = [*image_blocks, {"type": "text", "text": final_user_message}]
@@ -416,40 +612,27 @@ def chat(
 
         messages.append({"role": "user", "content": user_content})
 
-        payload = {
-            "model": chosen,
-            "max_tokens": 4096,
-            "system": system_prompt,
-            "messages": messages,
-        }
-
-        r = httpx.post(
-            "https://api.anthropic.com/v1/messages",
-            headers=headers,
-            json=payload,
-            timeout=60,
+        # ── Run agentic loop ──
+        reply_text, action_cards = _run_agentic_loop(
+            messages=messages,
+            system_prompt=system_prompt,
+            chosen_model=chosen,
+            user_id=user_id,
+            org_id=org_id,
+            db=db,
         )
 
-        if r.status_code >= 400:
-            logger.error("Anthropic API error (%d): %s", r.status_code, r.text[:500])
-            return ChatResponse(reply=f"AI service error ({r.status_code}). Please try again.")
+        reply_text = reply_text or "..."
 
-        data = r.json()
-        reply_text = ""
-        for block in (data.get("content") or []):
-            if isinstance(block, dict) and block.get("type") == "text":
-                reply_text += block.get("text", "")
-        reply_text = reply_text.strip() or "..."
-
-        # ── Create crisis alert if crisis was detected ──
+        # ── Create crisis alert if needed ──
         if crisis_result and crisis_result["risk_level"] in ("high", "critical"):
             try:
                 from app.models.wellbeing import CrisisAlert
                 from app.database import SessionLocal as _CrisisSessionLocal
+                import uuid as _uuid_mod
 
                 crisis_db = _CrisisSessionLocal()
                 try:
-                    import uuid as _uuid_mod
                     session_uuid = None
                     if req.session_id:
                         try:
@@ -476,9 +659,7 @@ def chat(
             except Exception as e:
                 logger.error("Crisis alert session error: %s", e)
 
-        # ── Persist chat messages using a FRESH db session ──
-        # The main db session may be in a failed transaction state from
-        # context-building queries, so we use a separate session for persistence.
+        # ── Persist chat messages ──
         session_id_out = req.session_id
         try:
             from app.models.chat_session import ChatSession, ChatMessage
@@ -507,8 +688,11 @@ def chat(
                         session_id_out = str(session.id)
 
                 if session_id_out:
+                    # Store action cards JSON alongside the assistant message for
+                    # potential future replay (schema permitting).
+                    assistant_content = reply_text
                     persist_db.add(ChatMessage(session_id=session_id_out, role="user", content=content))
-                    persist_db.add(ChatMessage(session_id=session_id_out, role="assistant", content=reply_text))
+                    persist_db.add(ChatMessage(session_id=session_id_out, role="assistant", content=assistant_content))
                     persist_db.commit()
                     logger.info("Persisted 2 messages to session %s", session_id_out)
             except Exception as e:
@@ -519,7 +703,7 @@ def chat(
         except Exception as e:
             logger.error("Failed to create persist session: %s", e)
 
-        # ── Background sentiment/stress analysis (fire-and-forget) ──
+        # ── Background sentiment analysis ──
         try:
             analyze_sentiment_background(
                 user_message=content,
@@ -531,7 +715,11 @@ def chat(
         except Exception as e:
             logger.warning("Failed to launch background sentiment analysis: %s", e)
 
-        return ChatResponse(reply=reply_text, session_id=session_id_out)
+        return ChatResponse(
+            reply=reply_text,
+            session_id=session_id_out,
+            action_cards=action_cards if action_cards else None,
+        )
 
     except HTTPException:
         raise
