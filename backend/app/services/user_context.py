@@ -137,17 +137,22 @@ def _find_direct_report_by_name(
     name: str
 ) -> Optional[Any]:
     """
-    Find a direct report by partial name match (case-insensitive).
-    Returns the User object if found, None otherwise.
+    Find a direct report by name match (case-insensitive).
+    Only filters by manager_id - that's the primary relationship.
+    org_id is passed but not used for filtering since manager_id is the security boundary.
     """
     try:
         from app.models.user import User
         
         name_lower = name.lower().strip()
+        logger.info("Lookup: name='%s' (lower='%s'), manager_id='%s'", name, name_lower, manager_id)
+        
         if not name_lower:
+            logger.info("Name is empty, returning None")
             return None
         
         # Try exact match first
+        logger.info("Trying exact match: LOWER(name) == '%s'", name_lower)
         user = (
             db.query(User)
             .filter(
@@ -158,8 +163,10 @@ def _find_direct_report_by_name(
         )
         
         if user:
+            logger.info("✓ Found exact match: user_id=%s, name=%s, org_id=%s", user.user_id, user.name, user.org_id)
             return user
         
+        logger.info("No exact match found, trying partial match with ILIKE")
         # Try partial/contains match
         user = (
             db.query(User)
@@ -170,10 +177,17 @@ def _find_direct_report_by_name(
             .first()
         )
         
-        return user
+        if user:
+            logger.info("✓ Found partial match: user_id=%s, name=%s, org_id=%s", user.user_id, user.name, user.org_id)
+            return user
+        
+        logger.warning("✗ No direct report found with name '%s' for manager '%s'", name_lower, manager_id)
+        return None
         
     except Exception as e:
-        logger.debug("Direct report lookup by name failed for '%s': %s", name, e)
+        logger.error("✗ Direct report lookup failed for '%s': %s", name, e)
+        import traceback
+        logger.error("Traceback: %s", traceback.format_exc())
         return None
     msg_lower = (user_message or "").lower()
     matched = set()
