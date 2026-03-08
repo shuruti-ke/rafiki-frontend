@@ -97,31 +97,35 @@ def _detect_intents(user_message: str, user_doc_titles: list[str] = None) -> set
 def _extract_names_from_context(text: str, chat_history: list[dict] = None) -> set[str]:
     """
     Extract potential person names from user message and recent chat history.
-    Looks for capitalized words that appear after "about", "is", "tell", etc.
     """
+    import re
     names = set()
     
     # Combine current message with recent chat history
     context_texts = [text]
     if chat_history:
-        # Look back 3-5 recent turns for context
         for msg in chat_history[-6:]:
             if msg.get("role") == "user":
                 context_texts.append(msg.get("content", ""))
     
-    combined = " ".join(context_texts).lower()
+    combined = " ".join(context_texts)
     
-    # Split into tokens and look for capitalized words (potential names)
-    import re
-    # Pattern: word after "tell me about", "who is", "status of", etc.
+    # Patterns to extract names (case-insensitive)
     patterns = [
-        r"(?:tell me about|who is|what about|status of|how is|about)\s+([A-Za-z]+)",
-        r"(?:my report|employee|team member)\s+([A-Za-z]+)",
+        r"tell\s+me\s+about\s+([A-Za-z]+)",
+        r"who\s+is\s+([A-Za-z]+)",
+        r"what\s+about\s+([A-Za-z]+)",
+        r"status\s+of\s+([A-Za-z]+)",
+        r"how\s+is\s+([A-Za-z]+)",
+        r"about\s+([A-Za-z]+)",
+        r"my\s+report\s+([A-Za-z]+)",
     ]
     
     for pattern in patterns:
         matches = re.findall(pattern, combined, re.IGNORECASE)
-        names.update(matches)
+        for match in matches:
+            if match.strip():
+                names.add(match.strip().lower())
     
     return names
 
@@ -1046,8 +1050,10 @@ def _build_direct_report_context(
         
         # Extract names from current message and recent history
         names_to_search = _extract_names_from_context(user_message, chat_history)
+        logger.info("Extracted names from context: %s", names_to_search)
         
         if not names_to_search:
+            logger.info("No names found in message: %s", user_message[:100])
             return ""
 
         sections = []
@@ -1058,19 +1064,22 @@ def _build_direct_report_context(
             if not name or len(name.strip()) < 2:
                 continue
             
+            logger.info("Looking up direct report: %s", name)
             # Use enhanced lookup function
             report = _find_direct_report_by_name(db, org_id, manager_id, name)
             
             if not report:
-                logger.debug("Direct report '%s' not found in this org/manager context", name)
+                logger.info("Direct report '%s' not found", name)
                 continue
             
+            logger.info("Found direct report: %s", report.name)
             matched_reports.append(report)
 
         if not matched_reports:
+            logger.info("No matched reports found")
             return ""
         
-        # Build detailed context for each matched report
+        logger.info("Building context for %d matched reports", len(matched_reports))
         for report in matched_reports[:2]:  # cap at 2 to keep context size reasonable
             report_uuid = _as_uuid(report.user_id)
             parts = [f"DIRECT REPORT PROFILE — {report.name or report.email}:"]
@@ -1314,11 +1323,15 @@ def build_user_context(
         # thomas" work even when the name only appeared in a prior turn.
         # Security: only loads data for confirmed direct reports (manager_id == user_uuid).
         if user_message:
+            logger.info("Checking for direct report context for message: %s", user_message[:100])
             ctx = _build_direct_report_context(
                 db, org_uuid, user_uuid, user_message, chat_history=chat_history
             )
             if ctx:
+                logger.info("Direct report context found: %d chars", len(ctx))
                 sections.append(ctx)
+            else:
+                logger.info("No direct report context found")
 
 
 
