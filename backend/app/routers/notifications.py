@@ -156,19 +156,29 @@ def mark_read(
     now = datetime.now(timezone.utc)
 
     if body.notification_ids:
-        db.execute(text("""
-            UPDATE notifications
-            SET read_at = %(now)s
-            WHERE user_id = %(uid)s
-              AND org_id  = %(org)s
-              AND id      = ANY(%(ids)s::uuid[])
-              AND read_at IS NULL
-        """), {
-            "now": now,
-            "uid": str(user_id),
-            "org": str(org_id),
-            "ids": [str(nid) for nid in body.notification_ids],
-        })
+        # Binding a Python list through SQLAlchemy text() is unreliable with
+        # psycopg2 — construct a safe inline ARRAY literal instead.
+        import re
+        _uuid_re = re.compile(
+            r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+            re.IGNORECASE,
+        )
+        safe_ids = [str(nid) for nid in body.notification_ids
+                    if _uuid_re.match(str(nid))]
+        if not safe_ids:
+            return {"ok": True}
+        array_literal = "ARRAY[" + ",".join(f"'{i}'::uuid" for i in safe_ids) + "]"
+        db.execute(
+            text(f"""
+                UPDATE notifications
+                SET read_at = :now
+                WHERE user_id = :uid
+                  AND org_id  = :org
+                  AND id      = ANY({array_literal})
+                  AND read_at IS NULL
+            """),
+            {"now": now, "uid": str(user_id), "org": str(org_id)},
+        )
     else:
         db.execute(text("""
             UPDATE notifications
