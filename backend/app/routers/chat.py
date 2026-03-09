@@ -523,21 +523,22 @@ async def chat(
             chosen = ANTHROPIC_MODEL
 
         # ── Build enhanced user context (direct report data, objectives, etc.) ──
-        # IMPORTANT: Clear any failed transaction state before building context
-        try:
-            db.rollback()
-        except Exception:
-            pass
-        
+        # IMPORTANT: Use a FRESH database session to avoid transaction state issues
+        # from earlier operations like assemble_prompt()
         user_context = ""
         try:
-            user_context = build_user_context(
-                db=db,
-                org_id=org_id,
-                user_id=user_id,
-                user_message=content,
-                chat_history=history_dicts,
-            )
+            from app.database import SessionLocal
+            fresh_db = SessionLocal()
+            try:
+                user_context = build_user_context(
+                    db=fresh_db,
+                    org_id=org_id,
+                    user_id=user_id,
+                    user_message=content,
+                    chat_history=history_dicts,
+                )
+            finally:
+                fresh_db.close()
         except Exception as e:
             logger.warning("Failed to build user context: %s", e)
 
