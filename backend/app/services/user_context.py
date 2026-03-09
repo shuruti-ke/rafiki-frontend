@@ -157,11 +157,15 @@ def _find_report_user_id_by_name(
         
         # Get ALL direct reports for this manager
         logger.info("📋 Fetching all direct reports for manager_id=%s", manager_id)
-        all_reports = (
-            db.query(User.user_id, User.name)
-            .filter(User.manager_id == manager_id)
-            .all()
-        )
+        try:
+            all_reports = (
+                db.query(User.user_id, User.name)
+                .filter(User.manager_id == manager_id)
+                .all()
+            )
+        except Exception as db_err:
+            logger.error("❌ Database query failed: %s", db_err)
+            return None
         
         logger.info("📊 Found %d direct reports", len(all_reports))
         
@@ -1279,13 +1283,9 @@ def build_user_context(
         logger.error("build_user_context: invalid org_id=%r — %s", org_id, e)
         return ""
 
-    # Clear any aborted transaction left by previous queries on this session
-    # (e.g. from FastAPI dependencies or earlier middleware). All context
-    # builders are read-only so a rollback here is always safe.
-    try:
-        db.rollback()
-    except Exception:
-        pass
+    # NOTE: Do NOT call db.rollback() here - FastAPI manages transactions
+    # If the session is in a failed state, it will fail here and break subsequent queries
+    # Let FastAPI's exception handling manage transaction cleanup
 
     user_uuid: uuid.UUID | None = None
     if user_id is not None:
