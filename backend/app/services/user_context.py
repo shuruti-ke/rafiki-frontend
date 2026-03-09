@@ -15,10 +15,9 @@ DB NOTE:
 import logging
 import uuid
 from datetime import date, datetime, timedelta
-from typing import Optional, Dict, List, Any
 
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, func, or_
+from sqlalchemy import desc, func
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +55,7 @@ INTENT_KEYWORDS = {
     "guided_paths": ["guided", "module", "wellness", "breathing", "burnout", "stress path", "mindfulness session"],
     "coaching": ["coaching", "report", "team member", "direct report", "mentoring", "one-on-one",
                  "my team", "who do i manage", "managing", "people i manage", "my staff",
-                 "my reports", "subordinate", "reportee", "tell me about", "who is", "status of"],
+                 "my reports", "subordinate", "reportee"],
     "web_search": [
         "hotel", "hotels", "restaurant", "restaurants", "flight", "flights",
         "price", "prices", "cost", "how much", "where can i", "recommend",
@@ -73,132 +72,6 @@ _DOC_EXTENSIONS = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".
 
 
 def _detect_intents(user_message: str, user_doc_titles: list[str] = None) -> set[str]:
-    """Detect which context modules to load based on user message"""
-    msg_lower = (user_message or "").lower()
-    matched = set()
-
-    for intent, keywords in INTENT_KEYWORDS.items():
-        if any(kw in msg_lower for kw in keywords):
-            matched.add(intent)
-
-    if any(ext in msg_lower for ext in _DOC_EXTENSIONS):
-        matched.add("documents")
-
-    if user_doc_titles:
-        for title in user_doc_titles:
-            if title and title.lower() in msg_lower:
-                matched.add("documents")
-                break
-        matched.add("documents")
-
-    return matched if matched else DEFAULT_INTENTS
-
-
-def _extract_names_from_context(text: str, chat_history: list[dict] = None) -> set[str]:
-    """
-    Extract potential person names from user message and recent chat history.
-    """
-    import re
-    names = set()
-    
-    # Combine current message with recent chat history
-    context_texts = [text]
-    if chat_history:
-        for msg in chat_history[-6:]:
-            if msg.get("role") == "user":
-                context_texts.append(msg.get("content", ""))
-    
-    combined = " ".join(context_texts)
-    
-    # Patterns to extract names (case-insensitive)
-    patterns = [
-        r"tell\s+me\s+about\s+([A-Za-z]+)",
-        r"who\s+is\s+([A-Za-z]+)",
-        r"what\s+about\s+([A-Za-z]+)",
-        r"status\s+of\s+([A-Za-z]+)",
-        r"how\s+is\s+([A-Za-z]+)",
-        r"about\s+([A-Za-z]+)",
-        r"my\s+report\s+([A-Za-z]+)",
-    ]
-    
-    for pattern in patterns:
-        matches = re.findall(pattern, combined, re.IGNORECASE)
-        for match in matches:
-            if match.strip():
-                names.add(match.strip().lower())
-    
-    return names
-
-
-def _find_report_user_id_by_name(
-    db: Session, 
-    manager_id: uuid.UUID, 
-    name: str
-) -> Optional[uuid.UUID]:
-    """
-    HYBRID APPROACH: Find user_id by name matching (case-insensitive).
-    
-    Returns: user_id (UUID) directly, not User object
-    
-    This approach:
-    1. Extracts name from message (user-friendly)
-    2. Matches it once to get user_id
-    3. All subsequent queries use user_id (reliable, fast)
-    """
-    try:
-        from app.models.user import User
-        
-        name_lower = name.lower().strip()
-        logger.info("🔍 HYBRID LOOKUP: Finding user_id for name='%s' manager='%s'", name, manager_id)
-        
-        if not name_lower or len(name_lower) < 2:
-            logger.info("Name too short (<%d chars), skipping", 2)
-            return None
-        
-        # Get ALL direct reports for this manager
-        logger.info("📋 Fetching all direct reports for manager_id=%s", manager_id)
-        try:
-            all_reports = (
-                db.query(User.user_id, User.name)
-                .filter(User.manager_id == manager_id)
-                .all()
-            )
-        except Exception as db_err:
-            logger.error("❌ Database query failed: %s", db_err)
-            return None
-        
-        logger.info("📊 Found %d direct reports", len(all_reports))
-        
-        if not all_reports:
-            logger.warning("❌ No direct reports exist for manager_id='%s'", manager_id)
-            return None
-        
-        # Log all available reports for debugging
-        for report_id, report_name in all_reports:
-            logger.info("  📌 Available: %s (id=%s)", report_name, report_id)
-        
-        # STEP 1: Try exact match (case-insensitive)
-        logger.info("🔎 Step 1: Exact match - looking for name='%s'", name_lower)
-        for report_id, report_name in all_reports:
-            if report_name and report_name.lower() == name_lower:
-                logger.info("✅ EXACT MATCH FOUND: '%s' → user_id=%s", report_name, report_id)
-                return report_id
-        
-        # STEP 2: Try partial match (substring)
-        logger.info("🔎 Step 2: Partial match - looking for '%s' in names", name_lower)
-        for report_id, report_name in all_reports:
-            if report_name and name_lower in report_name.lower():
-                logger.info("✅ PARTIAL MATCH FOUND: '%s' contains '%s' → user_id=%s", report_name, name_lower, report_id)
-                return report_id
-        
-        logger.warning("❌ NO MATCH: Name '%s' not found in direct reports", name_lower)
-        return None
-        
-    except Exception as e:
-        logger.error("❌ HYBRID LOOKUP FAILED for name='%s': %s", name, e)
-        import traceback
-        logger.error("Traceback: %s", traceback.format_exc())
-        return None
     msg_lower = (user_message or "").lower()
     matched = set()
 
@@ -226,16 +99,14 @@ def _find_report_user_id_by_name(
 # PHASE 1: ALWAYS-LOADED CONTEXT
 # ══════════════════════════════════════
 
-def _build_employee_profile(db: Session, org_id: uuid.UUID, user_id: uuid.UUID, is_report: bool = False) -> str:
+def _build_employee_profile(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) -> str:
     try:
         from app.models.user import User
         user = db.query(User).filter(User.user_id == user_id).first()
         if not user:
             return ""
 
-        prefix = "DIRECT REPORT PROFILE:" if is_report else "EMPLOYEE PROFILE:"
-        parts = [prefix]
-        
+        parts = ["EMPLOYEE PROFILE:"]
         # DB column is 'name' (not 'full_name')
         if getattr(user, "name", None):
             parts.append(f"  Name: {user.name}")
@@ -247,19 +118,14 @@ def _build_employee_profile(db: Session, org_id: uuid.UUID, user_id: uuid.UUID, 
             parts.append(f"  Job Title: {user.job_title}")
         if getattr(user, "department", None):
             parts.append(f"  Department: {user.department}")
-        
-        # Add tenure information
         if getattr(user, "created_at", None):
             try:
                 days = (date.today() - user.created_at.date()).days
-                if days >= 0:
-                    months = days // 30
-                    parts.append(f"  Tenure: ~{months} months ({days} days)")
+                if days > 0:
+                    parts.append(f"  Tenure: ~{days // 30} months ({days} days)")
             except Exception:
                 pass
-        
-        # Show manager (for regular employees)
-        if not is_report and getattr(user, "manager_id", None):
+        if getattr(user, "manager_id", None):
             try:
                 mgr_uuid = _as_uuid(user.manager_id)
                 mgr = db.query(User).filter(User.user_id == mgr_uuid).first()
@@ -269,21 +135,20 @@ def _build_employee_profile(db: Session, org_id: uuid.UUID, user_id: uuid.UUID, 
                 pass
 
         # Direct reports — anyone whose manager_id == this user
-        if not is_report:
-            try:
-                reports = (
-                    db.query(User)
-                    .filter(User.manager_id == user_id, User.org_id == org_id, User.is_active == True)
-                    .order_by(User.name)
-                    .all()
-                )
-                if reports:
-                    names = [getattr(r, "name", None) or getattr(r, "email", "Unknown") for r in reports]
-                    parts.append(f"  Direct reports ({len(reports)}): {', '.join(names)}")
-                else:
-                    parts.append("  Direct reports: None")
-            except Exception as _dr_err:
-                logger.warning("Direct reports query failed for user %s: %s", user_id, _dr_err)
+        try:
+            reports = (
+                db.query(User)
+                .filter(User.manager_id == user_id, User.org_id == org_id, User.is_active == True)
+                .order_by(User.name)
+                .all()
+            )
+            if reports:
+                names = [getattr(r, "name", None) or getattr(r, "email", "Unknown") for r in reports]
+                parts.append(f"  Direct reports ({len(reports)}): {', '.join(names)}")
+            else:
+                parts.append("  Direct reports: None")
+        except Exception as _dr_err:
+            logger.warning("Direct reports query failed for user %s: %s", user_id, _dr_err)
 
         return "\n".join(parts) if len(parts) > 1 else ""
     except Exception as e:
@@ -985,8 +850,6 @@ def _get_user_doc_titles(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) -> 
 def _extract_names_from_context(text: str, chat_history: list[dict] = None) -> set[str]:
     """
     Extract potential person names from user message and recent chat history.
-    Looks for capitalized words that appear after "about", "is", "tell", etc.
-    Also handles mentions in quoted contexts and historical patterns.
     """
     import re
     names = set()
@@ -994,56 +857,95 @@ def _extract_names_from_context(text: str, chat_history: list[dict] = None) -> s
     # Combine current message with recent chat history
     context_texts = [text]
     if chat_history:
-        # Look back last 6-8 turns for context
-        for msg in chat_history[-8:]:
+        for msg in chat_history[-6:]:
             if msg.get("role") == "user":
                 context_texts.append(msg.get("content", ""))
     
     combined = " ".join(context_texts)
     
-    # Patterns to match names after trigger keywords
+    # Patterns to extract names (case-insensitive)
     patterns = [
-        r"(?:tell me about|who is|what about|status of|how is|about)\s+([A-Za-z]+)",
-        r"(?:my report|employee|team member|manager|direct report)\s+([A-Za-z]+)",
-        r"(?:what about|how about|any issues with)\s+([A-Za-z]+)",
-        r"(?:regarding|on)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)",  # "Regarding John Smith"
+        r"tell\s+me\s+about\s+([A-Za-z]+)",
+        r"who\s+is\s+([A-Za-z]+)",
+        r"what\s+about\s+([A-Za-z]+)",
+        r"status\s+of\s+([A-Za-z]+)",
+        r"how\s+is\s+([A-Za-z]+)",
+        r"about\s+([A-Za-z]+)",
+        r"my\s+report\s+([A-Za-z]+)",
     ]
     
     for pattern in patterns:
         matches = re.findall(pattern, combined, re.IGNORECASE)
-        names.update(m.strip() for m in matches if m.strip())
-    
-    # Also check for mentions at start of sentences
-    for line in combined.split('\n'):
-        line = line.strip()
-        if line and len(line.split()) <= 3:
-            # Could be a standalone name
-            words = line.split()
-            if words and len(words[0]) > 2 and words[0][0].isupper():
-                names.add(words[0])
+        for match in matches:
+            if match.strip():
+                names.add(match.strip().lower())
     
     return names
 
 
-
-
-
-def _get_direct_reports(db: Session, org_id: uuid.UUID, manager_id: uuid.UUID) -> list:
-    """Return active direct reports for a manager. Used for both context and security checks."""
+def _get_user_by_name(db: Session, name: str):
+    """
+    BETTER APPROACH - STEP 1:
+    Search for user by name (global search, not filtered by manager).
+    Returns the full User object or None.
+    """
     try:
         from app.models.user import User
-        return (
-            db.query(User)
-            .filter(
-                User.manager_id == manager_id,
-                User.org_id == org_id,
-                User.is_active == True,
-            )
-            .all()
-        )
+        
+        name_lower = name.lower().strip()
+        if not name_lower or len(name_lower) < 2:
+            return None
+        
+        logger.info("🔍 STEP 1: Searching for user by name='%s' (global search)", name)
+        
+        # Search globally for user by name - exact or partial match
+        user = db.query(User).filter(
+            User.name.ilike(f"%{name_lower}%")
+        ).first()
+        
+        if user:
+            logger.info("✅ Found user: %s (id=%s, manager=%s, org=%s)", 
+                       user.name, user.user_id, user.manager_id, user.org_id)
+        else:
+            logger.info("❌ No user found with name like '%s'", name_lower)
+        
+        return user
+        
     except Exception as e:
-        logger.warning("_get_direct_reports failed: %s", e)
-        return []
+        logger.error("❌ _get_user_by_name failed: %s", e)
+        return None
+
+
+def _verify_user_is_direct_report(user, manager_id: uuid.UUID, org_id: uuid.UUID) -> bool:
+    """
+    BETTER APPROACH - STEP 2:
+    Verify that the found user is under this manager_id + org_id.
+    Security check.
+    """
+    if not user:
+        return False
+    
+    logger.info("🔐 STEP 2: Verifying security - checking manager_id + org_id")
+    
+    # Convert to strings for comparison
+    user_manager_id = str(user.manager_id) if user.manager_id else None
+    provided_manager_id = str(manager_id)
+    user_org_id = str(user.org_id) if user.org_id else None
+    provided_org_id = str(org_id)
+    
+    if user_manager_id != provided_manager_id:
+        logger.warning("❌ SECURITY: User %s manager_id=%s != provided manager_id=%s", 
+                      user.name, user_manager_id, provided_manager_id)
+        return False
+    
+    if user_org_id != provided_org_id:
+        logger.warning("❌ SECURITY: User %s org_id=%s != provided org_id=%s", 
+                      user.name, user_org_id, provided_org_id)
+        return False
+    
+    logger.info("✅ VERIFIED: User %s is under manager_id=%s and org_id=%s", 
+               user.name, manager_id, org_id)
+    return True
 
 
 def _build_direct_report_context(
@@ -1054,93 +956,69 @@ def _build_direct_report_context(
     chat_history: list[dict] | None = None,
 ) -> str:
     """
-    When a manager's message (or recent history) mentions a direct report by
-    name, load that person's complete summary into context.
-
-    Data retrieved:
-    - Full employee profile (name, email, role, department, tenure)
-    - Active objectives and key results with progress
-    - Recent timesheet entries (last 30 days) and project allocation
-    - Leave balance for current year
-    - Performance and feedback data
-
-    Security: only loads data for users whose manager_id == manager_id AND
-    org_id matches. Employees outside this manager's direct reports are
-    never surfaced.
+    BETTER APPROACH:
+    1. Extract names from message
+    2. Search for each name globally (STEP 1: _get_user_by_name)
+    3. Verify security - user is under this manager_id + org_id (STEP 2: _verify_user_is_direct_report)
+    4. Query ALL data using user_id only (STEP 3: queries below)
+    
+    Security: Verified in step 2 that user.manager_id == manager_id AND user.org_id == org_id
     """
     try:
-        if not user_message and not chat_history:
-            return ""
-        
-        # Extract names from current message and recent history
+        # Extract names from message + chat history
         names_to_search = _extract_names_from_context(user_message, chat_history)
-        logger.info("Extracted names from context: %s", names_to_search)
         
         if not names_to_search:
-            logger.info("No names found in message: %s", user_message[:100])
+            logger.info("No names found in message")
             return ""
-
+        
+        logger.info("🔍 Extracted names: %s", names_to_search)
+        
         sections = []
         
-        # Search for each mentioned name among direct reports
-        matched_user_ids = []
+        # For each mentioned name
         for name in names_to_search:
             if not name or len(name.strip()) < 2:
-                logger.info("⏭️ Skipping name (too short): '%s'", name)
+                logger.info("⏭️ Skipping short name: '%s'", name)
                 continue
             
-            # HYBRID STEP 1: Get user_id by name (single lookup, user-friendly)
-            report_user_id = _find_report_user_id_by_name(db, manager_id, name)
-            
-            if not report_user_id:
-                logger.warning("❌ NOT FOUND: '%s' for manager '%s'", name, manager_id)
+            # STEP 1: Search for user by name (global search)
+            user = _get_user_by_name(db, name)
+            if not user:
+                logger.warning("❌ User '%s' not found", name)
                 continue
             
-            logger.info("✅ MAPPED: '%s' → user_id=%s", name, report_user_id)
-            matched_user_ids.append(report_user_id)
-        
-        logger.info("📊 Matched user_ids count: %d from %d names", len(matched_user_ids), len(names_to_search))
-
-        if not matched_user_ids:
-            logger.info("No matched user_ids found")
-            return ""
-        
-        logger.info("🏗️ Building context for %d matched user_ids", len(matched_user_ids))
-        
-        # HYBRID STEP 2: Use user_id to fetch ALL data reliably
-        for report_user_id in matched_user_ids[:2]:  # cap at 2 to keep context size reasonable
-            logger.info("📝 Fetching profile for user_id=%s", report_user_id)
-            
-            # Get the user profile first
-            from app.models.user import User
-            user_profile = db.query(User).filter(User.user_id == report_user_id).first()
-            
-            if not user_profile:
-                logger.warning("⚠️ Could not find user profile for user_id=%s", report_user_id)
+            # STEP 2: Verify security - is this user under this manager_id + org_id?
+            if not _verify_user_is_direct_report(user, manager_id, org_id):
+                logger.warning("❌ User '%s' is not under manager_id=%s, org_id=%s", 
+                              name, manager_id, org_id)
                 continue
             
-            logger.info("✓ Found profile: %s", user_profile.name)
+            # STEP 3: Now use user_id for ALL queries (clean, simple, no filtering needed)
+            user_id = _as_uuid(user.user_id)
+            logger.info("✅ PROCEEDING: Using user_id=%s for all data queries", user_id)
             
-            parts = [f"DIRECT REPORT PROFILE — {user_profile.name or user_profile.email}:"]
-            if user_profile.job_title:
-                parts.append(f"  Job Title: {user_profile.job_title}")
-            if user_profile.department:
-                parts.append(f"  Department: {user_profile.department}")
-            if user_profile.created_at:
+            # Build profile section
+            parts = [f"DIRECT REPORT PROFILE — {user.name or user.email}:"]
+            if user.job_title:
+                parts.append(f"  Job Title: {user.job_title}")
+            if user.department:
+                parts.append(f"  Department: {user.department}")
+            if user.created_at:
                 try:
-                    days = (date.today() - user_profile.created_at.date()).days
+                    days = (date.today() - user.created_at.date()).days
                     parts.append(f"  Tenure: ~{days // 30} months")
                 except Exception:
                     pass
 
-            # QUERY 1: Objectives (using user_id)
+            # QUERY 1: Objectives - query by user_id ONLY
             try:
                 from app.models.objective import Objective, KeyResult
-                logger.info("  📋 Fetching objectives for user_id=%s", report_user_id)
+                logger.info("  📋 Fetching objectives for user_id=%s", user_id)
                 objectives = (
                     db.query(Objective)
                     .filter(
-                        Objective.user_id == report_user_id,
+                        Objective.user_id == user_id,
                         Objective.status.in_(["active", "pending_review", "draft"]),
                     )
                     .order_by(desc(Objective.created_at))
@@ -1169,15 +1047,115 @@ def _build_direct_report_context(
             except Exception as e:
                 logger.debug("Direct report objectives failed: %s", e)
 
-            # QUERY 2: Timesheet — last 30 days (using user_id)
+            # QUERY 2: Timesheet — last 30 days (query by user_id ONLY)
             try:
                 from app.models.timesheet import TimesheetEntry
-                logger.info("  ⏱️ Fetching timesheet for user_id=%s", report_user_id)
+                logger.info("  ⏱️ Fetching timesheet for user_id=%s", user_id)
                 cutoff = date.today() - timedelta(days=30)
                 entries = (
                     db.query(TimesheetEntry)
                     .filter(
-                        TimesheetEntry.user_id == report_user_id,
+                        TimesheetEntry.user_id == user_id,
+                        TimesheetEntry.date >= cutoff,
+                    )
+                    .order_by(desc(TimesheetEntry.date))
+                    .all()
+                )
+                if entries:
+                    logger.info("  ✓ Found %d timesheet entries", len(entries))
+                    total_h = sum(float(e.hours) for e in entries)
+                    work_days = len(set(e.date for e in entries))
+                    submitted = sum(1 for e in entries if e.status in ("submitted", "approved"))
+                    draft = sum(1 for e in entries if e.status == "draft")
+                    parts.append(f"  Timesheet (last 30d): {total_h:.1f}h across {work_days} days")
+                    if draft:
+                        parts.append(f"    ⚠ {draft} draft entries not yet submitted")
+                    by_project = {}
+                    for e in entries:
+                        by_project[e.project] = by_project.get(e.project, 0) + float(e.hours)
+                    top = sorted(by_project.items(), key=lambda x: -x[1])[:3]
+                    parts.append("    Top projects: " + ", ".join(f"{p} ({h:.1f}h)" for p, h in top))
+                else:
+                    logger.info("  - No timesheet entries found")
+                    parts.append("  Timesheet (last 30d): No entries logged")
+            except Exception as e:
+                logger.debug("Direct report timesheet failed: %s", e)
+
+            # QUERY 3: Leave balance (query by user_id ONLY)
+            try:
+                from sqlalchemy import text as _text
+                logger.info("  🏖️ Fetching leave balances for user_id=%s", user_id)
+                bal_rows = db.execute(
+                    _text("""
+                        SELECT leave_type, entitled_days, used_days, carried_over_days
+                        FROM leave_balances
+                        WHERE user_id = :uid AND leave_year = :yr
+                        ORDER BY leave_type
+                    """),
+                    {"uid": str(user_id), "yr": date.today().year},
+                ).mappings().all()
+                if bal_rows:
+                    logger.info("  ✓ Found %d leave balance records", len(bal_rows))
+                    parts.append("  Leave balances (this year):")
+                    for b in bal_rows:
+                        available = float(b["entitled_days"]) + float(b["carried_over_days"]) - float(b["used_days"])
+                        parts.append(f"    {b['leave_type']}: {max(0, available):.1f} days remaining")
+                else:
+                    logger.info("  - No leave balances found")
+            except Exception as e:
+                logger.debug("Direct report leave balance failed: %s", e)
+
+            logger.info("✅ Completed context for user_id=%s", user_id)
+            sections.append("\n".join(parts))
+        
+        result = "\n\n".join(sections)
+        if result:
+            logger.info("Direct report context: %d chars", len(result))
+        return result
+
+    except Exception as e:
+        logger.warning("_build_direct_report_context failed: %s", e)
+        return ""
+            try:
+                from app.models.objective import Objective, KeyResult
+                objectives = (
+                    db.query(Objective)
+                    .filter(
+                        Objective.user_id == report_uuid,
+                        Objective.status.in_(["active", "pending_review", "draft"]),
+                    )
+                    .order_by(desc(Objective.created_at))
+                    .limit(5)
+                    .all()
+                )
+                if objectives:
+                    parts.append("  Objectives:")
+                    for obj in objectives:
+                        icon = {"active": "●", "pending_review": "◐", "draft": "○"}.get(obj.status, "?")
+                        parts.append(f"    {icon} {obj.title} — {obj.progress}% complete")
+                        if obj.target_date:
+                            try:
+                                days_left = (obj.target_date - date.today()).days
+                                parts.append(f"      Due: {obj.target_date} ({days_left}d remaining)")
+                            except Exception:
+                                pass
+                        krs = db.query(KeyResult).filter(KeyResult.objective_id == obj.id).all()
+                        for kr in krs:
+                            pct = min(int(kr.current_value / kr.target_value * 100), 100) if kr.target_value else 0
+                            parts.append(f"      → {kr.title}: {kr.current_value}/{kr.target_value} {kr.unit or ''} ({pct}%)")
+                else:
+                    parts.append("  Objectives: None on record")
+            except Exception as e:
+                logger.debug("Direct report objectives failed: %s", e)
+
+            # Timesheet — last 30 days
+            try:
+                from app.models.timesheet import TimesheetEntry
+                cutoff = date.today() - timedelta(days=30)
+                entries = (
+                    db.query(TimesheetEntry)
+                    .filter(
+                        TimesheetEntry.user_id == report_uuid,
                         TimesheetEntry.date >= cutoff,
                     )
                     .all()
@@ -1200,38 +1178,8 @@ def _build_direct_report_context(
             except Exception as e:
                 logger.debug("Direct report timesheet failed: %s", e)
 
-            # QUERY 3: Performance feedback and reviews (using user_id)
+            # Leave balance
             try:
-                logger.info("  ⭐ Fetching performance reviews for user_id=%s", report_user_id)
-                # Try to get recent feedback/reviews if model exists
-                from app.models.performance import PerformanceReview
-                reviews = (
-                    db.query(PerformanceReview)
-                    .filter(
-                        PerformanceReview.employee_id == report_user_id,
-                        PerformanceReview.review_date >= date.today() - timedelta(days=365)
-                    )
-                    .order_by(desc(PerformanceReview.review_date))
-                    .limit(3)
-                    .all()
-                )
-                if reviews:
-                    logger.info("  ✓ Found %d performance reviews", len(reviews))
-                    parts.append("  Recent Performance Reviews:")
-                    for review in reviews:
-                        rating = getattr(review, "rating", "N/A")
-                        parts.append(f"    • {review.review_date}: Rating {rating}/5")
-                        if getattr(review, "summary", None):
-                            summary = review.summary[:100] + "..." if len(review.summary) > 100 else review.summary
-                            parts.append(f"      Summary: {summary}")
-                else:
-                    logger.info("  - No performance reviews found")
-            except Exception as e:
-                logger.debug("Direct report performance reviews failed (model may not exist): %s", e)
-
-            # QUERY 4: Leave balance (using user_id)
-            try:
-                logger.info("  🏖️ Fetching leave balances for user_id=%s", report_user_id)
                 from sqlalchemy import text as _text
                 bal_rows = db.execute(
                     _text("""
@@ -1240,20 +1188,16 @@ def _build_direct_report_context(
                         WHERE user_id = :uid AND leave_year = :yr
                         ORDER BY leave_type
                     """),
-                    {"uid": str(report_user_id), "yr": date.today().year},
+                    {"uid": str(report_uuid), "yr": date.today().year},
                 ).mappings().all()
                 if bal_rows:
-                    logger.info("  ✓ Found %d leave balance records", len(bal_rows))
                     parts.append("  Leave balances (this year):")
                     for b in bal_rows:
                         available = float(b["entitled_days"]) + float(b["carried_over_days"]) - float(b["used_days"])
                         parts.append(f"    {b['leave_type']}: {max(0, available):.1f} days remaining")
-                else:
-                    logger.info("  - No leave balances found")
             except Exception as e:
                 logger.debug("Direct report leave balance failed: %s", e)
-            
-            logger.info("✅ Completed context for user_id=%s", report_user_id)
+
             sections.append("\n".join(parts))
 
         return "\n\n".join(sections)
@@ -1283,9 +1227,13 @@ def build_user_context(
         logger.error("build_user_context: invalid org_id=%r — %s", org_id, e)
         return ""
 
-    # NOTE: Do NOT call db.rollback() here - FastAPI manages transactions
-    # If the session is in a failed state, it will fail here and break subsequent queries
-    # Let FastAPI's exception handling manage transaction cleanup
+    # Clear any aborted transaction left by previous queries on this session
+    # (e.g. from FastAPI dependencies or earlier middleware). All context
+    # builders are read-only so a rollback here is always safe.
+    try:
+        db.rollback()
+    except Exception:
+        pass
 
     user_uuid: uuid.UUID | None = None
     if user_id is not None:
@@ -1371,15 +1319,11 @@ def build_user_context(
         # thomas" work even when the name only appeared in a prior turn.
         # Security: only loads data for confirmed direct reports (manager_id == user_uuid).
         if user_message:
-            logger.info("Checking for direct report context for message: %s", user_message[:100])
             ctx = _build_direct_report_context(
                 db, org_uuid, user_uuid, user_message, chat_history=chat_history
             )
             if ctx:
-                logger.info("Direct report context found: %d chars", len(ctx))
                 sections.append(ctx)
-            else:
-                logger.info("No direct report context found")
 
 
 
