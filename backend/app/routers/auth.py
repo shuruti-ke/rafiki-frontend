@@ -114,6 +114,11 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
         if user.is_active is False:
             raise HTTPException(status_code=403, detail="Account disabled")
 
+        if user.org_id:
+            org = db.query(Organization).filter(Organization.org_id == user.org_id).first()
+            if org and getattr(org, "is_active", True) is False:
+                raise HTTPException(status_code=403, detail="Organization is deactivated")
+
         if body.org_code:
             org_code = body.org_code.strip()
             org = db.query(Organization).filter(Organization.org_code == org_code).first()
@@ -187,6 +192,12 @@ def me(
     user = db.query(User).filter(User.user_id == payload["user_id"]).first()
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+    if getattr(user, "is_active", True) is False:
+        raise HTTPException(status_code=401, detail="Account disabled")
+    if user.org_id:
+        org = db.query(Organization).filter(Organization.org_id == user.org_id).first()
+        if org and getattr(org, "is_active", True) is False:
+            raise HTTPException(status_code=401, detail="Organization is deactivated")
 
     return UserOut(
         user_id=str(user.user_id),
