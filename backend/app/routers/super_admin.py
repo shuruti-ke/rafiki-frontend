@@ -3,6 +3,7 @@ Super Admin router — org management, HR admin creation, platform stats.
 All endpoints require super_admin role.
 """
 
+import os
 import random
 import string
 from datetime import datetime
@@ -13,12 +14,16 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func
 from sqlalchemy.orm import Session
+import logging
 
 from app.database import get_db
 from app.dependencies import require_super_admin
 from app.models.user import Organization, User
 from app.models.document import Document
 from app.routers.auth import _hash_password
+from app.services.email import send_hr_admin_welcome_email
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/super-admin", tags=["super-admin"])
 
@@ -59,6 +64,10 @@ class OrgUpdate(BaseModel):
 
 
 class OrgStatusUpdate(BaseModel):
+    is_active: bool
+
+
+class UserStatusUpdate(BaseModel):
     is_active: bool
 
 
@@ -320,6 +329,38 @@ def set_org_status(
     return org
 
 
+@router.post("/orgs/{org_id}/deactivate", response_model=OrgOut)
+def deactivate_org(
+    org_id: UUID,
+    role: str = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    """Deactivate an organization (soft disable)."""
+    org = db.query(Organization).filter(Organization.org_id == org_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    org.is_active = False
+    db.commit()
+    db.refresh(org)
+    return org
+
+
+@router.post("/orgs/{org_id}/activate", response_model=OrgOut)
+def activate_org(
+    org_id: UUID,
+    role: str = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    """Activate an organization."""
+    org = db.query(Organization).filter(Organization.org_id == org_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    org.is_active = True
+    db.commit()
+    db.refresh(org)
+    return org
+
+
 # ---------- Delete org (optional) ----------
 # NOTE: consider "soft delete" via is_active=False instead of hard delete.
 
@@ -374,6 +415,77 @@ def create_hr_admin(
         is_active=True,
     )
     db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    # Best-effort: send welcome email to the new HR admin (client)
+    try:
+        login_url = (os.getenv("HRADMIN_LOGIN_URL", "") or "").strip() or None
+        org_name = getattr(org, "name", "") or "your organization"
+        send_hr_admin_welcome_email(
+            to_email=user.email,
+            full_name=payload.full_name,
+            org_name=org_name,
+            temporary_password=payload.password,
+            login_url=login_url,
+        )
+    except Exception:
+        logger.exception(
+            "Failed to send HR admin welcome email for org_id=%s email=%s",
+            org_id,
+            email,
+        )
+
+    return user
+
+
+# ---------- HR admin / user status (deactivate / activate) ----------
+
+
+@router.patch("/users/{user_id}/status", response_model=UserOut)
+def set_user_status(
+    user_id: UUID,
+    payload: UserStatusUpdate,
+    role: str = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    """Set is_active for a user (e.g. deactivate or reactivate an HR admin)."""
+    user = db.query(User).filter(User.user_id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.is_active = payload.is_active
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@router.post("/users/{user_id}/deactivate", response_model=UserOut)
+def deactivate_user(
+    user_id: UUID,
+    role: str = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    """Deactivate a user (e.g. HR admin). They can no longer log in."""
+    user = db.query(User).filter(User.user_id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.is_active = False
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@router.post("/users/{user_id}/activate", response_model=UserOut)
+def activate_user(
+    user_id: UUID,
+    role: str = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    """Activate a user (e.g. HR admin)."""
+    user = db.query(User).filter(User.user_id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.is_active = True
     db.commit()
     db.refresh(user)
     return user
