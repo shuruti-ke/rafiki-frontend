@@ -18,7 +18,7 @@ from typing import Optional
 
 from app.database import get_db
 from app.services.auth import decode_access_token
-from app.models.user import User
+from app.models.user import User, Organization
 
 AUTH_MODE = os.getenv("AUTH_MODE", "demo")  # "demo" or "jwt"
 
@@ -66,6 +66,11 @@ def get_current_user(
     if not user or getattr(user, "is_active", True) is False:
         raise HTTPException(status_code=401, detail="User not found or disabled")
 
+    if user.org_id:
+        org = db.query(Organization).filter(Organization.org_id == user.org_id).first()
+        if org and getattr(org, "is_active", True) is False:
+            raise HTTPException(status_code=401, detail="Organization is deactivated")
+
     return user
 
 
@@ -76,11 +81,9 @@ def get_current_user_id(
 ) -> uuid.UUID:
     """Extract user UUID from JWT token, or fall back to demo header."""
     if authorization:
-        # Token present — must succeed, never fall through to demo
         user = get_current_user(authorization, db)
         if user:
             return user.user_id
-        raise HTTPException(status_code=401, detail="Not authenticated")
 
     if AUTH_MODE == "demo":
         try:
@@ -98,11 +101,9 @@ def get_current_org_id(
 ) -> uuid.UUID:
     """Extract org UUID from JWT token, or fall back to demo header."""
     if authorization:
-        # Token present — must succeed, never fall through to demo
         user = get_current_user(authorization, db)
         if user and user.org_id:
             return user.org_id
-        raise HTTPException(status_code=401, detail="Not authenticated")
 
     if AUTH_MODE == "demo":
         try:
