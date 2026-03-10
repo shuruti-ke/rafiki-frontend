@@ -42,6 +42,8 @@ export default function AdminEmployeeDetail() {
   const [credsVisible, setCredsVisible] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
   const [resetMsg, setResetMsg] = useState(null);
+  const [statusLoading, setStatusLoading] = useState(false);
+  const [statusMsg, setStatusMsg] = useState(null);
 
   const fetchEmployee = useCallback(async () => {
     setLoading(true);
@@ -131,6 +133,32 @@ export default function AdminEmployeeDetail() {
     setResetLoading(false);
   };
 
+  const handleToggleActive = async () => {
+    if (!employee) return;
+    const currentlyActive = employee.is_active !== false;
+    const action = currentlyActive ? "deactivate" : "activate";
+    const confirmText = currentlyActive
+      ? "Deactivate this employee? They will no longer be able to log in."
+      : "Activate this employee so they can log in again?";
+    if (!confirm(confirmText)) return;
+
+    setStatusLoading(true);
+    setStatusMsg(null);
+    try {
+      const res = await authFetch(`${API}/api/v1/employees/${userId}/${action}`, { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        setStatusMsg({ type: "ok", text: currentlyActive ? "Employee deactivated." : "Employee activated." });
+        setEmployee(prev => prev ? { ...prev, is_active: data.is_active } : prev);
+      } else {
+        setStatusMsg({ type: "err", text: data.detail || "Failed to update status." });
+      }
+    } catch {
+      setStatusMsg({ type: "err", text: "Network error." });
+    }
+    setStatusLoading(false);
+  };
+
   if (loading) return (
     <div className="emp-detail-loading">
       <div className="emp-detail-spinner" />
@@ -166,14 +194,33 @@ export default function AdminEmployeeDetail() {
               <span className={`emp-role-badge emp-role-badge--${employee.role}`}>
                 {employee.role?.replace("_", " ")}
               </span>
+              {employee.is_active === false && (
+                <span className="emp-status-badge emp-status-badge--inactive">
+                  Inactive
+                </span>
+              )}
             </div>
           </div>
-          <button
-            className={`emp-edit-btn ${editMode ? "emp-edit-btn--cancel" : ""}`}
-            onClick={() => { setEditMode(!editMode); setSaveMsg(""); setSaveErr(""); }}
-          >
-            {editMode ? "✕ Cancel" : "✏️ Edit Profile"}
-          </button>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button
+              className={`emp-edit-btn ${editMode ? "emp-edit-btn--cancel" : ""}`}
+              onClick={() => { setEditMode(!editMode); setSaveMsg(""); setSaveErr(""); }}
+            >
+              {editMode ? "✕ Cancel" : "✏️ Edit Profile"}
+            </button>
+            <button
+              className="emp-edit-btn"
+              style={{ fontSize: 13, background: "rgba(248,113,113,0.08)", color: "#ef4444" }}
+              onClick={handleToggleActive}
+              disabled={statusLoading}
+            >
+              {statusLoading
+                ? "Updating…"
+                : employee.is_active === false
+                ? "Activate Employee"
+                : "Deactivate Employee"}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -328,6 +375,11 @@ export default function AdminEmployeeDetail() {
             {resetMsg && (
               <div className={`emp-alert ${resetMsg.type === "ok" ? "emp-alert--success" : "emp-alert--error"}`}>
                 {resetMsg.text}
+              </div>
+            )}
+            {statusMsg && (
+              <div className={`emp-alert ${statusMsg.type === "ok" ? "emp-alert--success" : "emp-alert--error"}`}>
+                {statusMsg.text}
               </div>
             )}
           </div>
