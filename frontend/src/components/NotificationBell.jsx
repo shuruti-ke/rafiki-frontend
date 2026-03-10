@@ -2,10 +2,6 @@
  * frontend/src/components/NotificationBell.jsx
  * Sprint 5 — Rafiki HR | Shared notification bell + slide-out panel
  *
- * Usage (drop into any layout topbar):
- *   import NotificationBell from "./NotificationBell.jsx";
- *   <NotificationBell />
- *
  * Polls GET /api/v1/notifications/unread-count every 60 s.
  * On bell click: fetches full list, opens panel.
  * Mark-read fires POST /api/v1/notifications/mark-read.
@@ -81,7 +77,6 @@ export default function NotificationBell() {
     if (!open) return;
     const handler = (e) => {
       if (panelRef.current && !panelRef.current.contains(e.target)) {
-        // Don't close if the click was inside the messages panel
         if (e.target.closest && e.target.closest(".emp-msg-panel")) return;
         setOpen(false);
       }
@@ -99,6 +94,7 @@ export default function NotificationBell() {
     try {
       await authFetch(`${API}/api/v1/notifications/mark-read`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ notification_ids: [id] }),
       });
     } catch {}
@@ -117,6 +113,7 @@ export default function NotificationBell() {
     try {
       await authFetch(`${API}/api/v1/notifications/mark-read`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ notification_ids: null }),
       });
     } catch {}

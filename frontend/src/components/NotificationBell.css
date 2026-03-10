@@ -248,16 +248,6 @@
   100% { background-position: -200% 0; }
 }
 
-/* ── Layout topbar stubs (mgr + admin don't have a topbar natively) ── */
-
-.mgr-topbar,
-.admin-topbar {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  padding: 12px 28px 0;
-}
-
 /* ── Mobile ─────────────────────────────────────────────────────── */
 
 @media (max-width: 480px) {

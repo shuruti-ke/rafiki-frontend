@@ -528,6 +528,10 @@
   .emp-topbar {
     padding: 0 16px;
   }
+
+  .emp-nav-collapse {
+    display: none !important;
+  }
 }
 
 /* ═══════════════════════════════════════════
@@ -581,6 +585,14 @@
 
 .emp-msg-panel-close:hover { color: #1f2937; }
 
+.emp-msg-panel-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
 /* ── Keep all original message sub-classes working ── */
 .emp-msg { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
 .emp-msg-header { display: flex; align-items: center; gap: 6px; padding: 10px 12px; border-bottom: 1px solid #ede9fe; flex-shrink: 0; }
@@ -633,7 +645,7 @@
 .emp-cal-title { font-size: 12px; font-weight: 700; }
 .emp-cal-nav { background: none; border: none; cursor: pointer; font-size: 16px; color: #9ca3af; padding: 0 4px; line-height: 1; font-weight: 700; }
 .emp-cal-nav:hover { color: #1f2937; }
-.emp-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; }
+.emp-cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); text-align: center; }
 .emp-cal-dh { font-size: 9px; font-weight: 700; color: #9ca3af; padding: 2px 0 4px; text-transform: uppercase; letter-spacing: 0.3px; }
 .emp-cal-day { width: 100%; aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 11px; cursor: pointer; border-radius: 6px; position: relative; transition: background 0.1s; gap: 1px; }
 .emp-cal-day:hover { background: #f5f3ff; }
