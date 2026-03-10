@@ -1,5 +1,4 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import NotificationBell from "./NotificationBell.jsx";
 import "./ManagerLayout.css";
 
 export default function ManagerLayout() {
@@ -27,45 +26,44 @@ export default function ManagerLayout() {
 
         <nav className="mgr-nav">
           <NavLink to="/manager" end className={({ isActive }) => `mgr-nav-link ${isActive ? "active" : ""}`}>
-            <span>🏠</span> Dashboard
+            Dashboard
           </NavLink>
           <NavLink to="/manager/team" className={({ isActive }) => `mgr-nav-link ${isActive ? "active" : ""}`}>
-            <span>👥</span> My Team
+            My Team
           </NavLink>
           <NavLink to="/manager/coaching" className={({ isActive }) => `mgr-nav-link ${isActive ? "active" : ""}`}>
-            <span>🧠</span> Coaching Assistant
+            Coaching Assistant
           </NavLink>
           <NavLink to="/manager/toolkit" className={({ isActive }) => `mgr-nav-link ${isActive ? "active" : ""}`}>
-            <span>🛠️</span> HR Toolkit
+            HR Toolkit
           </NavLink>
           <NavLink to="/manager/calendar" className={({ isActive }) => `mgr-nav-link ${isActive ? "active" : ""}`}>
-            <span>📅</span> Calendar
+            Calendar
           </NavLink>
           <NavLink to="/manager/timesheets" className={({ isActive }) => `mgr-nav-link ${isActive ? "active" : ""}`}>
-            <span>⏱️</span> Team Timesheets
+            Team Timesheets
+          </NavLink>
+          <NavLink to="/manager/attendance" className={({ isActive }) => `mgr-nav-link ${isActive ? "active" : ""}`}>
+            Team Attendance
           </NavLink>
         </nav>
 
         <div className="mgr-nav-footer">
           <NavLink to="/chat" className="mgr-nav-link">
-            <span>💬</span> Employee Portal
+            Back to Chat
           </NavLink>
           {isAdmin && (
             <NavLink to="/admin" className="mgr-nav-link">
-              <span>⚙️</span> HR Portal
+              HR Portal
             </NavLink>
           )}
-          <button onClick={handleLogout} className="mgr-nav-link"
-            style={{ background: "none", border: "none", cursor: "pointer", textAlign: "left", width: "100%", font: "inherit" }}>
-            <span>👋</span> Logout
+          <button onClick={handleLogout} className="mgr-nav-link" style={{ background: "none", border: "none", cursor: "pointer", textAlign: "left", width: "100%", font: "inherit" }}>
+            Logout
           </button>
         </div>
       </aside>
 
       <main className="mgr-main">
-        <div className="mgr-topbar">
-          <NotificationBell />
-        </div>
         <Outlet />
       </main>
     </div>
