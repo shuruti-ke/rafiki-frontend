@@ -5,6 +5,7 @@ import { API, authFetch } from "../api.js";
 export default function AdminEmployees() {
   const [search, setSearch] = useState("");
   const [employees, setEmployees] = useState([]);
+  const [hideInactive, setHideInactive] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [addForm, setAddForm] = useState({ name: "", email: "", role: "user", department: "", manager_id: "" });
   const [addLoading, setAddLoading] = useState(false);
@@ -83,15 +84,20 @@ export default function AdminEmployees() {
     }
   };
 
-  const filtered = search.trim()
-    ? employees.filter(e => {
-        const u = e.user || {};
-        const q = search.toLowerCase();
-        return (u.name || "").toLowerCase().includes(q) ||
-               (u.email || "").toLowerCase().includes(q) ||
-               (u.user_id || "").toLowerCase().includes(q);
-      })
-    : employees;
+  const filtered = employees
+    .filter(e => {
+      const u = e.user || {};
+      if (!search.trim()) return true;
+      const q = search.toLowerCase();
+      return (u.name || "").toLowerCase().includes(q) ||
+             (u.email || "").toLowerCase().includes(q) ||
+             (u.user_id || "").toLowerCase().includes(q);
+    })
+    .filter(e => {
+      if (!hideInactive) return true;
+      const u = e.user || {};
+      return u.is_active !== false; // treat undefined as active
+    });
 
   return (
     <div style={{ maxWidth: 700 }}>
@@ -188,13 +194,23 @@ export default function AdminEmployees() {
         </form>
       )}
 
-      <input
-        className="search"
-        placeholder="Search by name, email, or ID..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        style={{ width: "100%", marginBottom: 16, boxSizing: "border-box" }}
-      />
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
+        <input
+          className="search"
+          placeholder="Search by name, email, or ID..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={{ flex: 1, minWidth: 220, boxSizing: "border-box" }}
+        />
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--muted)" }}>
+          <input
+            type="checkbox"
+            checked={hideInactive}
+            onChange={e => setHideInactive(e.target.checked)}
+          />
+          Hide inactive employees
+        </label>
+      </div>
 
       {filtered.length === 0 && (
         <p style={{ color: "var(--muted)", fontSize: 13 }}>
@@ -205,6 +221,7 @@ export default function AdminEmployees() {
       <div style={{ display: "grid", gap: 8 }}>
         {filtered.map((e) => {
           const u = e.user || {};
+          const isInactive = u.is_active === false;
           return (
             <Link
               key={u.user_id}
@@ -212,8 +229,17 @@ export default function AdminEmployees() {
               className="btn"
               style={{ textAlign: "left", textDecoration: "none", display: "flex", justifyContent: "space-between", alignItems: "center" }}
             >
-              <span>{u.name || u.email || "Unknown"}</span>
-              <span style={{ color: "var(--muted)", fontSize: 12 }}>{u.role || ""} {u.department ? `· ${u.department}` : ""}</span>
+              <span>
+                {u.name || u.email || "Unknown"}
+                {isInactive && (
+                  <span style={{ marginLeft: 8, fontSize: 11, padding: "2px 6px", borderRadius: 999, background: "rgba(248,113,113,0.12)", color: "#f87171" }}>
+                    Inactive
+                  </span>
+                )}
+              </span>
+              <span style={{ color: "var(--muted)", fontSize: 12 }}>
+                {u.role || ""} {u.department ? `· ${u.department}` : ""}
+              </span>
             </Link>
           );
         })}
