@@ -49,9 +49,9 @@ export default function ManagerLayout() {
         </nav>
 
         <div className="mgr-nav-footer">
-          <NavLink to="/chat" className="mgr-nav-link">
-            Back to Chat
-          </NavLink>
+          <a href="https://www.rafikihr.com/dashboard" className="mgr-nav-link">
+            My Dashboard
+          </a>
           {isAdmin && (
             <NavLink to="/admin" className="mgr-nav-link">
               HR Portal

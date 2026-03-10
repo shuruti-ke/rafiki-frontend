@@ -72,9 +72,9 @@ export default function AdminLayout() {
           <NavLink to="/manager" className="admin-nav-link">
             Manager Portal
           </NavLink>
-          <NavLink to="/chat" className="admin-nav-link">
-            Back to Chat
-          </NavLink>
+          <a href="https://www.rafikihr.com/dashboard" className="admin-nav-link">
+            My Dashboard
+          </a>
           <button onClick={handleLogout} className="admin-nav-link"
             style={{ background: "none", border: "none", cursor: "pointer", textAlign: "left", width: "100%", font: "inherit" }}>
             Logout
