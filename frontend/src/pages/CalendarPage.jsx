@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from "react";
-import { useSearchParams } from "react-router-dom";
 import { API, authFetch } from "../api.js";
 import "./CalendarPage.css";
 
@@ -7,30 +6,17 @@ const MONTH_NAMES = ["January","February","March","April","May","June","July","A
 const DAY_NAMES = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const EVENT_TYPES = ["meeting","1on1","task","reminder","deadline","company","general","out-of-office","social","training"];
 const EVENT_COLORS = {
-  meeting: "#8b5cf6", "1on1": "#1fbfb8", task: "#3b82f6",
-  reminder: "#f59e0b", deadline: "#ef4444", company: "#10b981",
-  general: "#6366f1", "out-of-office": "#f87171", social: "#34d399", training: "#8b5cf6",
+  meeting:"#8b5cf6", "1on1":"#1fbfb8", task:"#3b82f6",
+  reminder:"#f59e0b", deadline:"#ef4444", company:"#10b981",
+  general:"#6366f1", "out-of-office":"#f87171", social:"#34d399", training:"#8b5cf6",
 };
-const GOOGLE_BLUE = "#4285f4";
 
 function pad(n) { return String(n).padStart(2,"0"); }
 function fmtDate(y,m,d) { return `${y}-${pad(m+1)}-${pad(d)}`; }
 function fmtTime(iso) { if(!iso) return ""; return new Date(iso).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}); }
-function fmtRelative(iso) {
-  if (!iso) return null;
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins} min ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return new Date(iso).toLocaleDateString();
-}
 
 export default function CalendarPage() {
   const today = new Date();
-  const [searchParams, setSearchParams] = useSearchParams();
-
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
   const [events, setEvents] = useState([]);
@@ -38,9 +24,6 @@ export default function CalendarPage() {
   const [showModal, setShowModal] = useState(false);
   const [editEvent, setEditEvent] = useState(null);
   const [colleagues, setColleagues] = useState([]);
-  const [showGooglePanel, setShowGooglePanel] = useState(false);
-  const [googleStatus, setGoogleStatus] = useState({ connected: false, synced_at: null });
-  const [googleSyncing, setGoogleSyncing] = useState(false);
 
   const currentUser = JSON.parse(localStorage.getItem("rafiki_user") || "{}");
   const currentUserId = currentUser.user_id || currentUser.id;
@@ -57,23 +40,8 @@ export default function CalendarPage() {
     if (res.ok) setColleagues(await res.json());
   };
 
-  const loadGoogleStatus = async () => {
-    const res = await authFetch(`${API}/api/v1/calendar/google/status`);
-    if (res.ok) setGoogleStatus(await res.json());
-  };
-
   useEffect(() => { loadEvents(); }, [year, month]);
-  useEffect(() => { loadColleagues(); loadGoogleStatus(); }, []);
-
-  // Handle ?google_connected=1 redirect from OAuth callback
-  useEffect(() => {
-    if (searchParams.get("google_connected") === "1") {
-      setSearchParams({});
-      loadGoogleStatus();
-      handleGoogleSync();
-      setShowGooglePanel(true);
-    }
-  }, []);
+  useEffect(() => { loadColleagues(); }, []);
 
   const prevMonth = () => { if(month===0){setMonth(11);setYear(year-1);}else setMonth(month-1); setSelectedDay(null); };
   const nextMonth = () => { if(month===11){setMonth(0);setYear(year+1);}else setMonth(month+1); setSelectedDay(null); };
@@ -113,105 +81,28 @@ export default function CalendarPage() {
 
   const handleRSVP = async (eventId, status) => {
     await authFetch(`${API}/api/v1/calendar/${eventId}/rsvp`, {
-      method:"POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({status}),
+      method:"POST", body: JSON.stringify({status}),
     });
     loadEvents();
   };
 
   const openCreate = () => { setEditEvent(null); setShowModal(true); };
   const openEdit = (ev) => { setEditEvent(ev); setShowModal(true); };
-  const handleDayClick = (day) => { if (selectedDay === day) return; setSelectedDay(day); };
 
-  // ── Google sync handlers ──
-
-  const handleGoogleConnect = async () => {
-    const res = await authFetch(`${API}/api/v1/calendar/google/auth`);
-    if (res.ok) {
-      const { auth_url } = await res.json();
-      window.location.href = auth_url;
-    }
-  };
-
-  const handleGoogleSync = async () => {
-    setGoogleSyncing(true);
-    const res = await authFetch(`${API}/api/v1/calendar/google/sync`, {method:"POST"});
-    if (res.ok) {
-      const data = await res.json();
-      setGoogleStatus(prev => ({ ...prev, synced_at: data.synced_at }));
-      loadEvents();
-    }
-    setGoogleSyncing(false);
-  };
-
-  const handleGoogleDisconnect = async () => {
-    if (!confirm("Disconnect Google Calendar? All synced events will be removed.")) return;
-    const res = await authFetch(`${API}/api/v1/calendar/google/disconnect`, {method:"DELETE"});
-    if (res.ok) {
-      setGoogleStatus({ connected: false, synced_at: null });
-      loadEvents();
-    }
-  };
-
-  const getEventColor = (e) => {
-    if (e.source === "google") return GOOGLE_BLUE;
-    return EVENT_COLORS[e.event_type] || e.color || "#8b5cf6";
+  const handleDayClick = (day) => {
+    if (selectedDay === day) return; // don't toggle off, keep showing
+    setSelectedDay(day);
   };
 
   return (
     <div className="calp-page">
       <div className="calp-header">
         <h1>Calendar</h1>
-        <div style={{display:"flex",gap:"0.5rem",alignItems:"center"}}>
+        <div style={{display:"flex",gap:"0.5rem"}}>
           <button className="calp-btn calp-btn-ghost" onClick={goToday}>Today</button>
-          <button
-            className="calp-btn calp-btn-ghost"
-            onClick={() => setShowGooglePanel(v => !v)}
-            style={{fontSize:"0.75rem"}}
-          >
-            {googleStatus.connected
-              ? <><span style={{color:GOOGLE_BLUE}}>G</span> Synced</>
-              : "Connect Google"}
-          </button>
           <button className="calp-btn calp-btn-primary" onClick={openCreate}>+ New Event</button>
         </div>
       </div>
-
-      {/* Google Calendar panel */}
-      {showGooglePanel && (
-        <div className="calp-google-panel">
-          <div className="calp-google-panel-header">
-            <span style={{fontWeight:600}}>Google Calendar</span>
-            <button className="calp-btn calp-btn-ghost" style={{fontSize:"0.75rem",padding:"0.2rem 0.5rem"}} onClick={() => setShowGooglePanel(false)}>×</button>
-          </div>
-          {googleStatus.connected ? (
-            <div style={{display:"flex",alignItems:"center",gap:"0.75rem",flexWrap:"wrap"}}>
-              <span style={{fontSize:"0.82rem",color:"var(--muted)"}}>
-                {googleStatus.synced_at
-                  ? <>Last synced: {fmtRelative(googleStatus.synced_at)}</>
-                  : "Not yet synced"}
-              </span>
-              <button className="calp-btn calp-btn-primary" style={{fontSize:"0.75rem",padding:"0.25rem 0.75rem"}} onClick={handleGoogleSync} disabled={googleSyncing}>
-                {googleSyncing ? "Syncing..." : "Sync Now"}
-              </button>
-              <button className="calp-btn calp-btn-ghost" style={{fontSize:"0.75rem",padding:"0.25rem 0.75rem",color:"var(--danger,#f87171)"}} onClick={handleGoogleDisconnect}>
-                Disconnect
-              </button>
-            </div>
-          ) : (
-            <div style={{display:"flex",alignItems:"center",gap:"0.75rem"}}>
-              <span style={{fontSize:"0.82rem",color:"var(--muted)"}}>Import your Google Calendar events into Rafiki.</span>
-              <button className="calp-btn calp-btn-primary" style={{fontSize:"0.75rem",padding:"0.25rem 0.75rem"}} onClick={handleGoogleConnect}>
-                Connect Google Calendar
-              </button>
-            </div>
-          )}
-          <p style={{margin:"0.5rem 0 0",fontSize:"0.75rem",color:"var(--muted)"}}>
-            Google events are read-only. Edit them in Google Calendar.
-          </p>
-        </div>
-      )}
 
       <div className="calp-month-nav">
         <button onClick={prevMonth}>&lsaquo;</button>
@@ -232,10 +123,9 @@ export default function CalendarPage() {
               <div className="calp-day-num">{c.day}</div>
               {de.slice(0,3).map(e => (
                 <div key={e.id} className="calp-day-event"
-                  style={{background: getEventColor(e)}}
+                  style={{background: EVENT_COLORS[e.event_type] || e.color || "#8b5cf6"}}
                   onClick={ev => { ev.stopPropagation(); setSelectedDay(c.day); }}
                 >
-                  {e.source === "google" && <span style={{opacity:0.8,marginRight:2,fontSize:"0.65rem"}}>G</span>}
                   {e.title}
                   {e.is_completed && <span style={{marginLeft:3,opacity:0.7}}>✓</span>}
                 </div>
@@ -259,20 +149,15 @@ export default function CalendarPage() {
           {dayEvents.map(e => {
             const myRsvp = (e.attendees||[]).find(a => String(a.id) === String(currentUserId));
             const isOwner = String(e.user_id) === String(currentUserId);
-            const isGoogle = e.source === "google";
             return (
-              <div key={e.id} className={`calp-event-card${e.is_completed?" calp-event-completed":""}`}
-                style={{cursor:"pointer"}}
-                onClick={() => !isGoogle && openEdit(e)}
-              >
-                <div className="calp-event-color" style={{background: getEventColor(e)}} />
+              <div key={e.id} className={`calp-event-card${e.is_completed ? " calp-event-completed" : ""}`} style={{cursor:"pointer"}} onClick={() => openEdit(e)}>
+                <div className="calp-event-color" style={{background: EVENT_COLORS[e.event_type] || e.color || "#8b5cf6"}} />
                 <div className="calp-event-info">
                   <div className="calp-event-title">
                     {e.title}
                     <span className="calp-event-badge">{e.event_type || "meeting"}</span>
                     {e.is_shared && <span className="calp-event-badge" style={{background:"#10b981"}}>shared</span>}
-                    {isGoogle && <span className="calp-event-badge" style={{background:GOOGLE_BLUE}}>G</span>}
-                    {e.is_completed && <span className="calp-event-badge" style={{background:"var(--muted)"}}>done</span>}
+                    {e.is_completed && <span className="calp-event-badge" style={{background:"var(--muted,#9ca3af)"}}>done</span>}
                   </div>
                   <div className="calp-event-meta">
                     {e.is_all_day ? "All day" : `${fmtTime(e.start_time)}${e.end_time ? " – "+fmtTime(e.end_time) : ""}`}
@@ -293,24 +178,17 @@ export default function CalendarPage() {
                   )}
                 </div>
                 <div className="calp-event-actions" onClick={ev => ev.stopPropagation()}>
-                  {isOwner && !isGoogle && !e.is_completed && (
-                    <button
-                      onClick={() => handleCompleteEvent(e.id)}
-                      title="Mark complete"
-                      style={{fontSize:"0.75rem"}}
-                    >✓ Done</button>
+                  {isOwner && !e.is_completed && (
+                    <button onClick={() => handleCompleteEvent(e.id)} title="Mark complete" style={{fontSize:"0.75rem"}}>✓ Done</button>
                   )}
-                  {isOwner && !isGoogle && (
+                  {isOwner && (
                     <button onClick={() => handleDeleteEvent(e.id)}>Del</button>
                   )}
-                  {!isOwner && !isGoogle && (
+                  {!isOwner && (
                     <>
                       <button onClick={() => handleRSVP(e.id,"accepted")} style={myRsvp?.status==="accepted"?{background:"rgba(16,185,129,0.2)",borderColor:"#10b981"}:{}}>Accept</button>
                       <button onClick={() => handleRSVP(e.id,"declined")} style={myRsvp?.status==="declined"?{background:"rgba(239,68,68,0.2)",borderColor:"#ef4444"}:{}}>Decline</button>
                     </>
-                  )}
-                  {isGoogle && (
-                    <span style={{fontSize:"0.7rem",color:"var(--muted)"}}>Read-only</span>
                   )}
                 </div>
               </div>
@@ -416,10 +294,9 @@ function EventModal({ event, colleagues, currentUserId, selectedDate, onClose, o
   const [saving, setSaving] = useState(false);
 
   const isOwner = !event || String(event.user_id) === String(currentUserId);
-  const isGoogle = event?.source === "google";
 
   const handleSave = async () => {
-    if (!title.trim() || !isOwner || isGoogle) return;
+    if (!title.trim() || !isOwner) return;
     setSaving(true);
     const body = {
       title, description, event_type: eventType,
@@ -433,11 +310,7 @@ function EventModal({ event, colleagues, currentUserId, selectedDate, onClose, o
 
     const url = isEdit ? `${API}/api/v1/calendar/${event.id}` : `${API}/api/v1/calendar/`;
     const method = isEdit ? "PUT" : "POST";
-    const res = await authFetch(url, {
-      method,
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify(body),
-    });
+    const res = await authFetch(url, { method, body: JSON.stringify(body) });
     setSaving(false);
     if (res.ok) onSaved();
   };
@@ -445,37 +318,28 @@ function EventModal({ event, colleagues, currentUserId, selectedDate, onClose, o
   return (
     <div className="calp-modal-overlay" onClick={onClose}>
       <div className="calp-modal" onClick={e => e.stopPropagation()}>
-        <h2>
-          {isGoogle ? "Google Event" : isEdit ? (isOwner ? "Edit Event" : "Event Details") : "New Event"}
-          {isGoogle && <span style={{marginLeft:8,padding:"2px 8px",borderRadius:8,background:GOOGLE_BLUE,color:"#fff",fontSize:"0.7rem"}}>Google</span>}
-        </h2>
-
-        {isGoogle && (
-          <p style={{fontSize:"0.8rem",color:"var(--muted)",marginTop:0}}>
-            This event is synced from Google Calendar and cannot be edited here.
-          </p>
-        )}
+        <h2>{isEdit ? (isOwner ? "Edit Event" : "Event Details") : "New Event"}</h2>
 
         <div className="calp-form-row">
           <label>Title</label>
-          <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Event title" disabled={!isOwner || isGoogle} />
+          <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Event title" disabled={!isOwner} />
         </div>
 
         <div className="calp-form-row-inline">
           <div className="calp-form-row">
             <label>Type</label>
-            <select value={eventType} onChange={e => setEventType(e.target.value)} disabled={!isOwner || isGoogle}>
+            <select value={eventType} onChange={e => setEventType(e.target.value)} disabled={!isOwner}>
               {EVENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
           <div className="calp-form-row">
             <label>Color</label>
-            <input type="color" value={isGoogle ? GOOGLE_BLUE : color} onChange={e => setColor(e.target.value)} disabled={!isOwner || isGoogle} />
+            <input type="color" value={color} onChange={e => setColor(e.target.value)} disabled={!isOwner} />
           </div>
         </div>
 
         <div className="calp-form-check">
-          <input type="checkbox" id="calp-allday" checked={isAllDay} onChange={e => setIsAllDay(e.target.checked)} disabled={!isOwner || isGoogle} />
+          <input type="checkbox" id="calp-allday" checked={isAllDay} onChange={e => setIsAllDay(e.target.checked)} disabled={!isOwner} />
           <label htmlFor="calp-allday">All day</label>
         </div>
 
@@ -483,69 +347,70 @@ function EventModal({ event, colleagues, currentUserId, selectedDate, onClose, o
           <div className="calp-form-row-inline">
             <div className="calp-form-row">
               <label>Start</label>
-              <input type="datetime-local" value={startTime} onChange={e => setStartTime(e.target.value)} disabled={!isOwner || isGoogle} />
+              <input type="datetime-local" value={startTime} onChange={e => setStartTime(e.target.value)} disabled={!isOwner} />
             </div>
             <div className="calp-form-row">
               <label>End</label>
-              <input type="datetime-local" value={endTime} onChange={e => setEndTime(e.target.value)} disabled={!isOwner || isGoogle} />
+              <input type="datetime-local" value={endTime} onChange={e => setEndTime(e.target.value)} disabled={!isOwner} />
             </div>
           </div>
         )}
         {isAllDay && (
           <div className="calp-form-row">
             <label>Date</label>
-            <input type="date" value={startTime.slice(0,10)} onChange={e => setStartTime(e.target.value+"T00:00")} disabled={!isOwner || isGoogle} />
+            <input type="date" value={startTime.slice(0,10)} onChange={e => setStartTime(e.target.value+"T00:00")} disabled={!isOwner} />
           </div>
         )}
 
         <div className="calp-form-row">
           <label>Description</label>
-          <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Optional description" disabled={!isOwner || isGoogle} />
+          <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Optional description" disabled={!isOwner} />
         </div>
 
         <div className="calp-form-row">
           <label>Location</label>
-          <input value={location} onChange={e => setLocation(e.target.value)} placeholder="Room, address, etc." disabled={!isOwner || isGoogle} />
+          <input value={location} onChange={e => setLocation(e.target.value)} placeholder="Room, address, etc." disabled={!isOwner} />
         </div>
 
         <div className="calp-form-check">
-          <input type="checkbox" id="calp-virtual" checked={isVirtual} onChange={e => setIsVirtual(e.target.checked)} disabled={!isOwner || isGoogle} />
+          <input type="checkbox" id="calp-virtual" checked={isVirtual} onChange={e => setIsVirtual(e.target.checked)} disabled={!isOwner} />
           <label htmlFor="calp-virtual">Virtual meeting</label>
         </div>
 
         {isVirtual && (
           <div className="calp-form-row">
             <label>Meeting link</label>
-            <input value={meetingLink} onChange={e => setMeetingLink(e.target.value)} placeholder="https://..." disabled={!isOwner || isGoogle} />
+            <input value={meetingLink} onChange={e => setMeetingLink(e.target.value)} placeholder="https://..." disabled={!isOwner} />
           </div>
         )}
 
-        {!isGoogle && (
-          <div className="calp-form-check">
-            <input type="checkbox" id="calp-shared" checked={isShared} onChange={e => setIsShared(e.target.checked)} disabled={!isOwner} />
-            <label htmlFor="calp-shared">Share with org</label>
-          </div>
-        )}
+        <div className="calp-form-check">
+          <input type="checkbox" id="calp-shared" checked={isShared} onChange={e => setIsShared(e.target.checked)} disabled={!isOwner} />
+          <label htmlFor="calp-shared">Share with org</label>
+        </div>
 
-        {!isGoogle && (
-          <div className="calp-form-row">
-            <label>Invite Colleagues</label>
-            {isOwner ? (
-              <AttendeePicker colleagues={colleagues} selected={attendees} onChange={setAttendees} currentUserId={currentUserId} />
-            ) : (
-              <div style={{fontSize:"0.8rem",color:"var(--muted)"}}>
-                {attendees.length === 0 ? "No attendees" : attendees.map(a => {
-                  const c = colleagues.find(col => String(col.id) === String(a.id));
-                  return c?.name || a.name || a.id;
-                }).join(", ")}
-              </div>
-            )}
-          </div>
-        )}
+        <div className="calp-form-row">
+          <label>Invite Colleagues</label>
+          {isOwner ? (
+            <AttendeePicker
+              colleagues={colleagues}
+              selected={attendees}
+              onChange={setAttendees}
+              currentUserId={currentUserId}
+            />
+          ) : (
+            <div style={{fontSize:"0.8rem",color:"var(--muted)"}}>
+              {attendees.length === 0 ? "No attendees" : attendees.map(a => {
+                const c = colleagues.find(col => String(col.id) === String(a.id));
+                return c?.name || a.name || a.id;
+              }).join(", ")}
+            </div>
+          )}
+        </div>
 
         <div className="calp-modal-actions">
           <button className="calp-btn calp-btn-ghost" onClick={onClose}>Close</button>
-          {isOwner && !isGoogle && (
+          {isOwner && (
             <button className="calp-btn calp-btn-primary" onClick={handleSave} disabled={saving || !title.trim()}>
               {saving ? "Saving..." : isEdit ? "Update" : "Create"}
             </button>
