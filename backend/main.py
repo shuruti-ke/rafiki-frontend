@@ -84,6 +84,7 @@ from app.routers.meetings import router as meetings_router
 from app.routers.usage import router as usage_router
 from app.routers.wellbeing import router as wellbeing_router
 from app.routers.attendance import router as attendance_router
+from app.routers.notifications import router as notifications_router
 
 app.include_router(auth_router)
 app.include_router(kb_router)
@@ -107,6 +108,7 @@ app.include_router(meetings_router)
 app.include_router(usage_router)
 app.include_router(wellbeing_router)
 app.include_router(attendance_router)
+app.include_router(notifications_router)
 
 @app.get("/__routes")
 def __routes():
