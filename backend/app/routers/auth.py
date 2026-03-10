@@ -142,6 +142,7 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
         logger.exception(f"Login error for email={getattr(body, 'email', None)}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 DEMO_USERS = {
     "employee": "demo-employee@rafiki.demo",
     "hr_admin": "demo-hr@rafiki.demo",
