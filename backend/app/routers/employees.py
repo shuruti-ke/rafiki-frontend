@@ -268,8 +268,13 @@ def list_employees(
     search: Optional[str] = Query(default=None),
     department: Optional[str] = Query(default=None),
     job_title: Optional[str] = Query(default=None),
+    include_inactive: bool = Query(default=False, description="When true, include inactive employees (used for search)"),
 ):
     q = db.query(User).filter(User.org_id == org_id)
+
+    # By default, hide inactive users from the org-wide employee list and counts
+    if not include_inactive:
+        q = q.filter(User.is_active.is_(True))
 
     if department:
         q = q.filter(User.department == department)
