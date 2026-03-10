@@ -1,12 +1,13 @@
 """
-Notifications router — provides /unread-count for clients expecting /api/v1/notifications/.
-Delegates to messages unread count.
+Notifications router — provides /unread-count, list, and mark-read.
+Delegates unread count to messages; list/mark-read return empty for now.
 """
 
 import uuid
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import func as sa_func
 
@@ -28,6 +29,30 @@ def _insert_notification(
 
 
 router = APIRouter(prefix="/api/v1/notifications", tags=["notifications"])
+
+
+class MarkReadBody(BaseModel):
+    notification_ids: Optional[list[uuid.UUID]] = None  # None = mark all
+
+
+@router.get("")
+def list_notifications(
+    limit: int = Query(40, ge=1, le=100),
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+):
+    """Return notification list. Stub: returns empty for now."""
+    return []
+
+
+@router.post("/mark-read")
+def mark_read(
+    body: MarkReadBody,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+):
+    """Mark notifications as read. Stub: no-op for now."""
+    return {"ok": True}
 
 
 @router.get("/unread-count")
