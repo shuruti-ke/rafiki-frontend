@@ -82,6 +82,7 @@ class EmployeeProfile(Base):
 
     # Legacy single-field emergency contact (backward compatibility)
     emergency_contact = Column(String, nullable=True)
+    gender = Column(String, nullable=True)
 
     # ------------------------------------------------------------------
     # HR lifecycle fields
