@@ -14,10 +14,16 @@ from dotenv import load_dotenv
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Load environment variables
+# Load environment variables (local .env, then cwd .env for Render Secret Files, then ENV_FILE)
 try:
     env_path = Path(__file__).parent / ".env"
     load_dotenv(dotenv_path=env_path, override=False)
+    cwd_env = Path.cwd() / ".env"
+    if cwd_env.exists():
+        load_dotenv(dotenv_path=cwd_env, override=True)
+    env_file = os.getenv("ENV_FILE")
+    if env_file and Path(env_file).exists():
+        load_dotenv(dotenv_path=env_file, override=True)
 except Exception:
     pass
 
@@ -77,10 +83,6 @@ from app.routers.leave import router as leave_router
 from app.routers.meetings import router as meetings_router
 from app.routers.usage import router as usage_router
 from app.routers.wellbeing import router as wellbeing_router
-from app.routers.coaching import router as coaching_router
-from app.routers.reports import router as reports_router
-from app.routers.notifications import router as notifications_router
-from app.models.notification import Notification
 
 app.include_router(auth_router)
 app.include_router(kb_router)
@@ -103,9 +105,6 @@ app.include_router(chat_sessions_router)
 app.include_router(meetings_router)
 app.include_router(usage_router)
 app.include_router(wellbeing_router)
-app.include_router(coaching_router)
-app.include_router(reports_router)
-app.include_router(notifications_router)
 
 @app.get("/__routes")
 def __routes():
