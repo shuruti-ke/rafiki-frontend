@@ -16,10 +16,7 @@ import AdminPayroll from "./pages/AdminPayroll.jsx";
 import AdminUsageReport from "./pages/AdminUsageReport.jsx";
 import AdminLeave from "./pages/AdminLeave.jsx";
 import AdminWellbeing from "./pages/AdminWellbeing.jsx";
-import AdminReports from "./pages/AdminReports.jsx";
-import AdminToolkit from "./pages/AdminToolkit.jsx";
-import AdminTimesheets from "./pages/AdminTimesheets.jsx";
-import ManagerTimesheets from "./pages/ManagerTimesheets.jsx";
+import AdminAttendancePage from "./pages/AdminAttendancePage.jsx";
 import EmployeeKnowledgeBase from "./pages/EmployeeKnowledgeBase.jsx";
 import EmployeeAnnouncements from "./pages/EmployeeAnnouncements.jsx";
 import GuidedPathExplore from "./pages/GuidedPathExplore.jsx";
@@ -28,6 +25,7 @@ import ObjectivesPage from "./pages/ObjectivesPage.jsx";
 import MyDocumentsPage from "./pages/MyDocumentsPage.jsx";
 import CalendarPage from "./pages/CalendarPage.jsx";
 import TimesheetPage from "./pages/TimesheetPage.jsx";
+import AttendancePage from "./pages/AttendancePage.jsx";
 import EmployeeDashboard from "./pages/EmployeeDashboard.jsx";
 import PersonalUsageReport from "./pages/PersonalUsageReport.jsx";
 import LeaveApplication from "./pages/LeaveApplication.jsx";
@@ -71,14 +69,13 @@ export default function App() {
           <Route path="/chat" element={<ChatPage />} />
           <Route path="/knowledge-base" element={<EmployeeKnowledgeBase />} />
           <Route path="/announcements" element={<EmployeeAnnouncements />} />
-          {/* Sprint 2: deep-link target from reminder notification emails */}
-          <Route path="/announcements/:annId" element={<EmployeeAnnouncements />} />
           <Route path="/guided-paths" element={<GuidedPathExplore />} />
           <Route path="/guided-paths/:moduleId" element={<GuidedPathRunner />} />
           <Route path="/objectives" element={<ObjectivesPage />} />
           <Route path="/my-documents" element={<MyDocumentsPage />} />
           <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/timesheet" element={<TimesheetPage />} />
+          <Route path="/attendance" element={<AttendancePage />} />
           <Route path="/meetings" element={<MeetingsPage />} />
           <Route path="/my-report" element={<PersonalUsageReport />} />
           <Route path="/leave" element={<LeaveApplication />} />
@@ -105,7 +102,8 @@ export default function App() {
           <Route path="coaching" element={<ManagerCoaching />} />
           <Route path="toolkit" element={<ManagerToolkit />} />
           <Route path="calendar" element={<CalendarPage />} />
-          <Route path="timesheets" element={<ManagerTimesheets />} />
+          <Route path="timesheets" element={<TimesheetPage />} />
+          <Route path="attendance" element={<AdminAttendancePage />} />
         </Route>
 
         {/* Admin HR Portal */}
@@ -125,11 +123,10 @@ export default function App() {
           <Route path="managers" element={<AdminManagerConfig />} />
           <Route path="payroll" element={<AdminPayroll />} />
           <Route path="calendar" element={<CalendarPage />} />
-          <Route path="timesheets" element={<AdminTimesheets />} />
+          <Route path="timesheets" element={<TimesheetPage />} />
+          <Route path="attendance" element={<AdminAttendancePage />} />
           <Route path="leave" element={<AdminLeave />} />
           <Route path="wellbeing" element={<AdminWellbeing />} />
-          <Route path="reports" element={<AdminReports />} />
-          <Route path="toolkit" element={<AdminToolkit />} />
         </Route>
       </Routes>
     </BrowserRouter>
