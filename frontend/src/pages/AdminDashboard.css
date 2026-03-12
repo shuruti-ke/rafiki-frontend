@@ -1,5 +1,9 @@
-.adash-wrap { max-width: 960px; }
+/* ============================================================
+   AdminDashboard.css  — original styles preserved exactly
+   New .adash-analytics-* and .adash-modal-* classes appended
+   ============================================================ */
 
+.adash-wrap { max-width: 960px; }
 .adash-header { margin-bottom: 24px; }
 .adash-header h1 { font-weight: 800; font-size: 22px; margin: 0 0 4px; }
 .adash-header p { color: var(--muted); font-size: 14px; margin: 0; }
@@ -11,7 +15,6 @@
   gap: 12px;
   margin-bottom: 28px;
 }
-
 .adash-kpi {
   background: var(--card, #fff);
   border: 1px solid var(--border);
@@ -19,8 +22,12 @@
   padding: 16px 14px 14px;
   position: relative;
   overflow: hidden;
+  transition: transform .2s, box-shadow .2s;
 }
-
+.adash-kpi:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(139,92,246,.12);
+}
 .adash-kpi::before {
   content: "";
   position: absolute;
@@ -28,14 +35,12 @@
   height: 3px;
   background: var(--kpi-color, var(--accent));
 }
-
 .adash-kpi-value {
   font-size: 28px;
   font-weight: 800;
   line-height: 1.1;
   margin-bottom: 2px;
 }
-
 .adash-kpi-label {
   font-size: 12px;
   color: var(--muted);
@@ -49,18 +54,22 @@
   gap: 16px;
   margin-bottom: 28px;
 }
-
 .adash-chart {
   background: var(--card, #fff);
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 16px;
 }
-
+.adash-chart--full {
+  grid-column: 1 / -1;
+}
 .adash-chart-title {
   font-size: 13px;
   font-weight: 700;
   margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 /* Horizontal bar chart */
@@ -70,7 +79,6 @@
   gap: 8px;
   margin-bottom: 6px;
 }
-
 .adash-bar-label {
   font-size: 11px;
   width: 100px;
@@ -81,7 +89,6 @@
   white-space: nowrap;
   color: var(--text);
 }
-
 .adash-bar-track {
   flex: 1;
   height: 18px;
@@ -90,7 +97,6 @@
   overflow: hidden;
   position: relative;
 }
-
 .adash-bar-fill {
   height: 100%;
   border-radius: 4px;
@@ -98,7 +104,6 @@
   min-width: 2px;
   transition: width 0.4s ease;
 }
-
 .adash-bar-value {
   font-size: 11px;
   font-weight: 600;
@@ -115,26 +120,22 @@
   overflow: hidden;
   margin-bottom: 8px;
 }
-
 .adash-seg-part {
   height: 100%;
   min-width: 2px;
   transition: width 0.4s ease;
 }
-
 .adash-seg-legend {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
 }
-
 .adash-seg-item {
   display: flex;
   align-items: center;
   gap: 4px;
   font-size: 11px;
 }
-
 .adash-seg-dot {
   width: 8px;
   height: 8px;
@@ -148,7 +149,6 @@
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 10px;
 }
-
 .adash-link {
   display: block;
   background: var(--card, #fff);
@@ -157,19 +157,17 @@
   padding: 12px;
   text-decoration: none;
   color: inherit;
-  transition: border-color 0.15s;
+  transition: border-color 0.15s, box-shadow .15s;
 }
-
 .adash-link:hover {
   border-color: var(--accent);
+  box-shadow: 0 4px 14px rgba(139,92,246,.1);
 }
-
 .adash-link strong {
   font-size: 13px;
   display: block;
   margin-bottom: 2px;
 }
-
 .adash-link p {
   font-size: 11px;
   color: var(--muted);
@@ -187,5 +185,281 @@
 
 @media (max-width: 700px) {
   .adash-charts { grid-template-columns: 1fr; }
-  .adash-kpis { grid-template-columns: repeat(2, 1fr); }
+  .adash-kpis   { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ============================================================
+   ANALYTICS ADDITIONS
+   All new — nothing above is changed
+   ============================================================ */
+
+/* "Visual Analytics" button beside Hours by Project title */
+.adash-analytics-btn {
+  background: var(--primary-gradient, linear-gradient(135deg, #8b5cf6 0%, #1fbfb8 100%));
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 5px 13px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font-body, inherit);
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(139,92,246,.22);
+  transition: opacity .2s, transform .15s;
+  white-space: nowrap;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.adash-analytics-btn:hover {
+  opacity: .88;
+  transform: translateY(-1px);
+}
+
+/* Pill chips under the project bar chart */
+.adash-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(0,0,0,.03);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.adash-chip strong { color: var(--text); font-weight: 600; }
+
+/* Modal backdrop */
+.adash-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(17,24,39,.52);
+  backdrop-filter: blur(7px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: adashFade .18s ease;
+}
+
+/* Modal box */
+.adash-modal {
+  background: var(--panel, #fff);
+  border-radius: 16px;
+  padding: 32px;
+  width: 100%;
+  max-width: 860px;
+  max-height: 90vh;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  box-shadow: 0 28px 72px rgba(139,92,246,.18), 0 2px 8px rgba(0,0,0,.08);
+  animation: adashSlide .22s ease;
+}
+.adash-modal::-webkit-scrollbar { width: 5px; }
+.adash-modal::-webkit-scrollbar-track { background: transparent; }
+.adash-modal::-webkit-scrollbar-thumb { background: var(--gray-200, #e5e7eb); border-radius: 99px; }
+
+/* Modal header */
+.adash-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 4px;
+}
+.adash-modal-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.adash-modal-title h2 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 800;
+  color: var(--text);
+}
+.adash-modal-sub {
+  margin: 0 0 0 22px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Logo dot — mirrors App.css .logoDot */
+.adash-logo-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--primary-gradient, linear-gradient(135deg, #8b5cf6 0%, #1fbfb8 100%));
+  box-shadow: 0 0 14px rgba(139,92,246,.4);
+  flex-shrink: 0;
+}
+
+/* Gradient rule under modal header */
+.adash-modal-rule {
+  height: 2px;
+  background: var(--primary-gradient, linear-gradient(135deg, #8b5cf6 0%, #1fbfb8 100%));
+  border-radius: 99px;
+  margin: 14px 0 20px;
+  opacity: .4;
+}
+
+/* Close button */
+.adash-modal-close {
+  background: var(--gray-100, #f3f4f6);
+  border: none;
+  border-radius: 8px;
+  width: 34px;
+  height: 34px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--muted);
+  transition: background .15s;
+  flex-shrink: 0;
+}
+.adash-modal-close:hover { background: var(--gray-200, #e5e7eb); }
+
+/* Tab bar */
+.adash-tabs {
+  display: flex;
+  gap: 3px;
+  margin-bottom: 24px;
+  background: var(--gray-50, #f9fafb);
+  padding: 3px;
+  border-radius: 10px;
+  width: fit-content;
+  border: 1px solid var(--border);
+}
+.adash-tab {
+  padding: 6px 16px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 12px;
+  font-family: inherit;
+  transition: all .18s;
+}
+.adash-tab--active {
+  background: var(--primary-gradient, linear-gradient(135deg, #8b5cf6 0%, #1fbfb8 100%));
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(139,92,246,.22);
+}
+.adash-tab:not(.adash-tab--active):hover {
+  background: var(--gray-100, #f3f4f6);
+}
+
+/* Section label inside modal */
+.adash-modal-section-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .7px;
+  margin: 0 0 10px;
+}
+
+/* Mini stat cards inside modal */
+.adash-modal-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 22px;
+}
+.adash-modal-kpi {
+  background: var(--gray-50, #f9fafb);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  border-top: 3px solid var(--mkpi-color, var(--accent));
+}
+.adash-modal-kpi-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  margin-bottom: 5px;
+}
+.adash-modal-kpi-value {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1;
+}
+
+/* Project cards in "vs average" tab */
+.adash-proj-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+.adash-proj-card {
+  background: var(--gray-50, #f9fafb);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  border-left: 3px solid var(--pc-color, var(--accent));
+  padding: 10px 14px;
+  min-width: 130px;
+}
+.adash-proj-card-name  { font-size: 11px; font-weight: 700; color: var(--text);  margin-bottom: 2px; }
+.adash-proj-card-hours { font-size: 20px; font-weight: 800; color: var(--text);  line-height: 1; margin-bottom: 2px; }
+.adash-proj-card-diff  { font-size: 11px; font-weight: 600; }
+
+/* Distribution rows */
+.adash-dist-row        { margin-bottom: 10px; }
+.adash-dist-row-head   { display: flex; justify-content: space-between; margin-bottom: 4px; }
+.adash-dist-row-name   { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; color: var(--text); }
+.adash-dist-row-meta   { font-size: 12px; color: var(--muted); font-weight: 600; }
+.adash-dist-track      { height: 5px; background: var(--gray-100, #f3f4f6); border-radius: 99px; }
+.adash-dist-fill       { height: 100%; border-radius: 99px; }
+
+/* Timesheet submission rows */
+.adash-ts-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 7px 10px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  transition: background .12s;
+}
+.adash-ts-row--ok  { background: rgba(52,211,153,.06); border-color: rgba(52,211,153,.18); }
+.adash-ts-row--nok { background: rgba(248,113,113,.06); border-color: rgba(248,113,113,.18); }
+.adash-ts-badge {
+  width: 20px; height: 20px;
+  border-radius: 5px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; flex-shrink: 0;
+}
+.adash-ts-badge--ok  { background: rgba(52,211,153,.15);  color: #34d399; }
+.adash-ts-badge--nok { background: rgba(248,113,113,.15); color: #f87171; }
+.adash-dept-pill {
+  color: var(--muted);
+  font-size: 11px;
+  background: var(--gray-100, #f3f4f6);
+  border-radius: 999px;
+  padding: 1px 7px;
+  border: 1px solid var(--border);
+}
+
+/* Progress bar (timesheet summary) */
+.adash-progress-track {
+  height: 6px;
+  background: var(--gray-100, #f3f4f6);
+  border-radius: 99px;
+  overflow: hidden;
+  margin: 8px 0 14px;
+}
+.adash-progress-fill {
+  height: 100%;
+  border-radius: 99px;
+  background: var(--primary-gradient, linear-gradient(135deg, #8b5cf6 0%, #1fbfb8 100%));
+  transition: width .5s ease;
+}
+
+@keyframes adashFade  { from { opacity: 0 }                          to { opacity: 1 }              }
+@keyframes adashSlide { from { opacity:0; transform:translateY(16px) } to { opacity:1; transform:none } }

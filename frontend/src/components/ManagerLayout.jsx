@@ -43,12 +43,15 @@ export default function ManagerLayout() {
           <NavLink to="/manager/timesheets" className={({ isActive }) => `mgr-nav-link ${isActive ? "active" : ""}`}>
             Team Timesheets
           </NavLink>
+          <NavLink to="/manager/attendance" className={({ isActive }) => `mgr-nav-link ${isActive ? "active" : ""}`}>
+            Team Attendance
+          </NavLink>
         </nav>
 
         <div className="mgr-nav-footer">
-          <NavLink to="/chat" className="mgr-nav-link">
-            Back to Chat
-          </NavLink>
+          <a href="https://www.rafikihr.com/dashboard" className="mgr-nav-link">
+            My Dashboard
+          </a>
           {isAdmin && (
             <NavLink to="/admin" className="mgr-nav-link">
               HR Portal

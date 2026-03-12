@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { API, authFetch } from "../api.js";
+import CoachingSessionForm from "./CoachingSessionForm.jsx";
 import "./ManagerCoaching.css";
 
 export default function ManagerCoaching() {
@@ -12,7 +13,10 @@ export default function ManagerCoaching() {
 
   // History
   const [history, setHistory] = useState([]);
-  const [tab, setTab] = useState("new"); // "new" | "history"
+  const [tab, setTab] = useState("new"); // "new" | "history" | "sessions"
+
+  // Sprint 3: prefill data passed to CoachingSessionForm when "Save as Session" clicked
+  const [sessionPrefill, setSessionPrefill] = useState(null);
 
   useEffect(() => {
     authFetch(`${API}/api/v1/manager/team`)
@@ -95,6 +99,12 @@ export default function ManagerCoaching() {
           onClick={() => setTab("history")}
         >
           History ({history.length})
+        </button>
+        <button
+          className={`mgr-tab ${tab === "sessions" ? "active" : ""}`}
+          onClick={() => setTab("sessions")}
+        >
+          Sessions
         </button>
       </div>
 
@@ -187,6 +197,33 @@ export default function ManagerCoaching() {
                   </button>
                 </div>
               </div>
+
+              {/* Sprint 3: Save as structured session */}
+              <div className="mgr-plan-save-session">
+                <button
+                  className="btn btnPrimary"
+                  onClick={() => {
+                    setSessionPrefill({
+                      employee_id: selectedMember,
+                      concern: concern.trim(),
+                      notes: [
+                        plan.situation_summary,
+                        plan.conversation_script,
+                        plan.escalation_path,
+                      ].filter(Boolean).join("\n\n---\n\n"),
+                      action_items: (plan.action_options || []).map(text => ({
+                        text,
+                        due_date: "",
+                        completed: false,
+                      })),
+                    });
+                    setTab("sessions");
+                  }}
+                >
+                  💾 Save as Session
+                </button>
+                <span className="mgr-save-hint">Pre-fills the structured session form with this plan.</span>
+              </div>
             </div>
           )}
         </div>
@@ -222,6 +259,16 @@ export default function ManagerCoaching() {
               </div>
             ))
           )}
+        </div>
+      )}
+
+      {/* Sprint 3: Structured sessions tab */}
+      {tab === "sessions" && (
+        <div className="mgr-coaching-sessions">
+          <CoachingSessionForm
+            prefillData={sessionPrefill}
+            onSessionSaved={() => setSessionPrefill(null)}
+          />
         </div>
       )}
     </div>

@@ -13,14 +13,31 @@ export default function AdminEmployees() {
   const [batchLoading, setBatchLoading] = useState(false);
   const fileRef = useRef(null);
 
-  const fetchEmployees = () => {
-    authFetch(`${API}/api/v1/employees/`)
-      .then(r => r.ok ? r.json() : [])
+  const fetchEmployees = (opts = {}) => {
+    const { search = "" } = opts;
+    const params = new URLSearchParams();
+    const trimmed = search.trim();
+    const includeInactive = !!trimmed; // when searching, allow inactive employees
+
+    if (trimmed) params.append("search", trimmed);
+    if (includeInactive) params.append("include_inactive", "true");
+
+    const url = params.toString()
+      ? `${API}/api/v1/employees/?${params.toString()}`
+      : `${API}/api/v1/employees/`;
+
+    authFetch(url)
+      .then(r => (r && r.ok ? r.json() : []))
       .then(setEmployees)
       .catch(() => {});
   };
 
   useEffect(() => { fetchEmployees(); }, []);
+
+  // When search changes, re-query the backend so inactive employees can be found
+  useEffect(() => {
+    fetchEmployees({ search });
+  }, [search]);
 
   const managers = employees
     .map(e => e.user || {})
@@ -83,15 +100,7 @@ export default function AdminEmployees() {
     }
   };
 
-  const filtered = search.trim()
-    ? employees.filter(e => {
-        const u = e.user || {};
-        const q = search.toLowerCase();
-        return (u.name || "").toLowerCase().includes(q) ||
-               (u.email || "").toLowerCase().includes(q) ||
-               (u.user_id || "").toLowerCase().includes(q);
-      })
-    : employees;
+  const list = employees;
 
   return (
     <div style={{ maxWidth: 700 }}>
@@ -188,23 +197,26 @@ export default function AdminEmployees() {
         </form>
       )}
 
-      <input
-        className="search"
-        placeholder="Search by name, email, or ID..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        style={{ width: "100%", marginBottom: 16, boxSizing: "border-box" }}
-      />
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
+        <input
+          className="search"
+          placeholder="Search by name, email, or ID..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={{ flex: 1, minWidth: 220, boxSizing: "border-box" }}
+        />
+      </div>
 
-      {filtered.length === 0 && (
+      {list.length === 0 && (
         <p style={{ color: "var(--muted)", fontSize: 13 }}>
           {employees.length === 0 ? "No employees found." : "No matches."}
         </p>
       )}
 
       <div style={{ display: "grid", gap: 8 }}>
-        {filtered.map((e) => {
+        {list.map((e) => {
           const u = e.user || {};
+          const isInactive = u.is_active === false;
           return (
             <Link
               key={u.user_id}
@@ -212,8 +224,17 @@ export default function AdminEmployees() {
               className="btn"
               style={{ textAlign: "left", textDecoration: "none", display: "flex", justifyContent: "space-between", alignItems: "center" }}
             >
-              <span>{u.name || u.email || "Unknown"}</span>
-              <span style={{ color: "var(--muted)", fontSize: 12 }}>{u.role || ""} {u.department ? `· ${u.department}` : ""}</span>
+              <span>
+                {u.name || u.email || "Unknown"}
+                {isInactive && (
+                  <span style={{ marginLeft: 8, fontSize: 11, padding: "2px 6px", borderRadius: 999, background: "rgba(248,113,113,0.12)", color: "#f87171" }}>
+                    Inactive
+                  </span>
+                )}
+              </span>
+              <span style={{ color: "var(--muted)", fontSize: 12 }}>
+                {u.role || ""} {u.department ? `· ${u.department}` : ""}
+              </span>
             </Link>
           );
         })}

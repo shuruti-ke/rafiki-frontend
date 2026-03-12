@@ -422,6 +422,9 @@ function BatchesTab() {
   const [detail, setDetail] = useState(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [parsing, setParsing] = useState(false);
+  const [distributing, setDistributing] = useState(false);
+  const [distributeResult, setDistributeResult] = useState(null);
 
   useEffect(() => {
     authFetch(`${API}/api/v1/payroll/batches`)
@@ -436,13 +439,65 @@ function BatchesTab() {
     setSelectedBatch(batch);
     setLoadingDetail(true);
     setDetail(null);
+    setDistributeResult(null);
     if (batch.status === "distributed" || batch.status === "parsed") {
       try {
         const r = await authFetch(`${API}/api/v1/payroll/batches/${batch.batch_id}/verify`);
         if (r.ok) setDetail(await r.json());
       } catch {}
     }
+    // Also show distribute button for parsed batches
     setLoadingDetail(false);
+  }
+
+  async function handleParse(batchId) {
+    setParsing(true);
+    setDetail(null);
+    try {
+      // POST /parse transitions status uploaded→parsed and returns results
+      const r = await authFetch(`${API}/api/v1/payroll/batches/${batchId}/parse`, { method: "POST" });
+      const data = await r.json();
+      if (r.ok) {
+        setDetail(data);
+        // refresh batch list so status shows "parsed"
+        const br = await authFetch(`${API}/api/v1/payroll/batches`);
+        const bdata = await br.json();
+        if (Array.isArray(bdata)) {
+          setBatches(bdata);
+          const updated = bdata.find(b => b.batch_id === batchId);
+          if (updated) setSelectedBatch(updated);
+        }
+      } else {
+        setDetail({ error: data.detail || "Parse failed" });
+      }
+    } catch (e) {
+      setDetail({ error: e.message });
+    }
+    setParsing(false);
+  }
+
+  async function handleDistribute(batchId) {
+    if (!confirm("Distribute payslips to all matched employees? This cannot be undone.")) return;
+    setDistributing(true);
+    try {
+      const r = await authFetch(`${API}/api/v1/payroll/batches/${batchId}/distribute`, { method: "POST" });
+      const data = await r.json();
+      if (r.ok) {
+        setDistributeResult(data.message || "Payslips distributed successfully.");
+        const br = await authFetch(`${API}/api/v1/payroll/batches`);
+        const bdata = await br.json();
+        if (Array.isArray(bdata)) {
+          setBatches(bdata);
+          const updated = bdata.find(b => b.batch_id === batchId);
+          if (updated) setSelectedBatch(updated);
+        }
+      } else {
+        setDistributeResult("Error: " + (data.detail || "Distribution failed"));
+      }
+    } catch (e) {
+      setDistributeResult("Error: " + e.message);
+    }
+    setDistributing(false);
   }
 
   async function handleDownload(batchId) {
@@ -536,7 +591,53 @@ function BatchesTab() {
             </>
           )}
 
-          {!detail && !loadingDetail && selectedBatch.status !== "distributed" && selectedBatch.status !== "parsed" && (
+          {/* Action buttons for uploaded or parsed batches */}
+          {(selectedBatch.status === "uploaded" || selectedBatch.status === "parsed") && (
+            <div className="ap-step" style={{ marginTop: 16 }}>
+              {!detail && (
+                <>
+                  <p className="ap-hint">Parse the payroll file to verify totals before distributing.</p>
+                  <button
+                    className="ap-btn ap-btn-primary"
+                    onClick={() => handleParse(selected)}
+                    disabled={parsing}
+                  >
+                    {parsing ? "Parsing…" : "Parse & Verify"}
+                  </button>
+                </>
+              )}
+              {detail?.error && (
+                <div className="ap-error" style={{ marginTop: 8 }}>{detail.error}</div>
+              )}
+              {detail && (
+                <>
+                  <h3 className="ap-step-title">Distribute Payslips</h3>
+                  {detail.matched_count === 0 && (
+                    <div className="ap-error">No employees matched — cannot distribute.</div>
+                  )}
+                  {distributeResult ? (
+                    <div className={distributeResult.startsWith("Error") ? "ap-error" : "ap-success"}>
+                      {distributeResult}
+                    </div>
+                  ) : (
+                    <button
+                      className="ap-btn ap-btn-primary"
+                      onClick={() => handleDistribute(selected)}
+                      disabled={distributing || detail.matched_count === 0}
+                    >
+                      {distributing ? "Distributing…" : `Distribute to ${detail.matched_count} employees`}
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {distributeResult && selectedBatch.status === "distributed" && (
+            <div className="ap-success" style={{ marginTop: 12 }}>{distributeResult}</div>
+          )}
+
+          {!detail && !loadingDetail && selectedBatch.status !== "distributed" && selectedBatch.status !== "parsed" && selectedBatch.status !== "uploaded" && (
             <div className="ap-hint" style={{ marginTop: 12 }}>
               Detailed breakdown available after parsing.
             </div>

@@ -4,8 +4,12 @@ import "./CalendarPage.css";
 
 const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const DAY_NAMES = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-const EVENT_TYPES = ["meeting","task","reminder","out-of-office","social","training"];
-const EVENT_COLORS = { meeting:"#8b5cf6", task:"#3b82f6", reminder:"#f59e0b", "out-of-office":"#ef4444", social:"#10b981", training:"#6366f1" };
+const EVENT_TYPES = ["meeting","1on1","task","reminder","deadline","company","general","out-of-office","social","training"];
+const EVENT_COLORS = {
+  meeting:"#8b5cf6", "1on1":"#1fbfb8", task:"#3b82f6",
+  reminder:"#f59e0b", deadline:"#ef4444", company:"#10b981",
+  general:"#6366f1", "out-of-office":"#f87171", social:"#34d399", training:"#8b5cf6",
+};
 
 function pad(n) { return String(n).padStart(2,"0"); }
 function fmtDate(y,m,d) { return `${y}-${pad(m+1)}-${pad(d)}`; }
@@ -70,6 +74,11 @@ export default function CalendarPage() {
     if (res.ok) loadEvents();
   };
 
+  const handleCompleteEvent = async (id) => {
+    const res = await authFetch(`${API}/api/v1/calendar/${id}/complete`, {method:"POST"});
+    if (res.ok) loadEvents();
+  };
+
   const handleRSVP = async (eventId, status) => {
     await authFetch(`${API}/api/v1/calendar/${eventId}/rsvp`, {
       method:"POST", body: JSON.stringify({status}),
@@ -118,6 +127,7 @@ export default function CalendarPage() {
                   onClick={ev => { ev.stopPropagation(); setSelectedDay(c.day); }}
                 >
                   {e.title}
+                  {e.is_completed && <span style={{marginLeft:3,opacity:0.7}}>✓</span>}
                 </div>
               ))}
               {de.length > 3 && <div className="calp-day-more">+{de.length-3} more</div>}
@@ -140,13 +150,14 @@ export default function CalendarPage() {
             const myRsvp = (e.attendees||[]).find(a => String(a.id) === String(currentUserId));
             const isOwner = String(e.user_id) === String(currentUserId);
             return (
-              <div key={e.id} className="calp-event-card" style={{cursor:"pointer"}} onClick={() => openEdit(e)}>
+              <div key={e.id} className={`calp-event-card${e.is_completed ? " calp-event-completed" : ""}`} style={{cursor:"pointer"}} onClick={() => openEdit(e)}>
                 <div className="calp-event-color" style={{background: EVENT_COLORS[e.event_type] || e.color || "#8b5cf6"}} />
                 <div className="calp-event-info">
                   <div className="calp-event-title">
                     {e.title}
                     <span className="calp-event-badge">{e.event_type || "meeting"}</span>
                     {e.is_shared && <span className="calp-event-badge" style={{background:"#10b981"}}>shared</span>}
+                    {e.is_completed && <span className="calp-event-badge" style={{background:"var(--muted,#9ca3af)"}}>done</span>}
                   </div>
                   <div className="calp-event-meta">
                     {e.is_all_day ? "All day" : `${fmtTime(e.start_time)}${e.end_time ? " – "+fmtTime(e.end_time) : ""}`}
@@ -167,6 +178,9 @@ export default function CalendarPage() {
                   )}
                 </div>
                 <div className="calp-event-actions" onClick={ev => ev.stopPropagation()}>
+                  {isOwner && !e.is_completed && (
+                    <button onClick={() => handleCompleteEvent(e.id)} title="Mark complete" style={{fontSize:"0.75rem"}}>✓ Done</button>
+                  )}
                   {isOwner && (
                     <button onClick={() => handleDeleteEvent(e.id)}>Del</button>
                   )}

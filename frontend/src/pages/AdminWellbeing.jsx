@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { API, authFetch } from "../api.js";
+import WellbeingBreakdownModal from "./WellbeingBreakdownModal.jsx";
 import "./AdminWellbeing.css";
 
 const SENTIMENT_COLORS = { positive: "#34d399", neutral: "#94a3b8", negative: "#f87171" };
@@ -34,6 +35,8 @@ export default function AdminWellbeing() {
   const [expandedAlert, setExpandedAlert] = useState(null);
   const [resolveNotes, setResolveNotes] = useState("");
   const [configOpen, setConfigOpen] = useState(false);
+  // Sprint 3: wellbeing breakdown modal
+  const [breakdownEmployee, setBreakdownEmployee] = useState(null);
 
   const loadData = useCallback(() => {
     Promise.allSettled([
@@ -126,6 +129,14 @@ export default function AdminWellbeing() {
 
   return (
     <div className="wb-wrap">
+      {/* Sprint 3: Wellbeing breakdown modal */}
+      {breakdownEmployee && (
+        <WellbeingBreakdownModal
+          employee={breakdownEmployee}
+          onClose={() => setBreakdownEmployee(null)}
+        />
+      )}
+
       <div className="wb-header">
         <h1>Wellbeing Dashboard</h1>
         <p>Organization mental health insights and crisis management.</p>
@@ -176,7 +187,16 @@ export default function AdminWellbeing() {
             filteredAlerts.map(a => (
               <div key={a.id}>
                 <div className={`wb-alert-row ${a.risk_level}`} onClick={() => setExpandedAlert(expandedAlert === a.id ? null : a.id)}>
-                  <span className="wb-alert-name">{a.employee_name}</span>
+                  <span
+                    className="wb-alert-name wb-alert-name-link"
+                    title="View wellbeing breakdown"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setBreakdownEmployee({ user_id: a.user_id, name: a.employee_name });
+                    }}
+                  >
+                    {a.employee_name}
+                  </span>
                   <span className="wb-alert-dept">{a.department || ""}</span>
                   <span className={`wb-risk-badge ${a.risk_level}`}>{a.risk_level}</span>
                   <span className="wb-alert-excerpt">{a.trigger_text?.slice(0, 60)}</span>
