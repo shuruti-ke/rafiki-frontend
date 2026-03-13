@@ -11,6 +11,7 @@ from app.database import get_db
 from app.dependencies import (
     get_current_org_id,
     get_current_user_id,
+    get_current_user,
     require_admin,
     get_current_role,
 )
@@ -49,6 +50,54 @@ PAYROLL_MIME_TYPES = {
 
 # Roles who can approve payroll
 _PRIVILEGED_ROLES = {"hr_admin", "super_admin"}
+
+
+def _require_payroll_processor(user: User | None) -> None:
+    if not user or not bool(getattr(user, "can_process_payroll", False)):
+        raise HTTPException(status_code=403, detail="Payroll processing permission required")
+
+
+@router.post("/run-monthly")
+def run_monthly_payroll(
+    month: str = Query(..., pattern=r"^\d{4}-\d{2}$"),
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    current_user: User | None = Depends(get_current_user),
+):
+    """
+    Initiate a monthly payroll run for the given YYYY-MM.
+
+    For now this logs the intent and relies on the existing upload/parse flow.
+    Only users with the 'can_process_payroll' flag may call this.
+    """
+    _require_payroll_processor(current_user)
+
+    year, month_num = month.split("-")
+    try:
+        year_i = int(year)
+        month_i = int(month_num)
+        if not (1 <= month_i <= 12):
+            raise ValueError
+    except ValueError:
+        raise HTTPException(status_code=400, detail="month must be in YYYY-MM format")
+
+    # No-op for now except logging – future work can auto-build batches from employee profiles.
+    log_action(
+        db,
+        org_id,
+        current_user.user_id if current_user else None,
+        "run_monthly_payroll",
+        "payroll_batch",
+        None,
+        {"period_year": year_i, "period_month": month_i},
+    )
+
+    return {
+        "ok": True,
+        "message": f"Payroll run initiated for {month}. Upload and parse the payroll file to continue.",
+        "period_year": year_i,
+        "period_month": month_i,
+    }
 
 
 # -------------------------

@@ -81,6 +81,13 @@ function UploadTab() {
   const [distributeResult, setDistributeResult] = useState(null);
   const [error, setError] = useState("");
   const [force, setForce] = useState(false);
+  const [runMonth, setRunMonth] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  });
+  const [runMsg, setRunMsg] = useState("");
+  const [runErr, setRunErr] = useState("");
+  const runBtnRef = useRef(null);
 
   // Approval state
   const [approvers, setApprovers] = useState([]);
@@ -137,6 +144,28 @@ function UploadTab() {
       setError("Upload failed: " + err.message);
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function handleRunMonthly(e) {
+    e.preventDefault();
+    setRunMsg("");
+    setRunErr("");
+    try {
+      const r = await authFetch(
+        `${API}/api/v1/payroll/run-monthly?month=${encodeURIComponent(runMonth)}`,
+        { method: "POST" }
+      );
+      const data = await r.json();
+      if (!r.ok) {
+        setRunErr(data.detail || "Failed to initiate monthly payroll run");
+        return;
+      }
+      setRunMsg(data.message || "Monthly payroll run initiated.");
+      // Also sync the upload month to the selected run month for convenience
+      setMonth(runMonth);
+    } catch (err) {
+      setRunErr("Failed to initiate monthly payroll run: " + err.message);
     }
   }
 
@@ -216,6 +245,33 @@ function UploadTab() {
   return (
     <div className="ap-section">
       <form className="ap-form" onSubmit={handleUpload}>
+        <div className="ap-form-row ap-form-row-split">
+          <div>
+            <label className="ap-label">Run Monthly Payroll</label>
+            <div className="ap-run-row">
+              <input
+                type="month"
+                className="ap-input ap-input--month"
+                value={runMonth}
+                onChange={(e) => setRunMonth(e.target.value)}
+                required
+              />
+              <button
+                ref={runBtnRef}
+                type="button"
+                className="ap-btn ap-btn-secondary"
+                onClick={handleRunMonthly}
+              >
+                Run for Month
+              </button>
+            </div>
+            <p className="ap-hint">
+              Choose the month to process. Upload and parse the payroll file to complete the run.
+            </p>
+            {runMsg && <div className="ap-notice ap-notice--success">{runMsg}</div>}
+            {runErr && <div className="ap-notice ap-notice--error">{runErr}</div>}
+          </div>
+        </div>
         <div className="ap-form-row">
           <label className="ap-label">Month</label>
           <input

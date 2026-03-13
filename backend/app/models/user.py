@@ -79,6 +79,11 @@ class User(Base):
 
     role = Column(USER_ROLE_ENUM, nullable=False)
 
+    # Fine-grained payroll permissions (toggled in admin UI)
+    can_process_payroll = Column(Boolean, nullable=False, server_default="false")
+    can_approve_payroll = Column(Boolean, nullable=False, server_default="false")
+    can_authorize_payroll = Column(Boolean, nullable=False, server_default="false")
+
     language_preference = Column(String(50), nullable=False, default="en")
     is_active = Column(Boolean, default=True, nullable=False)
 

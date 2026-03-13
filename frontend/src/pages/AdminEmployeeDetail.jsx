@@ -40,6 +40,11 @@ export default function AdminEmployeeDetail() {
     gender: "",
     city: "",
   });
+  const [payrollFlags, setPayrollFlags] = useState({
+    can_process_payroll: false,
+    can_approve_payroll: false,
+    can_authorize_payroll: false,
+  });
   const [creds, setCreds] = useState(null);
   const [credsLoading, setCredsLoading] = useState(false);
   const [credsVisible, setCredsVisible] = useState(false);
@@ -69,6 +74,12 @@ export default function AdminEmployeeDetail() {
           phone: merged.phone || "",
           gender: merged.gender || "",
           city: merged.city || "",
+        });
+        const u = merged.user || {};
+        setPayrollFlags({
+          can_process_payroll: !!u.can_process_payroll,
+          can_approve_payroll: !!u.can_approve_payroll,
+          can_authorize_payroll: !!u.can_authorize_payroll,
         });
       }
       if (balRes.ok) {
@@ -100,6 +111,9 @@ export default function AdminEmployeeDetail() {
           phone: form.phone || null,
           gender: form.gender || null,
           city: form.city || null,
+          can_process_payroll: payrollFlags.can_process_payroll,
+          can_approve_payroll: payrollFlags.can_approve_payroll,
+          can_authorize_payroll: payrollFlags.can_authorize_payroll,
         }),
       });
       const data = await res.json();
@@ -418,6 +432,61 @@ export default function AdminEmployeeDetail() {
                 {statusMsg.text}
               </div>
             )}
+          </div>
+        </div>
+
+        {/* Payroll Permissions Card */}
+        <div className="emp-detail-card">
+          <div className="emp-card-title">Payroll Permissions</div>
+          <p className="emp-permissions-hint">
+            Control who can process, approve, and authorize payroll. Changes take effect immediately.
+          </p>
+          <div className="emp-permissions-grid">
+            <label className="emp-permission-row">
+              <input
+                type="checkbox"
+                checked={payrollFlags.can_process_payroll}
+                onChange={(e) =>
+                  setPayrollFlags((f) => ({ ...f, can_process_payroll: e.target.checked }))
+                }
+              />
+              <span>
+                Can process payroll
+                <span className="emp-permission-sub">
+                  Typically for Accounts / Payroll Officer – can upload, parse, and prepare runs.
+                </span>
+              </span>
+            </label>
+            <label className="emp-permission-row">
+              <input
+                type="checkbox"
+                checked={payrollFlags.can_approve_payroll}
+                onChange={(e) =>
+                  setPayrollFlags((f) => ({ ...f, can_approve_payroll: e.target.checked }))
+                }
+              />
+              <span>
+                Can approve payroll
+                <span className="emp-permission-sub">
+                  Typically for HR Admin – reviews prepared runs before finance authorization.
+                </span>
+              </span>
+            </label>
+            <label className="emp-permission-row">
+              <input
+                type="checkbox"
+                checked={payrollFlags.can_authorize_payroll}
+                onChange={(e) =>
+                  setPayrollFlags((f) => ({ ...f, can_authorize_payroll: e.target.checked }))
+                }
+              />
+              <span>
+                Can authorize payroll
+                <span className="emp-permission-sub">
+                  Typically for Finance Manager – final authorization and payslip distribution.
+                </span>
+              </span>
+            </label>
           </div>
         </div>
 

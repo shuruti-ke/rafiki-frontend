@@ -84,6 +84,9 @@ def _user_dict(u: User) -> dict:
         "job_title": getattr(u, "job_title", None),
         "manager_id": str(u.manager_id) if getattr(u, "manager_id", None) else None,
         "is_active": bool(getattr(u, "is_active", True)),
+        "can_process_payroll": bool(getattr(u, "can_process_payroll", False)),
+        "can_approve_payroll": bool(getattr(u, "can_approve_payroll", False)),
+        "can_authorize_payroll": bool(getattr(u, "can_authorize_payroll", False)),
         "created_at": u.created_at.isoformat() if getattr(u, "created_at", None) else None,
         "updated_at": u.updated_at.isoformat() if getattr(u, "updated_at", None) else None,
     }
@@ -228,6 +231,9 @@ class EmployeeUpdateRequest(BaseModel):
     manager_id: Optional[str] = None
     is_active: Optional[bool] = None
     gender: Optional[str] = None  # 'male' | 'female' | 'other' — used for leave entitlements
+    can_process_payroll: Optional[bool] = None
+    can_approve_payroll: Optional[bool] = None
+    can_authorize_payroll: Optional[bool] = None
 
     # employee_profiles fields
     employment_number: Optional[str] = None
@@ -759,6 +765,12 @@ def update_employee(
         u.manager_id = uuid.UUID(body.manager_id) if body.manager_id else None
     if body.is_active is not None:
         u.is_active = body.is_active
+    if body.can_process_payroll is not None:
+        u.can_process_payroll = body.can_process_payroll
+    if body.can_approve_payroll is not None:
+        u.can_approve_payroll = body.can_approve_payroll
+    if body.can_authorize_payroll is not None:
+        u.can_authorize_payroll = body.can_authorize_payroll
 
     # upsert profile
     p = _get_profile(db, org_id, user_id)
