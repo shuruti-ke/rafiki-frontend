@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { API, authFetch } from "../api.js";
+import { normalizeEmployeeRecord } from "../utils/employeeRecord.js";
 import "./AdminEmployeeDetail.css";
 
 const GENDER_OPTIONS = [
@@ -57,10 +58,7 @@ export default function AdminEmployeeDetail() {
       ]);
       if (empRes.ok) {
         const data = await empRes.json();
-        // backend returns { user: {...}, profile: {...} }
-        const user = data.user || data;
-        const profile = data.profile || {};
-        const merged = { ...user, ...profile, name: user.name || profile.name || "" };
+        const merged = normalizeEmployeeRecord(data);
         setEmployee(merged);
         setForm({
           name: merged.name || "",

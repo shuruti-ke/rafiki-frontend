@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { API, authFetch } from "../api.js";
+import { employeeDisplayName, normalizeEmployeeRecord } from "../utils/employeeRecord.js";
 
 const REVIEWER_TYPES = [
   ["self", "Self"],
@@ -8,10 +9,6 @@ const REVIEWER_TYPES = [
   ["subordinate", "Subordinate"],
   ["cross_functional", "Cross-functional"],
 ];
-
-function label(person) {
-  return person?.name || person?.email || "Unnamed employee";
-}
 
 export default function AdminPerformance360() {
   const [cycles, setCycles] = useState([]);
@@ -42,7 +39,7 @@ export default function AdminPerformance360() {
     if (r.ok) setCycles((await r.json()).cycles || []);
     if (e.ok) {
       const data = await e.json();
-      setEmployees(Array.isArray(data) ? data : []);
+      setEmployees(Array.isArray(data) ? data.map(normalizeEmployeeRecord) : []);
     }
   }
 
@@ -146,7 +143,7 @@ export default function AdminPerformance360() {
                   style={{ width: "100%", textAlign: "left", border: "none", borderBottom: "1px solid var(--border)", borderRadius: 0, background: req.employee_user_id === emp.user_id ? "rgba(139,92,246,.08)" : "transparent" }}
                   onClick={() => setReq(r => ({ ...r, employee_user_id: emp.user_id }))}
                 >
-                  <strong>{label(emp)}</strong>
+                  <strong>{employeeDisplayName(emp)}</strong>
                   <div style={{ color: "var(--muted)", fontSize: 12 }}>{[emp.department, emp.job_title, emp.email].filter(Boolean).join(" · ")}</div>
                 </button>
               ))}
@@ -161,7 +158,7 @@ export default function AdminPerformance360() {
                   style={{ width: "100%", textAlign: "left", border: "none", borderBottom: "1px solid var(--border)", borderRadius: 0, background: req.reviewer_user_id === emp.user_id ? "rgba(31,191,184,.08)" : "transparent" }}
                   onClick={() => setReq(r => ({ ...r, reviewer_user_id: emp.user_id }))}
                 >
-                  <strong>{label(emp)}</strong>
+                  <strong>{employeeDisplayName(emp)}</strong>
                   <div style={{ color: "var(--muted)", fontSize: 12 }}>{[emp.department, emp.job_title, emp.email].filter(Boolean).join(" · ")}</div>
                 </button>
               ))}
@@ -207,7 +204,7 @@ export default function AdminPerformance360() {
               </select>
               <select className="search" value={summaryTarget.employee_user_id} onChange={(e) => setSummaryTarget((prev) => ({ ...prev, employee_user_id: e.target.value }))}>
                 <option value="">Employee</option>
-                {employees.map(emp => <option key={emp.user_id} value={emp.user_id}>{label(emp)}</option>)}
+                {employees.map(emp => <option key={emp.user_id} value={emp.user_id}>{employeeDisplayName(emp)}</option>)}
               </select>
               <button className="btn btnGhost" onClick={() => loadSummary()} disabled={!summaryTarget.cycle_id || !summaryTarget.employee_user_id}>Load</button>
             </div>

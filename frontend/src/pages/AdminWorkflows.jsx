@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { API, authFetch } from "../api.js";
+import { employeeDisplayName, normalizeEmployeeRecord } from "../utils/employeeRecord.js";
 
 const DEFAULT_TASKS = {
   onboarding: [
@@ -16,10 +17,6 @@ const DEFAULT_TASKS = {
   ],
 };
 
-function employeeLabel(emp) {
-  return emp?.name || emp?.email || "Unnamed employee";
-}
-
 export default function AdminWorkflows() {
   const [userId, setUserId] = useState("");
   const [employees, setEmployees] = useState([]);
@@ -33,7 +30,7 @@ export default function AdminWorkflows() {
   useEffect(() => {
     authFetch(`${API}/api/v1/employees/`)
       .then((res) => res.ok ? res.json() : [])
-      .then((rows) => setEmployees(Array.isArray(rows) ? rows : []))
+      .then((rows) => setEmployees(Array.isArray(rows) ? rows.map(normalizeEmployeeRecord) : []))
       .catch(() => setEmployees([]));
   }, []);
 
@@ -126,7 +123,7 @@ export default function AdminWorkflows() {
                   style={{ width: "100%", textAlign: "left", border: "none", borderBottom: "1px solid var(--border)", borderRadius: 0, background: userId === emp.user_id ? "rgba(139,92,246,.08)" : "transparent" }}
                   onClick={() => setUserId(emp.user_id)}
                 >
-                  <strong>{employeeLabel(emp)}</strong>
+                  <strong>{employeeDisplayName(emp)}</strong>
                   <div style={{ color: "var(--muted)", fontSize: 12 }}>{[emp.department, emp.job_title, emp.email].filter(Boolean).join(" · ")}</div>
                 </button>
               ))}

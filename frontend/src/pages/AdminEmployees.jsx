@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { API, authFetch } from "../api.js";
+import { normalizeEmployeeRecord } from "../utils/employeeRecord.js";
 
 export default function AdminEmployees() {
   const [search, setSearch] = useState("");
@@ -37,7 +38,7 @@ export default function AdminEmployees() {
 
     authFetch(url)
       .then(r => (r && r.ok ? r.json() : []))
-      .then(setEmployees)
+      .then(rows => setEmployees(Array.isArray(rows) ? rows.map(normalizeEmployeeRecord) : []))
       .catch(() => {});
   };
 

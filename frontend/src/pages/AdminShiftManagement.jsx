@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { API, authFetch } from "../api.js";
+import { employeeDisplayName, normalizeEmployeeRecord } from "../utils/employeeRecord.js";
 
 function startOfWeek(input) {
   const d = new Date(input);
@@ -16,10 +17,6 @@ function isoDate(d) {
 
 function formatWeekday(d) {
   return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
-}
-
-function personLabel(person) {
-  return person?.name || person?.email || person?.employment_number || "Unnamed employee";
 }
 
 export default function AdminShiftManagement() {
@@ -57,7 +54,7 @@ export default function AdminShiftManagement() {
       if (d.ok) setDashboard(await d.json());
       if (e.ok) {
         const data = await e.json();
-        setEmployees(Array.isArray(data) ? data : []);
+        setEmployees(Array.isArray(data) ? data.map(normalizeEmployeeRecord) : []);
       }
       if (a.ok) setAssignments((await a.json()).assignments || []);
       if (swaps.ok) setSwapRequests((await swaps.json()).requests || []);
@@ -204,7 +201,7 @@ export default function AdminShiftManagement() {
                   }}
                   onClick={() => setAssign((a) => ({ ...a, user_id: emp.user_id }))}
                 >
-                  <strong>{personLabel(emp)}</strong>
+                  <strong>{employeeDisplayName(emp)}</strong>
                   <div style={{ color: "var(--muted)", fontSize: 12 }}>
                     {[emp.department, emp.job_title, emp.email].filter(Boolean).join(" · ")}
                   </div>
@@ -216,7 +213,7 @@ export default function AdminShiftManagement() {
             </div>
             {selectedEmployee && (
               <div style={{ fontSize: 13, color: "var(--muted)" }}>
-                Selected: <strong>{personLabel(selectedEmployee)}</strong>
+                Selected: <strong>{employeeDisplayName(selectedEmployee)}</strong>
               </div>
             )}
             <input className="search" type="date" value={assign.shift_date} onChange={(e) => setAssign(a => ({ ...a, shift_date: e.target.value }))} />
