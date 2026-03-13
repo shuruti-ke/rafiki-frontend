@@ -60,6 +60,21 @@ export default function AdminLayout() {
           <NavLink to="/admin/leave" className={({ isActive }) => `admin-nav-link ${isActive ? "active" : ""}`}>
             Leave Management
           </NavLink>
+          <NavLink to="/admin/shifts" className={({ isActive }) => `admin-nav-link ${isActive ? "active" : ""}`}>
+            Shift Management
+          </NavLink>
+          <NavLink to="/admin/performance-360" className={({ isActive }) => `admin-nav-link ${isActive ? "active" : ""}`}>
+            Performance 360
+          </NavLink>
+          <NavLink to="/admin/workflows" className={({ isActive }) => `admin-nav-link ${isActive ? "active" : ""}`}>
+            On/Offboarding
+          </NavLink>
+          <NavLink to="/admin/reports-builder" className={({ isActive }) => `admin-nav-link ${isActive ? "active" : ""}`}>
+            Reports Builder
+          </NavLink>
+          <NavLink to="/admin/payroll-compliance" className={({ isActive }) => `admin-nav-link ${isActive ? "active" : ""}`}>
+            Payroll Compliance
+          </NavLink>
           <NavLink to="/admin/wellbeing" className={({ isActive }) => `admin-nav-link ${isActive ? "active" : ""}`}>
             Wellbeing
           </NavLink>

@@ -86,6 +86,11 @@ from app.routers.wellbeing import router as wellbeing_router
 from app.routers.attendance import router as attendance_router
 from app.routers.notifications import router as notifications_router
 from app.routers.billing import router as billing_router
+from app.routers.shifts import router as shifts_router
+from app.routers.performance_reviews import router as performance_reviews_router
+from app.routers.workflows import router as workflows_router
+from app.routers.custom_reports import router as custom_reports_router
+from app.routers.payroll_statutory import router as payroll_statutory_router
 
 app.include_router(auth_router)
 app.include_router(kb_router)
@@ -111,6 +116,11 @@ app.include_router(wellbeing_router)
 app.include_router(attendance_router)
 app.include_router(notifications_router)
 app.include_router(billing_router)
+app.include_router(shifts_router)
+app.include_router(performance_reviews_router)
+app.include_router(workflows_router)
+app.include_router(custom_reports_router)
+app.include_router(payroll_statutory_router)
 
 @app.get("/__routes")
 def __routes():

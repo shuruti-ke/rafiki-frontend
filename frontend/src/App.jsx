@@ -20,6 +20,11 @@ import AdminAttendancePage from "./pages/AdminAttendancePage.jsx";
 import AdminServices from "./pages/AdminServices.jsx";
 import AdminBilling from "./pages/AdminBilling.jsx";
 import AccountBillingPage from "./pages/AccountBillingPage.jsx";
+import AdminShiftManagement from "./pages/AdminShiftManagement.jsx";
+import AdminPerformance360 from "./pages/AdminPerformance360.jsx";
+import AdminWorkflows from "./pages/AdminWorkflows.jsx";
+import AdminReportsBuilder from "./pages/AdminReportsBuilder.jsx";
+import AdminPayrollCompliance from "./pages/AdminPayrollCompliance.jsx";
 import EmployeeKnowledgeBase from "./pages/EmployeeKnowledgeBase.jsx";
 import EmployeeAnnouncements from "./pages/EmployeeAnnouncements.jsx";
 import GuidedPathExplore from "./pages/GuidedPathExplore.jsx";
@@ -132,6 +137,11 @@ export default function App() {
           <Route path="attendance" element={<AdminAttendancePage />} />
           <Route path="leave" element={<AdminLeave />} />
           <Route path="wellbeing" element={<AdminWellbeing />} />
+          <Route path="shifts" element={<AdminShiftManagement />} />
+          <Route path="performance-360" element={<AdminPerformance360 />} />
+          <Route path="workflows" element={<AdminWorkflows />} />
+          <Route path="reports-builder" element={<AdminReportsBuilder />} />
+          <Route path="payroll-compliance" element={<AdminPayrollCompliance />} />
           <Route path="services" element={<AdminServices />} />
           <Route path="billing" element={<AdminBilling />} />
         </Route>
