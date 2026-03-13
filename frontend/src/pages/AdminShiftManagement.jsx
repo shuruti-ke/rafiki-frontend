@@ -19,6 +19,67 @@ function formatWeekday(d) {
   return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 }
 
+function formatWeekRange(days) {
+  if (!days.length) return "";
+  const first = days[0];
+  const last = days[days.length - 1];
+  return `${first.toLocaleDateString(undefined, { month: "short", day: "numeric" })} - ${last.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`;
+}
+
+function formatTime(value) {
+  if (!value) return "";
+  const [hours = "00", minutes = "00"] = String(value).split(":");
+  const d = new Date();
+  d.setHours(Number(hours), Number(minutes), 0, 0);
+  return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+
+function shiftTone(type) {
+  if (type === "morning") return { bg: "rgba(245, 158, 11, 0.14)", color: "#b45309" };
+  if (type === "afternoon") return { bg: "rgba(59, 130, 246, 0.12)", color: "#1d4ed8" };
+  if (type === "night") return { bg: "rgba(79, 70, 229, 0.14)", color: "#4338ca" };
+  return { bg: "rgba(139, 92, 246, 0.12)", color: "#7c3aed" };
+}
+
+function cardStyle({ gap = 12, padding = 18, background = "var(--panel)" } = {}) {
+  return {
+    display: "grid",
+    gap,
+    border: "1px solid var(--border)",
+    borderRadius: 18,
+    padding,
+    background,
+    boxShadow: "0 8px 24px rgba(15, 23, 42, 0.04)",
+  };
+}
+
+function MetricCard({ label, value, tone }) {
+  return (
+    <div
+      style={{
+        ...cardStyle({ gap: 6, padding: 16, background: "#fff" }),
+        minWidth: 160,
+        borderColor: tone?.border || "var(--border)",
+      }}
+    >
+      <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)" }}>{label}</div>
+      <div style={{ fontSize: 28, fontWeight: 800, color: tone?.text || "var(--text)" }}>{value}</div>
+    </div>
+  );
+}
+
+function SectionHeader({ title, subtitle, action }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+      <div>
+        <h3 style={{ margin: 0 }}>{title}</h3>
+        {subtitle ? <p style={{ margin: "6px 0 0", color: "var(--muted)" }}>{subtitle}</p> : null}
+      </div>
+      {action}
+    </div>
+  );
+}
+
 export default function AdminShiftManagement() {
   const [templates, setTemplates] = useState([]);
   const [dashboard, setDashboard] = useState(null);
@@ -26,6 +87,8 @@ export default function AdminShiftManagement() {
   const [assignments, setAssignments] = useState([]);
   const [swapRequests, setSwapRequests] = useState([]);
   const [msg, setMsg] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [employeeQuery, setEmployeeQuery] = useState("");
   const [weekStart, setWeekStart] = useState(() => isoDate(startOfWeek(new Date())));
   const [form, setForm] = useState({
@@ -35,14 +98,17 @@ export default function AdminShiftManagement() {
     end_time: "17:00",
     crosses_midnight: false,
   });
-
   const [assign, setAssign] = useState({ template_id: "", user_id: "", shift_date: "" });
 
-  useEffect(() => {
-    async function run() {
+  async function loadPage(showFullLoader = false) {
+    if (showFullLoader) setLoading(true);
+    else setRefreshing(true);
+
+    try {
       const weekStartDate = new Date(weekStart);
       const weekEndDate = new Date(weekStartDate);
       weekEndDate.setDate(weekStartDate.getDate() + 6);
+
       const [t, d, e, a, swaps] = await Promise.all([
         authFetch(`${API}/api/v1/shifts/templates`),
         authFetch(`${API}/api/v1/shifts/dashboard`),
@@ -50,6 +116,7 @@ export default function AdminShiftManagement() {
         authFetch(`${API}/api/v1/shifts/team?start_date=${isoDate(weekStartDate)}&end_date=${isoDate(weekEndDate)}`),
         authFetch(`${API}/api/v1/shifts/swap-requests?status=pending`),
       ]);
+
       if (t.ok) setTemplates((await t.json()).templates || []);
       if (d.ok) setDashboard(await d.json());
       if (e.ok) {
@@ -58,25 +125,29 @@ export default function AdminShiftManagement() {
       }
       if (a.ok) setAssignments((await a.json()).assignments || []);
       if (swaps.ok) setSwapRequests((await swaps.json()).requests || []);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-    run();
+  }
+
+  useEffect(() => {
+    loadPage(assignments.length === 0 && employees.length === 0);
   }, [weekStart]);
 
   const filteredEmployees = useMemo(() => {
     const q = employeeQuery.trim().toLowerCase();
     if (!q) return employees.slice(0, 12);
     return employees.filter((emp) =>
-      [
-        emp.name,
-        emp.email,
-        emp.department,
-        emp.job_title,
-        emp.employment_number,
-      ].some((value) => String(value || "").toLowerCase().includes(q))
+      [emp.name, emp.email, emp.department, emp.job_title, emp.employment_number].some((value) =>
+        String(value || "").toLowerCase().includes(q)
+      )
     );
   }, [employees, employeeQuery]);
 
   const selectedEmployee = employees.find((emp) => emp.user_id === assign.user_id);
+  const selectedTemplate = templates.find((template) => template.id === assign.template_id);
+
   const weekDays = useMemo(() => {
     const start = new Date(weekStart);
     return Array.from({ length: 7 }, (_, i) => {
@@ -86,22 +157,33 @@ export default function AdminShiftManagement() {
     });
   }, [weekStart]);
 
+  const assignmentsByDay = useMemo(() => {
+    return weekDays.reduce((acc, day) => {
+      const dayIso = isoDate(day);
+      acc[dayIso] = assignments.filter((assignment) => assignment.shift_date === dayIso);
+      return acc;
+    }, {});
+  }, [assignments, weekDays]);
+
   const assignmentConflict = assignments.find(
     (row) => row.user_id === assign.user_id && row.shift_date === assign.shift_date
   );
 
+  const assignedHeadcount = new Set(assignments.map((row) => row.user_id).filter(Boolean)).size;
+  const openDays = weekDays.filter((day) => (assignmentsByDay[isoDate(day)] || []).length === 0).length;
+  const busiestDay = weekDays.reduce(
+    (current, day) => {
+      const count = (assignmentsByDay[isoDate(day)] || []).length;
+      if (!current || count > current.count) {
+        return { label: formatWeekday(day), count };
+      }
+      return current;
+    },
+    null
+  );
+
   async function refreshSchedule() {
-    const weekStartDate = new Date(weekStart);
-    const weekEndDate = new Date(weekStartDate);
-    weekEndDate.setDate(weekStartDate.getDate() + 6);
-    const [a, swaps, d] = await Promise.all([
-      authFetch(`${API}/api/v1/shifts/team?start_date=${isoDate(weekStartDate)}&end_date=${isoDate(weekEndDate)}`),
-      authFetch(`${API}/api/v1/shifts/swap-requests?status=pending`),
-      authFetch(`${API}/api/v1/shifts/dashboard`),
-    ]);
-    if (a.ok) setAssignments((await a.json()).assignments || []);
-    if (swaps.ok) setSwapRequests((await swaps.json()).requests || []);
-    if (d.ok) setDashboard(await d.json());
+    await loadPage(false);
   }
 
   const createTemplate = async () => {
@@ -136,56 +218,156 @@ export default function AdminShiftManagement() {
     }
   };
 
-  return (
-    <div style={{ maxWidth: 1200 }}>
-      <h1>Shift Management</h1>
-      <p style={{ color: "var(--muted)" }}>
-        Plan the week visually, assign people without UUID hunting, and keep an eye on swaps before they become coverage gaps.
-      </p>
-      {msg && <div style={{ marginBottom: 12 }}>{msg}</div>}
+  if (loading) {
+    return <div style={{ color: "var(--muted)" }}>Loading shift planner...</div>;
+  }
 
-      {dashboard && (
-        <div style={{ display: "flex", gap: 12, marginBottom: 18, flexWrap: "wrap" }}>
-          <div className="btn">Next 7 days assignments: {dashboard.assignments_next_7_days}</div>
-          <div className="btn">Pending swaps: {dashboard.pending_swap_requests}</div>
-          {(dashboard.by_shift_type || []).map((row) => (
-            <div key={row.shift_type} className="btn">{row.shift_type}: {row.count}</div>
-          ))}
+  return (
+    <div style={{ maxWidth: 1320, display: "grid", gap: 18 }}>
+      <div
+        style={{
+          ...cardStyle({ gap: 14, padding: 22, background: "linear-gradient(135deg, rgba(139,92,246,0.10), rgba(45,212,191,0.10))" }),
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+          <div>
+            <h1 style={{ margin: 0 }}>Shift Management</h1>
+            <p style={{ color: "var(--muted)", margin: "8px 0 0", maxWidth: 760 }}>
+              Plan weekly coverage with clearer schedule visibility, faster employee assignment, and a more polished control center for templates and swap requests.
+            </p>
+          </div>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <div className="btn" style={{ background: "#fff", borderRadius: 999 }}>
+              Week of {formatWeekRange(weekDays)}
+            </div>
+            <button className="btn btnGhost" onClick={refreshSchedule} disabled={refreshing}>
+              {refreshing ? "Refreshing..." : "Refresh Schedule"}
+            </button>
+          </div>
+        </div>
+
+        {msg ? (
+          <div
+            style={{
+              padding: "12px 14px",
+              borderRadius: 14,
+              background: "rgba(255,255,255,0.8)",
+              border: "1px solid rgba(139,92,246,0.12)",
+              color: "var(--text)",
+            }}
+          >
+            {msg}
+          </div>
+        ) : null}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
+        <MetricCard label="Assignments Next 7 Days" value={dashboard?.assignments_next_7_days ?? assignments.length} tone={{ text: "#7c3aed" }} />
+        <MetricCard label="Assigned Employees" value={assignedHeadcount} tone={{ text: "#0f766e" }} />
+        <MetricCard label="Pending Swaps" value={dashboard?.pending_swap_requests ?? swapRequests.length} tone={{ text: "#b45309" }} />
+        <MetricCard label="Open Days" value={openDays} tone={{ text: openDays > 0 ? "#dc2626" : "#16a34a" }} />
+        <MetricCard label="Busiest Day" value={busiestDay?.count ? `${busiestDay.label}` : "None"} tone={{ text: "#2563eb" }} />
+      </div>
+
+      {(dashboard?.by_shift_type || []).length > 0 && (
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          {(dashboard.by_shift_type || []).map((row) => {
+            const tone = shiftTone(row.shift_type);
+            return (
+              <div
+                key={row.shift_type}
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 999,
+                  background: tone.bg,
+                  color: tone.color,
+                  fontWeight: 700,
+                  border: "1px solid rgba(15, 23, 42, 0.05)",
+                }}
+              >
+                {row.shift_type}: {row.count}
+              </div>
+            );
+          })}
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(320px, 380px) 1fr", gap: 20, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(330px, 390px) minmax(0, 1fr)", gap: 20, alignItems: "start" }}>
         <div style={{ display: "grid", gap: 18 }}>
-          <div style={{ display: "grid", gap: 10, border: "1px solid var(--border)", borderRadius: 12, padding: 16, background: "var(--panel)" }}>
-            <h3 style={{ margin: 0 }}>Create Shift Template</h3>
-            <input className="search" placeholder="Name" value={form.name} onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))} />
-            <select className="search" value={form.shift_type} onChange={(e) => setForm(f => ({ ...f, shift_type: e.target.value }))}>
+          <div style={cardStyle()}>
+            <SectionHeader
+              title="Create Shift Template"
+              subtitle="Build reusable shift patterns so weekly planning becomes faster and more consistent."
+            />
+            <input className="search" placeholder="Template name" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+            <select className="search" value={form.shift_type} onChange={(e) => setForm((f) => ({ ...f, shift_type: e.target.value }))}>
               <option value="morning">Morning</option>
               <option value="afternoon">Afternoon</option>
               <option value="night">Night</option>
               <option value="custom">Custom</option>
             </select>
-            <div style={{ display: "flex", gap: 8 }}>
-              <input className="search" type="time" value={form.start_time} onChange={(e) => setForm(f => ({ ...f, start_time: e.target.value }))} />
-              <input className="search" type="time" value={form.end_time} onChange={(e) => setForm(f => ({ ...f, end_time: e.target.value }))} />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <div>
+                <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>Start time</div>
+                <input className="search" type="time" value={form.start_time} onChange={(e) => setForm((f) => ({ ...f, start_time: e.target.value }))} />
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>End time</div>
+                <input className="search" type="time" value={form.end_time} onChange={(e) => setForm((f) => ({ ...f, end_time: e.target.value }))} />
+              </div>
             </div>
-            <label><input type="checkbox" checked={form.crosses_midnight} onChange={(e) => setForm(f => ({ ...f, crosses_midnight: e.target.checked }))} /> Crosses midnight</label>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--muted)", fontSize: 14 }}>
+              <input type="checkbox" checked={form.crosses_midnight} onChange={(e) => setForm((f) => ({ ...f, crosses_midnight: e.target.checked }))} />
+              This shift crosses midnight
+            </label>
             <button className="btn btnPrimary" onClick={createTemplate}>Save Template</button>
           </div>
 
-          <div style={{ display: "grid", gap: 10, border: "1px solid var(--border)", borderRadius: 12, padding: 16, background: "var(--panel)" }}>
-            <h3 style={{ margin: 0 }}>Assign Shift</h3>
-            <select className="search" value={assign.template_id} onChange={(e) => setAssign(a => ({ ...a, template_id: e.target.value }))}>
-              <option value="">Select template</option>
-              {templates.map(t => <option key={t.id} value={t.id}>{t.name} ({t.start_time} - {t.end_time})</option>)}
+          <div style={cardStyle()}>
+            <SectionHeader
+              title="Quick Assign"
+              subtitle="Choose a shift template, search the right employee, and assign directly into the current week."
+            />
+            <select className="search" value={assign.template_id} onChange={(e) => setAssign((a) => ({ ...a, template_id: e.target.value }))}>
+              <option value="">Select shift template</option>
+              {templates.map((template) => (
+                <option key={template.id} value={template.id}>
+                  {template.name} ({formatTime(template.start_time)} - {formatTime(template.end_time)})
+                </option>
+              ))}
             </select>
+
+            {selectedTemplate ? (
+              <div style={{ ...cardStyle({ gap: 6, padding: 14, background: "#fff" }) }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                  <strong>{selectedTemplate.name}</strong>
+                  <span
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: 999,
+                      background: shiftTone(selectedTemplate.shift_type).bg,
+                      color: shiftTone(selectedTemplate.shift_type).color,
+                      fontSize: 12,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {selectedTemplate.shift_type}
+                  </span>
+                </div>
+                <div style={{ color: "var(--muted)", fontSize: 13 }}>
+                  {formatTime(selectedTemplate.start_time)} - {formatTime(selectedTemplate.end_time)}
+                  {selectedTemplate.crosses_midnight ? " · crosses midnight" : ""}
+                </div>
+              </div>
+            ) : null}
+
             <input
               className="search"
               placeholder="Search employee by name, email, department..."
               value={employeeQuery}
               onChange={(e) => setEmployeeQuery(e.target.value)}
             />
-            <div style={{ maxHeight: 180, overflow: "auto", border: "1px solid var(--border)", borderRadius: 10 }}>
+            <div style={{ maxHeight: 220, overflow: "auto", border: "1px solid var(--border)", borderRadius: 14, background: "#fff" }}>
               {filteredEmployees.map((emp) => (
                 <button
                   key={emp.user_id}
@@ -198,30 +380,41 @@ export default function AdminShiftManagement() {
                     textAlign: "left",
                     display: "block",
                     background: assign.user_id === emp.user_id ? "rgba(139,92,246,.08)" : "transparent",
+                    padding: 14,
                   }}
                   onClick={() => setAssign((a) => ({ ...a, user_id: emp.user_id }))}
                 >
                   <strong>{employeeDisplayName(emp)}</strong>
-                  <div style={{ color: "var(--muted)", fontSize: 12 }}>
+                  <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>
                     {[emp.department, emp.job_title, emp.email].filter(Boolean).join(" · ")}
                   </div>
                 </button>
               ))}
               {filteredEmployees.length === 0 && (
-                <div style={{ padding: 12, color: "var(--muted)" }}>No employees match that search.</div>
+                <div style={{ padding: 14, color: "var(--muted)" }}>No employees match that search.</div>
               )}
             </div>
-            {selectedEmployee && (
-              <div style={{ fontSize: 13, color: "var(--muted)" }}>
-                Selected: <strong>{employeeDisplayName(selectedEmployee)}</strong>
+
+            {selectedEmployee ? (
+              <div style={{ ...cardStyle({ gap: 6, padding: 14, background: "#fff" }) }}>
+                <strong>{employeeDisplayName(selectedEmployee)}</strong>
+                <div style={{ color: "var(--muted)", fontSize: 13 }}>
+                  {[selectedEmployee.department, selectedEmployee.job_title, selectedEmployee.email].filter(Boolean).join(" · ")}
+                </div>
               </div>
-            )}
-            <input className="search" type="date" value={assign.shift_date} onChange={(e) => setAssign(a => ({ ...a, shift_date: e.target.value }))} />
-            {assignmentConflict && (
-              <div style={{ color: "#b45309", background: "rgba(251,191,36,.12)", borderRadius: 8, padding: 10 }}>
+            ) : null}
+
+            <div>
+              <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>Shift date</div>
+              <input className="search" type="date" value={assign.shift_date} onChange={(e) => setAssign((a) => ({ ...a, shift_date: e.target.value }))} />
+            </div>
+
+            {assignmentConflict ? (
+              <div style={{ color: "#b45309", background: "rgba(251,191,36,.12)", borderRadius: 14, padding: 12 }}>
                 Conflict detected: this employee already has a shift on {assignmentConflict.shift_date}.
               </div>
-            )}
+            ) : null}
+
             <button
               className="btn btnPrimary"
               onClick={createAssignment}
@@ -231,63 +424,187 @@ export default function AdminShiftManagement() {
             </button>
           </div>
 
-          <div style={{ display: "grid", gap: 8, border: "1px solid var(--border)", borderRadius: 12, padding: 16, background: "var(--panel)" }}>
-            <h3 style={{ margin: 0 }}>Pending Swap Requests</h3>
+          <div style={cardStyle()}>
+            <SectionHeader
+              title="Pending Swap Requests"
+              subtitle="Review employee swap activity early so coverage gaps do not surprise the team."
+            />
             {swapRequests.length === 0 ? (
               <div style={{ color: "var(--muted)" }}>No swap requests pending this week.</div>
             ) : swapRequests.map((req) => (
-              <div key={req.id} className="btn" style={{ textAlign: "left" }}>
-                <strong>{req.requester_name || "Employee"}</strong> wants to swap with {req.target_name || "selected teammate"}
-                {req.reason ? <div style={{ color: "var(--muted)", marginTop: 4 }}>{req.reason}</div> : null}
+              <div key={req.id} style={{ ...cardStyle({ gap: 6, padding: 14, background: "#fff" }) }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                  <strong>{req.requester_name || "Employee"}</strong>
+                  <span style={{ padding: "6px 10px", borderRadius: 999, background: "rgba(249,115,22,.12)", color: "#c2410c", fontSize: 12, fontWeight: 700 }}>
+                    Pending
+                  </span>
+                </div>
+                <div style={{ color: "var(--text)", fontSize: 14 }}>
+                  Wants to swap with {req.target_name || "selected teammate"}
+                </div>
+                {req.reason ? <div style={{ color: "var(--muted)", fontSize: 13 }}>{req.reason}</div> : null}
               </div>
             ))}
           </div>
         </div>
 
-        <div style={{ display: "grid", gap: 12 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <h3 style={{ margin: 0 }}>Weekly Schedule</h3>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <button className="btn btnGhost" onClick={() => {
-                const d = new Date(weekStart);
-                d.setDate(d.getDate() - 7);
-                setWeekStart(isoDate(d));
-              }}>Previous week</button>
-              <input className="search" type="date" value={weekStart} onChange={(e) => setWeekStart(isoDate(startOfWeek(e.target.value)))} style={{ width: 170 }} />
-              <button className="btn btnGhost" onClick={() => {
-                const d = new Date(weekStart);
-                d.setDate(d.getDate() + 7);
-                setWeekStart(isoDate(d));
-              }}>Next week</button>
+        <div style={{ display: "grid", gap: 16 }}>
+          <div style={cardStyle()}>
+            <SectionHeader
+              title="Weekly Schedule"
+              subtitle="See each day at a glance, spot under-covered days, and navigate week by week."
+              action={
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <button
+                    className="btn btnGhost"
+                    onClick={() => {
+                      const d = new Date(weekStart);
+                      d.setDate(d.getDate() - 7);
+                      setWeekStart(isoDate(d));
+                    }}
+                  >
+                    Previous
+                  </button>
+                  <input
+                    className="search"
+                    type="date"
+                    value={weekStart}
+                    onChange={(e) => setWeekStart(isoDate(startOfWeek(e.target.value)))}
+                    style={{ width: 170 }}
+                  />
+                  <button
+                    className="btn btnGhost"
+                    onClick={() => {
+                      const d = new Date(weekStart);
+                      d.setDate(d.getDate() + 7);
+                      setWeekStart(isoDate(d));
+                    }}
+                  >
+                    Next
+                  </button>
+                </div>
+              }
+            />
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 12 }}>
+              {weekDays.map((day) => {
+                const dayIso = isoDate(day);
+                const rows = assignmentsByDay[dayIso] || [];
+                const today = dayIso === isoDate(new Date());
+
+                return (
+                  <div
+                    key={dayIso}
+                    style={{
+                      border: today ? "1px solid rgba(124,58,237,0.45)" : "1px solid var(--border)",
+                      borderRadius: 18,
+                      padding: 14,
+                      background: today ? "linear-gradient(180deg, rgba(139,92,246,0.08), #fff)" : "var(--panel)",
+                      minHeight: 320,
+                      display: "grid",
+                      gap: 10,
+                      alignContent: "start",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
+                      <div>
+                        <div style={{ fontWeight: 800 }}>{formatWeekday(day)}</div>
+                        <div style={{ color: "var(--muted)", fontSize: 12 }}>{rows.length} assignment{rows.length === 1 ? "" : "s"}</div>
+                      </div>
+                      {today ? (
+                        <span style={{ padding: "6px 10px", borderRadius: 999, background: "rgba(124,58,237,.12)", color: "#7c3aed", fontSize: 12, fontWeight: 700 }}>
+                          Today
+                        </span>
+                      ) : null}
+                    </div>
+
+                    {rows.length === 0 ? (
+                      <div
+                        style={{
+                          border: "1px dashed var(--border)",
+                          borderRadius: 14,
+                          padding: 14,
+                          color: "var(--muted)",
+                          fontSize: 13,
+                          background: "#fff",
+                        }}
+                      >
+                        No assignments yet. Use the quick assign panel to add coverage.
+                      </div>
+                    ) : (
+                      <div style={{ display: "grid", gap: 10 }}>
+                        {rows.map((row) => {
+                          const tone = shiftTone(row.shift_type);
+                          return (
+                            <div
+                              key={row.id}
+                              style={{
+                                border: "1px solid var(--border)",
+                                borderRadius: 14,
+                                padding: 12,
+                                background: "#fff",
+                                display: "grid",
+                                gap: 8,
+                              }}
+                            >
+                              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
+                                <div style={{ fontWeight: 700 }}>{row.employee_name || row.email}</div>
+                                <span
+                                  style={{
+                                    padding: "6px 10px",
+                                    borderRadius: 999,
+                                    background: tone.bg,
+                                    color: tone.color,
+                                    fontSize: 12,
+                                    fontWeight: 700,
+                                  }}
+                                >
+                                  {row.shift_type}
+                                </span>
+                              </div>
+                              <div style={{ fontSize: 13, color: "var(--text)" }}>{row.shift_name}</div>
+                              <div style={{ fontSize: 12, color: "var(--muted)" }}>
+                                {formatTime(row.start_time)} - {formatTime(row.end_time)}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 10 }}>
-            {weekDays.map((day) => {
-              const dayIso = isoDate(day);
-              const rows = assignments.filter((assignment) => assignment.shift_date === dayIso);
-              return (
-                <div key={dayIso} style={{ border: "1px solid var(--border)", borderRadius: 12, padding: 12, background: "var(--panel)", minHeight: 240 }}>
-                  <div style={{ fontWeight: 700, marginBottom: 10 }}>{formatWeekday(day)}</div>
-                  <div style={{ display: "grid", gap: 8 }}>
-                    {rows.length === 0 ? (
-                      <div style={{ color: "var(--muted)", fontSize: 13 }}>No assignments</div>
-                    ) : rows.map((row) => (
-                      <div key={row.id} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: 10, background: "#fff" }}>
-                        <div style={{ fontWeight: 700 }}>{row.employee_name || row.email}</div>
-                        <div style={{ fontSize: 13, color: "var(--muted)" }}>{row.shift_name} · {row.start_time} - {row.end_time}</div>
-                        <div style={{ fontSize: 12, color: "var(--muted)" }}>{row.shift_type}</div>
+          <div style={cardStyle()}>
+            <SectionHeader
+              title="Template Library"
+              subtitle="Keep the most common shift patterns visible so planners can reuse them quickly."
+            />
+            {templates.length === 0 ? (
+              <div style={{ color: "var(--muted)" }}>No templates yet. Create your first reusable shift pattern from the setup panel.</div>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
+                {templates.map((template) => {
+                  const tone = shiftTone(template.shift_type);
+                  return (
+                    <div key={template.id} style={{ ...cardStyle({ gap: 8, padding: 14, background: "#fff" }) }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                        <strong>{template.name}</strong>
+                        <span style={{ padding: "6px 10px", borderRadius: 999, background: tone.bg, color: tone.color, fontSize: 12, fontWeight: 700 }}>
+                          {template.shift_type}
+                        </span>
                       </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <div style={{ display: "grid", gap: 8, border: "1px solid var(--border)", borderRadius: 12, padding: 16, background: "var(--panel)" }}>
-            <h3 style={{ margin: 0 }}>Templates</h3>
-            {templates.map(t => <div key={t.id} className="btn" style={{ textAlign: "left" }}>{t.name} · {t.shift_type} · {t.start_time} - {t.end_time}</div>)}
+                      <div style={{ color: "var(--muted)", fontSize: 13 }}>
+                        {formatTime(template.start_time)} - {formatTime(template.end_time)}
+                        {template.crosses_midnight ? " · crosses midnight" : ""}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       </div>
