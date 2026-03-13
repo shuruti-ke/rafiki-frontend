@@ -1,15 +1,19 @@
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 from pathlib import Path
 from PIL import Image
 from openai import OpenAI
+from sqlalchemy import text
 
 import json
 import os
 import base64
 import logging
 from dotenv import load_dotenv
+from app.database import engine
+from app.config import app_env
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -317,6 +321,30 @@ def delete_file(kind: str, name: str):
 @app.get("/health")
 def health():
     return {"ok": True}
+
+
+@app.get("/health/ready")
+def health_ready():
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return {
+            "ok": True,
+            "status": "ready",
+            "environment": app_env(),
+            "database": "ok",
+        }
+    except Exception as exc:
+        logger.exception("Readiness check failed: %s", exc)
+        return JSONResponse(
+            status_code=503,
+            content={
+                "ok": False,
+                "status": "degraded",
+                "environment": app_env(),
+                "database": "unavailable",
+            },
+        )
 
 if __name__ == "__main__":
     import uvicorn
