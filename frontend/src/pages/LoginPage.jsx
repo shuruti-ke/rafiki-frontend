@@ -53,7 +53,20 @@ export default function LoginPage() {
 
       localStorage.setItem("rafiki_token", data.access_token);
       localStorage.setItem("rafiki_role", data.user.role);
-      localStorage.setItem("rafiki_user", JSON.stringify(data.user));
+      // Fetch /me so we have canonical user (e.g. payroll flags) from the same API that layout uses
+      try {
+        const meRes = await fetch(`${API}/auth/me`, {
+          headers: { Authorization: `Bearer ${data.access_token}` },
+        });
+        if (meRes.ok) {
+          const meUser = await meRes.json();
+          localStorage.setItem("rafiki_user", JSON.stringify(meUser));
+        } else {
+          localStorage.setItem("rafiki_user", JSON.stringify(data.user));
+        }
+      } catch {
+        localStorage.setItem("rafiki_user", JSON.stringify(data.user));
+      }
 
       if (data.user.role === "super_admin") navigate("/super-admin", { replace: true });
       else if (data.user.role === "hr_admin") navigate("/admin", { replace: true });

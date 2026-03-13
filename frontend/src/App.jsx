@@ -113,6 +113,7 @@ export default function App() {
           <Route path="calendar" element={<CalendarPage />} />
           <Route path="timesheets" element={<TimesheetPage />} />
           <Route path="attendance" element={<AdminAttendancePage />} />
+          <Route path="payroll" element={<AdminPayroll />} />
         </Route>
 
         {/* Admin HR Portal */}

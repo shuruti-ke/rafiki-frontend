@@ -522,8 +522,9 @@ export default function EmployeeLayout() {
       .then((r) => r.ok ? r.json() : null)
       .then((data) => {
         if (data) {
-          localStorage.setItem("rafiki_user", JSON.stringify(data));
-          setUser(data);
+          setUser((prev) => ({ ...prev, ...data }));
+          const merged = { ...JSON.parse(localStorage.getItem("rafiki_user") || "{}"), ...data };
+          localStorage.setItem("rafiki_user", JSON.stringify(merged));
         }
       })
       .catch(() => {});

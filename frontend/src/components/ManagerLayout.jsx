@@ -1,10 +1,28 @@
+import { useState, useEffect } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { API, authFetch } from "../api.js";
 import "./ManagerLayout.css";
 
 export default function ManagerLayout() {
   const navigate = useNavigate();
   const userRole = localStorage.getItem("rafiki_role") || "";
   const isAdmin = ["hr_admin", "super_admin"].includes(userRole);
+  const [user, setUser] = useState(() => JSON.parse(localStorage.getItem("rafiki_user") || "{}"));
+  const hasPayrollAccess = !!(user.can_process_payroll || user.can_approve_payroll || user.can_authorize_payroll);
+
+  useEffect(() => {
+    const token = localStorage.getItem("rafiki_token");
+    if (!token) return;
+    authFetch(`${API}/auth/me`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data) {
+          localStorage.setItem("rafiki_user", JSON.stringify(data));
+          setUser(data);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const handleLogout = () => {
     localStorage.removeItem("rafiki_token");
@@ -46,6 +64,11 @@ export default function ManagerLayout() {
           <NavLink to="/manager/attendance" className={({ isActive }) => `mgr-nav-link ${isActive ? "active" : ""}`}>
             Team Attendance
           </NavLink>
+          {hasPayrollAccess && (
+            <NavLink to="/manager/payroll" className={({ isActive }) => `mgr-nav-link ${isActive ? "active" : ""}`}>
+              Payroll
+            </NavLink>
+          )}
         </nav>
 
         <div className="mgr-nav-footer">
