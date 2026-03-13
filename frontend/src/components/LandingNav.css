@@ -65,27 +65,80 @@
 }
 
 .landing-nav__cta {
-  background: linear-gradient(135deg, #7c3aed 0%, #14b8a6 100%);
-  color: #ffffff;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.95);
+  color: #7c3aed;
   padding: 11px 24px;
   border-radius: 14px;
   font-size: 0.96rem;
   font-weight: 800;
   letter-spacing: 0.01em;
-  box-shadow: 0 10px 24px rgba(124, 58, 237, 0.18);
+  border: 1.5px solid rgba(124, 58, 237, 0.7);
+  box-shadow:
+    0 8px 22px rgba(124, 58, 237, 0.12),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.65);
   text-decoration: none;
-  transition: opacity 0.2s, transform 0.15s, box-shadow 0.2s;
+  transition: transform 0.15s, box-shadow 0.2s, border-color 0.2s, color 0.2s;
+  animation: landing-nav-cta-pulse 2.6s ease-in-out infinite;
+}
+
+.landing-nav__cta::before {
+  content: "";
+  position: absolute;
+  inset: -30% auto -30% -35%;
+  width: 40%;
+  background: linear-gradient(
+    110deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(167, 139, 250, 0.12) 35%,
+    rgba(124, 58, 237, 0.26) 50%,
+    rgba(45, 212, 191, 0.14) 65%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  transform: skewX(-24deg);
+  animation: landing-nav-cta-shimmer 2.8s linear infinite;
+  pointer-events: none;
+  z-index: -1;
 }
 
 .landing-nav__cta:hover {
-  opacity: 0.96;
   transform: translateY(-1px);
-  box-shadow: 0 14px 30px rgba(20, 184, 166, 0.2);
+  color: #6d28d9;
+  border-color: rgba(124, 58, 237, 0.95);
+  box-shadow:
+    0 12px 28px rgba(124, 58, 237, 0.18),
+    0 0 0 4px rgba(124, 58, 237, 0.08);
 }
 
 .landing-nav__cta:focus-visible {
   outline: 3px solid rgba(124, 58, 237, 0.18);
   outline-offset: 3px;
+}
+
+@keyframes landing-nav-cta-shimmer {
+  0% {
+    left: -35%;
+  }
+  100% {
+    left: 120%;
+  }
+}
+
+@keyframes landing-nav-cta-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 8px 22px rgba(124, 58, 237, 0.12),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.65);
+  }
+  50% {
+    box-shadow:
+      0 10px 26px rgba(124, 58, 237, 0.18),
+      0 0 0 4px rgba(124, 58, 237, 0.07),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.72);
+  }
 }
 
 /* Hamburger */
