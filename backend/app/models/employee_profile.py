@@ -1,7 +1,7 @@
 # backend/app/models/employee_profile.py
 
 import uuid
-from sqlalchemy import Column, String, Text, Date, Integer, DateTime, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, String, Text, Date, Integer, DateTime, ForeignKey, UniqueConstraint, Numeric
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.sql import func
 
@@ -74,6 +74,9 @@ class EmployeeProfile(Base):
     contract_end = Column(String, nullable=True)
 
     targets = Column(Text, nullable=True)
+
+    # Payroll: base monthly salary used for auto-generated payroll runs
+    monthly_salary = Column(Numeric(12, 2), nullable=True)
 
     # ------------------------------------------------------------------
     # Contact & identity

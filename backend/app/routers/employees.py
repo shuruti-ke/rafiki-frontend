@@ -114,6 +114,7 @@ def _profile_dict(p: Optional[EmployeeProfile]) -> Optional[dict]:
         "contract_end": p.contract_end,
 
         "targets": p.targets,
+        "monthly_salary": float(p.monthly_salary) if getattr(p, "monthly_salary", None) is not None else None,
 
         "phone": p.phone,
         "avatar_url": p.avatar_url,
@@ -186,6 +187,7 @@ class EmployeeCreateRequest(BaseModel):
     contract_start: Optional[str] = None
     contract_end: Optional[str] = None
     targets: Optional[str] = None
+    monthly_salary: Optional[float] = None
     phone: Optional[str] = None
     avatar_url: Optional[str] = None
     emergency_contact: Optional[str] = None
@@ -243,6 +245,7 @@ class EmployeeUpdateRequest(BaseModel):
     contract_start: Optional[str] = None
     contract_end: Optional[str] = None
     targets: Optional[str] = None
+    monthly_salary: Optional[float] = None
     phone: Optional[str] = None
     avatar_url: Optional[str] = None
     emergency_contact: Optional[str] = None
@@ -789,6 +792,7 @@ def update_employee(
         "employment_number", "national_id", "job_description",
         "contract_type", "contract_start", "contract_end",
         "targets", "phone", "avatar_url", "emergency_contact",
+        "monthly_salary",
         "status", "duration_months", "evaluation_period_months",
         "terms_of_service_title", "terms_of_service_text",
         "address_line1", "address_line2", "city", "state", "postal_code", "country",

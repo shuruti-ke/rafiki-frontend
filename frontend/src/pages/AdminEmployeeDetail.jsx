@@ -39,6 +39,7 @@ export default function AdminEmployeeDetail() {
     phone: "",
     gender: "",
     city: "",
+    monthly_salary: "",
   });
   const [payrollFlags, setPayrollFlags] = useState({
     can_process_payroll: false,
@@ -74,6 +75,7 @@ export default function AdminEmployeeDetail() {
           phone: merged.phone || "",
           gender: merged.gender || "",
           city: merged.city || "",
+          monthly_salary: merged.monthly_salary != null && merged.monthly_salary !== "" ? String(merged.monthly_salary) : "",
         });
         const u = merged.user || {};
         setPayrollFlags({
@@ -111,6 +113,7 @@ export default function AdminEmployeeDetail() {
           phone: form.phone || null,
           gender: form.gender || null,
           city: form.city || null,
+          monthly_salary: form.monthly_salary !== "" && Number.isFinite(parseFloat(form.monthly_salary)) ? parseFloat(form.monthly_salary) : null,
           can_process_payroll: payrollFlags.can_process_payroll,
           can_approve_payroll: payrollFlags.can_approve_payroll,
           can_authorize_payroll: payrollFlags.can_authorize_payroll,
@@ -302,6 +305,17 @@ export default function AdminEmployeeDetail() {
                 <label>City / Office</label>
                 <input value={form.city} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} />
               </div>
+              <div className="emp-form-field">
+                <label>Monthly salary</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="Used for auto payroll run"
+                  value={form.monthly_salary}
+                  onChange={e => setForm(f => ({ ...f, monthly_salary: e.target.value }))}
+                />
+              </div>
 
               {/* Gender — critical for leave entitlements */}
               <div className="emp-form-field emp-form-field--highlight">
@@ -352,6 +366,14 @@ export default function AdminEmployeeDetail() {
                 { label: "Work Location", value: employee.work_location || "—" },
                 { label: "Job Title", value: employee.job_title || "—" },
                 { label: "City / Office", value: employee.city || "—" },
+                {
+                  label: "Monthly salary",
+                  value: employee.monthly_salary != null && employee.monthly_salary !== ""
+                    ? (typeof employee.monthly_salary === "number"
+                        ? employee.monthly_salary.toLocaleString()
+                        : String(employee.monthly_salary))
+                    : "—",
+                },
                 { label: "Role", value: employee.role?.replace("_", " ") || "—" },
                 {
                   label: "Gender",

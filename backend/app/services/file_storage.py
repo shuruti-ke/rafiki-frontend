@@ -145,6 +145,26 @@ def save_upload(file: UploadFile, subfolder: str = "documents") -> tuple[str, st
     return r2_key, original_name, size
 
 
+def save_bytes(content: bytes, r2_key: str, content_type: str = "application/octet-stream") -> int:
+    """Upload raw bytes to R2. Returns size. Used for generated files (e.g. payroll CSV)."""
+    size = len(content)
+    if size == 0:
+        raise HTTPException(status_code=400, detail="Empty content")
+    try:
+        s3 = _get_s3()
+        s3.put_object(
+            Bucket=R2_BUCKET,
+            Key=r2_key,
+            Body=content,
+            ContentType=content_type,
+        )
+        logger.info("Uploaded bytes to R2: %s (%s bytes)", r2_key, size)
+    except Exception as e:
+        logger.error("R2 upload failed: %s", e)
+        raise HTTPException(status_code=500, detail="File upload failed")
+    return size
+
+
 def download_file_bytes(r2_key: str) -> bytes:
     """Download a file from R2 and return its contents as bytes."""
     try:

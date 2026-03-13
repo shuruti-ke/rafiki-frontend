@@ -151,6 +151,7 @@ function UploadTab() {
     e.preventDefault();
     setRunMsg("");
     setRunErr("");
+    setError("");
     try {
       const r = await authFetch(
         `${API}/api/v1/payroll/run-monthly?month=${encodeURIComponent(runMonth)}`,
@@ -158,14 +159,17 @@ function UploadTab() {
       );
       const data = await r.json();
       if (!r.ok) {
-        setRunErr(data.detail || "Failed to initiate monthly payroll run");
+        setRunErr(data.detail || "Failed to run monthly payroll");
         return;
       }
-      setRunMsg(data.message || "Monthly payroll run initiated.");
-      // Also sync the upload month to the selected run month for convenience
       setMonth(runMonth);
+      setBatch(data);
+      setParseResult(null);
+      setDistributeResult(null);
+      setApprovalSent(false);
+      setRunMsg(data.warning || "Batch created from employee salaries. Request approval, then parse and distribute.");
     } catch (err) {
-      setRunErr("Failed to initiate monthly payroll run: " + err.message);
+      setRunErr("Failed to run monthly payroll: " + err.message);
     }
   }
 

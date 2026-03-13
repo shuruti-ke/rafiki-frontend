@@ -1,7 +1,9 @@
 # backend/app/routers/payroll.py
 
+import csv
+import io
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
@@ -17,6 +19,7 @@ from app.dependencies import (
 )
 from app.models.payroll import PayrollTemplate, PayrollBatch, Payslip
 from app.models.employee_document import EmployeeDocument
+from app.models.employee_profile import EmployeeProfile
 from app.models.user import User  # users_legacy
 from app.models.message import DmConversation, DmMessage, ConversationParticipant
 from app.schemas.payroll import (
@@ -24,7 +27,7 @@ from app.schemas.payroll import (
     PayrollBatchResponse,
     PayslipResponse,
 )
-from app.services.file_storage import save_upload, get_download_url, delete_file
+from app.services.file_storage import save_upload, save_bytes, get_download_url, delete_file
 from app.services.audit import log_action
 from app.services.payroll_parser import parse_payroll_file
 from app.services.payslip_generator import generate_payslip_pdf
@@ -57,18 +60,45 @@ def _require_payroll_processor(user: User | None) -> None:
         raise HTTPException(status_code=403, detail="Payroll processing permission required")
 
 
-@router.post("/run-monthly")
+def _get_or_create_system_template(db: Session, org_id: uuid.UUID, created_by_user_id: uuid.UUID) -> PayrollTemplate:
+    """Return the 'System generated' payroll template for this org, creating it if needed."""
+    tmpl = (
+        db.query(PayrollTemplate)
+        .filter(PayrollTemplate.org_id == org_id, PayrollTemplate.title == "System generated")
+        .first()
+    )
+    if tmpl:
+        return tmpl
+    # Create placeholder CSV and upload so we have a valid template
+    placeholder = b"employee_name,gross_salary,deductions,net_salary\n"
+    key = f"payroll_uploads/{org_id}/system_placeholder.csv"
+    save_bytes(placeholder, key, "text/csv")
+    tmpl = PayrollTemplate(
+        org_id=org_id,
+        title="System generated",
+        storage_key=key,
+        mime_type="text/csv",
+        created_by_user_id=created_by_user_id,
+    )
+    db.add(tmpl)
+    db.commit()
+    db.refresh(tmpl)
+    return tmpl
+
+
+@router.post("/run-monthly", response_model=PayrollBatchUploadResponse)
 def run_monthly_payroll(
     month: str = Query(..., pattern=r"^\d{4}-\d{2}$"),
     db: Session = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org_id),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
     current_user: User | None = Depends(get_current_user),
 ):
     """
-    Initiate a monthly payroll run for the given YYYY-MM.
+    Auto-build a payroll batch from employee monthly_salary and statutory config.
 
-    For now this logs the intent and relies on the existing upload/parse flow.
-    Only users with the 'can_process_payroll' flag may call this.
+    Only users with 'can_process_payroll' may call this. Creates a CSV, uploads to R2,
+    and creates a batch in status uploaded_needs_approval so it goes through approval → parse → distribute.
     """
     _require_payroll_processor(current_user)
 
@@ -81,22 +111,151 @@ def run_monthly_payroll(
     except ValueError:
         raise HTTPException(status_code=400, detail="month must be in YYYY-MM format")
 
-    # No-op for now except logging – future work can auto-build batches from employee profiles.
-    log_action(
-        db,
-        org_id,
-        current_user.user_id if current_user else None,
-        "run_monthly_payroll",
-        "payroll_batch",
-        None,
-        {"period_year": year_i, "period_month": month_i},
+    from app.routers import payroll_statutory
+
+    effective_on = date(year_i, month_i, 1)
+    cfg = payroll_statutory._get_config(db, org_id, effective_on=effective_on)
+
+    # Active employees with a positive monthly_salary (from profile or fallback)
+    users = (
+        db.query(User)
+        .filter(User.org_id == org_id, User.is_active == True)
+        .all()
+    )
+    rows = []
+    for u in users:
+        profile = db.query(EmployeeProfile).filter(
+            EmployeeProfile.org_id == org_id,
+            EmployeeProfile.user_id == u.user_id,
+        ).first()
+        salary = getattr(profile, "monthly_salary", None) if profile else None
+        if salary is None or float(salary) <= 0:
+            continue
+        gross = float(salary)
+        calc = payroll_statutory._calculate_kenya(
+            gross_pay=gross,
+            pension_contribution=0.0,
+            insurance_relief_basis=0.0,
+            cfg=cfg,
+        )
+        deductions = calc["statutory_total"]
+        net = calc["estimated_net_pay"]
+        name = (u.name or u.email or "Unknown").strip() or "Unknown"
+        rows.append({
+            "employee_name": name,
+            "gross_salary": gross,
+            "deductions": deductions,
+            "net_salary": net,
+        })
+
+    if not rows:
+        raise HTTPException(
+            status_code=400,
+            detail="No employees with monthly salary set. Add monthly_salary to employee profiles and try again.",
+        )
+
+    # Build CSV
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=["employee_name", "gross_salary", "deductions", "net_salary"])
+    writer.writeheader()
+    for r in rows:
+        writer.writerow({k: r[k] for k in writer.fieldnames})
+    csv_bytes = buf.getvalue().encode("utf-8")
+
+    # Upload generated CSV
+    filename = f"payroll-{month}-system.csv"
+    r2_key = f"payroll_uploads/{org_id}/{uuid.uuid4().hex}.csv"
+    save_bytes(csv_bytes, r2_key, "text/csv")
+
+    template = _get_or_create_system_template(db, org_id, current_user_id)
+
+    existing = (
+        db.query(PayrollBatch)
+        .filter(
+            PayrollBatch.org_id == org_id,
+            PayrollBatch.period_year == year_i,
+            PayrollBatch.period_month == month_i,
+        )
+        .first()
     )
 
+    if existing:
+        if existing.status == "distributed":
+            batch = PayrollBatch(
+                org_id=org_id,
+                period_year=year_i,
+                period_month=month_i,
+                template_id=template.template_id,
+                upload_storage_key=r2_key,
+                upload_mime_type="text/csv",
+                upload_original_filename=filename,
+                created_by_user_id=current_user_id,
+                status="uploaded_needs_approval",
+            )
+            db.add(batch)
+            db.commit()
+            db.refresh(batch)
+            log_action(
+                db, org_id, current_user_id, "run_monthly_payroll", "payroll_batch", batch.batch_id,
+                {"month": month, "employee_count": len(rows), "previous_distributed": str(existing.batch_id)},
+            )
+            return {
+                **PayrollBatchResponse.model_validate(batch).model_dump(),
+                "replaced": False,
+                "requires_approval": True,
+                "warning": f"A distributed payroll for {month} already exists. New batch created and needs approval.",
+            }
+        try:
+            if existing.upload_storage_key:
+                delete_file(existing.upload_storage_key)
+        except Exception:
+            pass
+        existing.template_id = template.template_id
+        existing.upload_storage_key = r2_key
+        existing.upload_mime_type = "text/csv"
+        existing.upload_original_filename = filename
+        existing.status = "uploaded_needs_approval"
+        existing.payroll_total = None
+        existing.computed_total = None
+        existing.discrepancy = None
+        existing.approved_by_user_id = None
+        existing.approved_at = None
+        existing.distributed_at = None
+        db.commit()
+        db.refresh(existing)
+        log_action(
+            db, org_id, current_user_id, "run_monthly_payroll", "payroll_batch", existing.batch_id,
+            {"month": month, "employee_count": len(rows)},
+        )
+        return {
+            **PayrollBatchResponse.model_validate(existing).model_dump(),
+            "replaced": True,
+            "requires_approval": True,
+        }
+
+    batch = PayrollBatch(
+        org_id=org_id,
+        period_year=year_i,
+        period_month=month_i,
+        template_id=template.template_id,
+        upload_storage_key=r2_key,
+        upload_mime_type="text/csv",
+        upload_original_filename=filename,
+        created_by_user_id=current_user_id,
+        status="uploaded_needs_approval",
+    )
+    db.add(batch)
+    db.commit()
+    db.refresh(batch)
+    log_action(
+        db, org_id, current_user_id, "run_monthly_payroll", "payroll_batch", batch.batch_id,
+        {"month": month, "employee_count": len(rows)},
+    )
     return {
-        "ok": True,
-        "message": f"Payroll run initiated for {month}. Upload and parse the payroll file to continue.",
-        "period_year": year_i,
-        "period_month": month_i,
+        **PayrollBatchResponse.model_validate(batch).model_dump(),
+        "replaced": False,
+        "requires_approval": True,
+        "warning": None,
     }
 
 
