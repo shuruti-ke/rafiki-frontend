@@ -298,6 +298,17 @@ def upsert_statutory_config(
             "updated_at": datetime.now(timezone.utc),
         },
     )
+    insert_params = {
+        "id": str(uuid.uuid4()),
+        "org": str(org_id),
+        "created_by": str(user_id),
+        "effective_from": effective_from,
+        "effective_to": effective_to,
+        "notes": notes,
+        "updated_at": datetime.now(timezone.utc),
+        **payload,
+    }
+    insert_params["tax_bands"] = json.dumps(insert_params["tax_bands"])
     db.execute(
         text(
             """INSERT INTO payroll_statutory_configs
@@ -308,17 +319,7 @@ def upsert_statutory_config(
                        :nssf_lower_limit, :nssf_upper_limit, :nssf_rate_tier1, :nssf_rate_tier2, :shif_rate, :ahl_rate,
                        :effective_from, :effective_to, true, :notes, :created_by, :updated_at)"""
         ),
-        {
-            "id": str(uuid.uuid4()),
-            "org": str(org_id),
-            "created_by": str(user_id),
-            "tax_bands": json.dumps(payload["tax_bands"]),
-            "effective_from": effective_from,
-            "effective_to": effective_to,
-            "notes": notes,
-            "updated_at": datetime.now(timezone.utc),
-            **payload,
-        },
+        insert_params,
     )
     db.commit()
     return {"message": "Statutory config saved", "config": _get_config(db, org_id, effective_on=effective_from)}
