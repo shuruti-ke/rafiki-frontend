@@ -17,6 +17,9 @@ import AdminUsageReport from "./pages/AdminUsageReport.jsx";
 import AdminLeave from "./pages/AdminLeave.jsx";
 import AdminWellbeing from "./pages/AdminWellbeing.jsx";
 import AdminAttendancePage from "./pages/AdminAttendancePage.jsx";
+import AdminServices from "./pages/AdminServices.jsx";
+import AdminBilling from "./pages/AdminBilling.jsx";
+import AccountBillingPage from "./pages/AccountBillingPage.jsx";
 import EmployeeKnowledgeBase from "./pages/EmployeeKnowledgeBase.jsx";
 import EmployeeAnnouncements from "./pages/EmployeeAnnouncements.jsx";
 import GuidedPathExplore from "./pages/GuidedPathExplore.jsx";
@@ -79,6 +82,7 @@ export default function App() {
           <Route path="/meetings" element={<MeetingsPage />} />
           <Route path="/my-report" element={<PersonalUsageReport />} />
           <Route path="/leave" element={<LeaveApplication />} />
+          <Route path="/account-billing" element={<AccountBillingPage />} />
         </Route>
 
         {/* Super Admin Portal */}
@@ -104,6 +108,7 @@ export default function App() {
           <Route path="calendar" element={<CalendarPage />} />
           <Route path="timesheets" element={<TimesheetPage />} />
           <Route path="attendance" element={<AdminAttendancePage />} />
+          <Route path="billing" element={<AccountBillingPage />} />
         </Route>
 
         {/* Admin HR Portal */}
@@ -127,6 +132,8 @@ export default function App() {
           <Route path="attendance" element={<AdminAttendancePage />} />
           <Route path="leave" element={<AdminLeave />} />
           <Route path="wellbeing" element={<AdminWellbeing />} />
+          <Route path="services" element={<AdminServices />} />
+          <Route path="billing" element={<AdminBilling />} />
         </Route>
       </Routes>
     </BrowserRouter>

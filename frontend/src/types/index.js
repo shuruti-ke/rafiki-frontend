@@ -251,9 +251,9 @@
 /**
  * @typedef {Object} CoachingSession
  * @property {number} id
- * @property {number} manager_id
- * @property {number} org_id
- * @property {number} employee_member_id
+ * @property {string} manager_id
+ * @property {string} org_id
+ * @property {string} employee_member_id
  * @property {string|null} employee_name
  * @property {string} concern
  * @property {string|null} ai_response

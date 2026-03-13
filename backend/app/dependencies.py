@@ -155,6 +155,18 @@ def require_admin(
     return role
 
 
+def require_it_admin(
+    authorization: Optional[str] = Header(default=None),
+    x_user_role: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> str:
+    """Require IT admin, HR admin, or super admin role."""
+    role = get_current_role(authorization, x_user_role, db)
+    if role not in ("it_admin", "hr_admin", "super_admin"):
+        raise HTTPException(status_code=403, detail="IT admin access required")
+    return role
+
+
 def require_super_admin(
     authorization: Optional[str] = Header(default=None),
     x_user_role: Optional[str] = Header(default=None),

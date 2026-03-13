@@ -51,6 +51,12 @@ export default function AdminLayout() {
           <NavLink to="/admin/payroll" className={({ isActive }) => `admin-nav-link ${isActive ? "active" : ""}`}>
             Payroll
           </NavLink>
+          <NavLink to="/admin/services" className={({ isActive }) => `admin-nav-link ${isActive ? "active" : ""}`}>
+            Services
+          </NavLink>
+          <NavLink to="/admin/billing" className={({ isActive }) => `admin-nav-link ${isActive ? "active" : ""}`}>
+            Billing
+          </NavLink>
           <NavLink to="/admin/leave" className={({ isActive }) => `admin-nav-link ${isActive ? "active" : ""}`}>
             Leave Management
           </NavLink>

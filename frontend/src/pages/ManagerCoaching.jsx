@@ -46,7 +46,7 @@ export default function ManagerCoaching() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          employee_member_id: Number(selectedMember),
+          employee_member_id: selectedMember,
           concern: concern.trim(),
         }),
       });

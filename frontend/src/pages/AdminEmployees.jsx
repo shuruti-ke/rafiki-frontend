@@ -6,7 +6,16 @@ export default function AdminEmployees() {
   const [search, setSearch] = useState("");
   const [employees, setEmployees] = useState([]);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [addForm, setAddForm] = useState({ name: "", email: "", role: "user", department: "", manager_id: "" });
+  const [addForm, setAddForm] = useState({
+    name: "",
+    email: "",
+    role: "user",
+    department: "",
+    employment_type: "",
+    work_location: "",
+    manager_id: "",
+  });
+  const [formOptions, setFormOptions] = useState({ departments: [], employment_types: [], work_locations: [], roles: [] });
   const [addLoading, setAddLoading] = useState(false);
   const [addMsg, setAddMsg] = useState(null);
   const [batchMsg, setBatchMsg] = useState(null);
@@ -33,6 +42,12 @@ export default function AdminEmployees() {
   };
 
   useEffect(() => { fetchEmployees(); }, []);
+  useEffect(() => {
+    authFetch(`${API}/api/v1/employees/meta/options`)
+      .then(r => (r && r.ok ? r.json() : null))
+      .then(d => d && setFormOptions(d))
+      .catch(() => {});
+  }, []);
 
   // When search changes, re-query the backend so inactive employees can be found
   useEffect(() => {
@@ -51,6 +66,8 @@ export default function AdminEmployees() {
       const body = { ...addForm };
       if (!body.manager_id) delete body.manager_id;
       if (!body.department) delete body.department;
+      if (!body.employment_type) delete body.employment_type;
+      if (!body.work_location) delete body.work_location;
       const res = await authFetch(`${API}/api/v1/employees/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -59,7 +76,7 @@ export default function AdminEmployees() {
       const data = await res.json();
       if (res.ok) {
         setAddMsg({ type: "ok", text: `Employee created. Temp password: ${data.temporary_password}` });
-        setAddForm({ name: "", email: "", role: "user", department: "", manager_id: "" });
+        setAddForm({ name: "", email: "", role: "user", department: "", employment_type: "", work_location: "", manager_id: "" });
         setShowAddForm(false);
         fetchEmployees();
       } else {
@@ -168,17 +185,47 @@ export default function AdminEmployees() {
               onChange={e => setAddForm(f => ({ ...f, role: e.target.value }))}
               style={{ width: "100%", boxSizing: "border-box" }}
             >
-              <option value="user">Employee</option>
-              <option value="manager">Manager</option>
-              <option value="admin">Admin</option>
+              {(formOptions.roles?.length ? formOptions.roles : ["user", "manager", "hr_admin", "super_admin"]).map(role => (
+                <option key={role} value={role}>
+                  {role === "user" ? "Employee" : role.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
+                </option>
+              ))}
             </select>
-            <input
+            <select
               className="search"
-              placeholder="Department"
               value={addForm.department}
               onChange={e => setAddForm(f => ({ ...f, department: e.target.value }))}
               style={{ width: "100%", boxSizing: "border-box" }}
-            />
+            >
+              <option value="">Select department</option>
+              {(formOptions.departments || []).map(dep => (
+                <option key={dep} value={dep}>{dep}</option>
+              ))}
+            </select>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <select
+              className="search"
+              value={addForm.employment_type}
+              onChange={e => setAddForm(f => ({ ...f, employment_type: e.target.value }))}
+              style={{ width: "100%", boxSizing: "border-box" }}
+            >
+              <option value="">Employment type</option>
+              {(formOptions.employment_types || []).map(t => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+            <select
+              className="search"
+              value={addForm.work_location}
+              onChange={e => setAddForm(f => ({ ...f, work_location: e.target.value }))}
+              style={{ width: "100%", boxSizing: "border-box" }}
+            >
+              <option value="">Work location</option>
+              {(formOptions.work_locations || []).map(loc => (
+                <option key={loc} value={loc}>{loc}</option>
+              ))}
+            </select>
           </div>
           <select
             className="search"

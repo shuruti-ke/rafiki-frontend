@@ -58,6 +58,8 @@ class EmployeeProfile(Base):
 
     job_title = Column(String, nullable=True)
     department = Column(String, nullable=True)
+    employment_type = Column(String(80), nullable=True)
+    work_location = Column(String(120), nullable=True)
 
     job_description = Column(Text, nullable=True)
 

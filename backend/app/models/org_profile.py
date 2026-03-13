@@ -20,6 +20,7 @@ class OrgProfile(Base):
     org_purpose = Column(String(300), nullable=True)
     industry = Column(String(100), nullable=True)
     work_environment = Column(String(50), nullable=True)  # remote, hybrid, on-site, field-based
+    departments = Column(JSONB, nullable=True, default=list)
     benefits_tags = Column(JSONB, nullable=True, default=list)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

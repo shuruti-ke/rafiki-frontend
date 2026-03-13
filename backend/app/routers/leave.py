@@ -167,6 +167,27 @@ class LeaveReviewIn(BaseModel):
         return v
 
 
+class LeaveAmendmentRequestIn(BaseModel):
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    reason: Optional[str] = None
+    cancel_leave: bool = False
+    half_day: bool = False
+    half_day_period: Optional[str] = None
+
+
+class LeaveAmendmentReviewIn(BaseModel):
+    decision: str  # approved | rejected
+    comment: Optional[str] = None
+
+    @field_validator("decision")
+    @classmethod
+    def valid_decision(cls, v):
+        if v not in ("approved", "rejected"):
+            raise ValueError("decision must be 'approved' or 'rejected'")
+        return v
+
+
 # ══════════════════════════════════════════════════════════════
 # POLICY ENDPOINTS
 # ══════════════════════════════════════════════════════════════
@@ -491,6 +512,87 @@ def cancel_application(
     return {"message": "Application cancelled"}
 
 
+@router.post("/amendments/{app_id}")
+def request_leave_amendment(
+    app_id: str,
+    data: LeaveAmendmentRequestIn,
+    db: Session = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    """Employee requests amendment/cancellation for an existing leave application."""
+    row = db.execute(
+        text("SELECT * FROM leave_applications WHERE id = :id AND user_id = :uid"),
+        {"id": app_id, "uid": str(user_id)},
+    ).mappings().first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Application not found")
+    if row["status"] not in ("pending", "approved"):
+        raise HTTPException(status_code=400, detail="Only pending or approved applications can be amended")
+
+    existing_pending = db.execute(
+        text("""SELECT id FROM leave_amendment_requests
+                WHERE leave_application_id = :app AND user_id = :uid AND status = 'pending'
+                ORDER BY created_at DESC LIMIT 1"""),
+        {"app": app_id, "uid": str(user_id)},
+    ).first()
+    if existing_pending:
+        raise HTTPException(status_code=409, detail="There is already a pending amendment request for this leave")
+
+    requested_start = row["start_date"] if data.start_date is None else data.start_date
+    requested_end = row["end_date"] if data.end_date is None else data.end_date
+    if data.cancel_leave:
+        requested_days = 0.0
+        requested_start = row["start_date"]
+        requested_end = row["end_date"]
+    else:
+        if requested_end < requested_start:
+            raise HTTPException(status_code=400, detail="End date must be on or after start date")
+        requested_days = 0.5 if data.half_day else _working_days(requested_start, requested_end)
+        if requested_days <= 0:
+            raise HTTPException(status_code=400, detail="No working days in selected range")
+
+    db.execute(
+        text("""INSERT INTO leave_amendment_requests
+                (id, leave_application_id, org_id, user_id, status,
+                 requested_start_date, requested_end_date, requested_working_days,
+                 requested_reason, cancel_leave, half_day, half_day_period)
+                VALUES (:id, :app, :org, :uid, 'pending',
+                        :rsd, :red, :rwd, :rr, :cancel, :half_day, :half_day_period)"""),
+        {
+            "id": str(uuid.uuid4()),
+            "app": app_id,
+            "org": str(row["org_id"]),
+            "uid": str(user_id),
+            "rsd": requested_start,
+            "red": requested_end,
+            "rwd": requested_days,
+            "rr": data.reason,
+            "cancel": data.cancel_leave,
+            "half_day": data.half_day,
+            "half_day_period": data.half_day_period if data.half_day else None,
+        },
+    )
+    db.commit()
+    return {"message": "Amendment request submitted and pending HR review."}
+
+
+@router.get("/amendments/my")
+def my_leave_amendments(
+    db: Session = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    rows = db.execute(
+        text("""SELECT ar.*, la.leave_type, la.start_date AS current_start_date,
+                       la.end_date AS current_end_date, la.working_days AS current_working_days
+                FROM leave_amendment_requests ar
+                JOIN leave_applications la ON la.id = ar.leave_application_id
+                WHERE ar.user_id = :uid
+                ORDER BY ar.created_at DESC"""),
+        {"uid": str(user_id)},
+    ).mappings().all()
+    return {"amendments": [dict(r) for r in rows]}
+
+
 # ══════════════════════════════════════════════════════════════
 # APPLICATIONS — HR ADMIN
 # ══════════════════════════════════════════════════════════════
@@ -516,6 +618,115 @@ def get_all_applications(
     q += " ORDER BY la.created_at DESC"
     rows = db.execute(text(q), params).mappings().all()
     return {"applications": [dict(r) for r in rows]}
+
+
+@router.get("/admin/amendments")
+def get_amendment_requests(
+    status: Optional[str] = None,
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    role: str = Depends(require_admin),
+):
+    q = """
+        SELECT ar.*, u.name AS full_name, u.email, u.department, la.leave_type
+        FROM leave_amendment_requests ar
+        JOIN leave_applications la ON la.id = ar.leave_application_id
+        LEFT JOIN users_legacy u ON u.user_id = ar.user_id
+        WHERE ar.org_id = :org
+    """
+    params = {"org": str(org_id)}
+    if status:
+        q += " AND ar.status = :status"
+        params["status"] = status
+    q += " ORDER BY ar.created_at DESC"
+    rows = db.execute(text(q), params).mappings().all()
+    return {"amendments": [dict(r) for r in rows]}
+
+
+@router.post("/admin/amendments/{amendment_id}/review")
+def review_amendment_request(
+    amendment_id: str,
+    data: LeaveAmendmentReviewIn,
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    reviewer_id: uuid.UUID = Depends(get_current_user_id),
+    role: str = Depends(require_admin),
+):
+    amend = db.execute(
+        text("""SELECT * FROM leave_amendment_requests
+                WHERE id = :id AND org_id = :org"""),
+        {"id": amendment_id, "org": str(org_id)},
+    ).mappings().first()
+    if not amend:
+        raise HTTPException(status_code=404, detail="Amendment request not found")
+    if amend["status"] != "pending":
+        raise HTTPException(status_code=400, detail="Amendment request is already reviewed")
+
+    app = db.execute(
+        text("SELECT * FROM leave_applications WHERE id = :id AND org_id = :org"),
+        {"id": amend["leave_application_id"], "org": str(org_id)},
+    ).mappings().first()
+    if not app:
+        raise HTTPException(status_code=404, detail="Related leave application not found")
+
+    if data.decision == "approved":
+        # Keep leave balance accurate when approved leave duration is changed/cancelled.
+        if app["status"] == "approved":
+            yr = app["start_date"].year
+            policy = _get_policy(db, org_id) or DEFAULT_POLICY
+            entitled = _entitled_for_type(policy, app["leave_type"])
+            _get_or_create_balance(db, app["user_id"], org_id, yr, app["leave_type"], entitled, policy)
+
+            if amend["cancel_leave"]:
+                delta = -float(app["working_days"])
+            else:
+                delta = float(amend["requested_working_days"]) - float(app["working_days"])
+
+            if delta != 0:
+                db.execute(
+                    text("""UPDATE leave_balances SET used_days = used_days + :delta
+                            WHERE user_id = :uid AND leave_year = :yr AND leave_type = :lt"""),
+                    {"delta": delta, "uid": str(app["user_id"]), "yr": yr, "lt": app["leave_type"]},
+                )
+
+        if amend["cancel_leave"]:
+            db.execute(
+                text("""UPDATE leave_applications
+                        SET status='cancelled', updated_at=now()
+                        WHERE id=:id"""),
+                {"id": app["id"]},
+            )
+        else:
+            db.execute(
+                text("""UPDATE leave_applications SET
+                        start_date=:sd, end_date=:ed, working_days=:wd,
+                        reason=:reason, half_day=:half_day, half_day_period=:half_day_period,
+                        updated_at=now()
+                        WHERE id=:id"""),
+                {
+                    "sd": amend["requested_start_date"],
+                    "ed": amend["requested_end_date"],
+                    "wd": amend["requested_working_days"],
+                    "reason": amend["requested_reason"] or app.get("reason"),
+                    "half_day": amend["half_day"],
+                    "half_day_period": amend["half_day_period"],
+                    "id": app["id"],
+                },
+            )
+
+    db.execute(
+        text("""UPDATE leave_amendment_requests SET
+                status=:status, reviewed_by=:rb, reviewed_at=now(), review_comment=:comment, updated_at=now()
+                WHERE id=:id"""),
+        {
+            "status": data.decision,
+            "rb": str(reviewer_id),
+            "comment": data.comment,
+            "id": amendment_id,
+        },
+    )
+    db.commit()
+    return {"message": f"Amendment {data.decision}."}
 
 
 @router.get("/admin/summary")

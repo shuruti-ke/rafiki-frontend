@@ -39,8 +39,19 @@ export default function LeaveApplication() {
   const [balances, setBalances] = useState([]);
   const [policy, setPolicy] = useState(null);
   const [applications, setApplications] = useState([]);
+  const [amendments, setAmendments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [amendSubmitting, setAmendSubmitting] = useState(false);
+  const [amendModal, setAmendModal] = useState(null);
+  const [amendForm, setAmendForm] = useState({
+    start_date: "",
+    end_date: "",
+    reason: "",
+    cancel_leave: false,
+    half_day: false,
+    half_day_period: "morning",
+  });
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -56,9 +67,10 @@ export default function LeaveApplication() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [balRes, appRes] = await Promise.all([
+      const [balRes, appRes, amendRes] = await Promise.all([
         authFetch(`${API}/api/v1/leave/balance`),
         authFetch(`${API}/api/v1/leave/my-applications`),
+        authFetch(`${API}/api/v1/leave/amendments/my`),
       ]);
       if (balRes.ok) {
         const d = await balRes.json();
@@ -68,6 +80,10 @@ export default function LeaveApplication() {
       if (appRes.ok) {
         const d = await appRes.json();
         setApplications(d.applications || []);
+      }
+      if (amendRes.ok) {
+        const d = await amendRes.json();
+        setAmendments(d.amendments || []);
       }
     } catch (e) { console.error(e); }
     setLoading(false);
@@ -115,6 +131,49 @@ export default function LeaveApplication() {
     if (!confirm("Cancel this leave application?")) return;
     const res = await authFetch(`${API}/api/v1/leave/cancel/${id}`, { method: "DELETE" });
     if (res.ok) fetchData();
+  };
+
+  const handleOpenAmendment = (app) => {
+    setError("");
+    setSuccess("");
+    setAmendModal(app);
+    setAmendForm({
+      start_date: app.start_date || "",
+      end_date: app.end_date || "",
+      reason: "",
+      cancel_leave: false,
+      half_day: !!app.half_day,
+      half_day_period: app.half_day_period || "morning",
+    });
+  };
+
+  const handleSubmitAmendment = async () => {
+    if (!amendModal) return;
+    setAmendSubmitting(true);
+    setError("");
+    setSuccess("");
+    try {
+      const payload = { ...amendForm };
+      if (payload.cancel_leave) {
+        delete payload.start_date;
+        delete payload.end_date;
+      }
+      const res = await authFetch(`${API}/api/v1/leave/amendments/${amendModal.id}`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      const d = await res.json();
+      if (res.ok) {
+        setSuccess("✅ Amendment request sent for HR review.");
+        setAmendModal(null);
+        fetchData();
+      } else {
+        setError(d.detail || "Failed to request amendment.");
+      }
+    } catch {
+      setError("Network error while submitting amendment.");
+    }
+    setAmendSubmitting(false);
   };
 
   if (loading) return (
@@ -273,6 +332,7 @@ export default function LeaveApplication() {
             <div className="apps-list">
               {applications.map(app => {
                 const badge = STATUS_BADGE[app.status] || { label: app.status, cls: "badge-pending" };
+                const pendingAmend = amendments.find(a => a.leave_application_id === app.id && a.status === "pending");
                 return (
                   <div key={app.id} className="app-card">
                     <div className="app-card-top">
@@ -290,8 +350,16 @@ export default function LeaveApplication() {
                       <div className="app-card-right">
                         <span className={`status-badge ${badge.cls}`}>{badge.label}</span>
                         <div className="app-submitted">Submitted {new Date(app.created_at).toLocaleDateString()}</div>
+                        {pendingAmend && (
+                          <div className="app-comment">🛠 Amendment pending review</div>
+                        )}
                         {app.status === "pending" && (
                           <button className="cancel-btn" onClick={() => handleCancel(app.id)}>Cancel</button>
+                        )}
+                        {(app.status === "approved" || app.status === "pending") && !pendingAmend && (
+                          <button className="cancel-btn" onClick={() => handleOpenAmendment(app)}>
+                            Request Amendment
+                          </button>
                         )}
                       </div>
                     </div>
@@ -300,6 +368,61 @@ export default function LeaveApplication() {
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {amendModal && (
+        <div className="modal-overlay" onClick={() => setAmendModal(null)}>
+          <div className="review-modal" onClick={e => e.stopPropagation()}>
+            <h3>Request Leave Amendment</h3>
+            <div className="modal-details">
+              <div><strong>Type:</strong> {LEAVE_LABELS[amendModal.leave_type] || amendModal.leave_type}</div>
+              <div><strong>Current:</strong> {amendModal.start_date} → {amendModal.end_date} ({amendModal.working_days} days)</div>
+            </div>
+            <div className="modal-comment">
+              <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <input
+                  type="checkbox"
+                  checked={amendForm.cancel_leave}
+                  onChange={(e) => setAmendForm(f => ({ ...f, cancel_leave: e.target.checked }))}
+                />
+                Cancel this leave entirely
+              </label>
+            </div>
+            {!amendForm.cancel_leave && (
+              <div className="modal-comment">
+                <label>New Start Date</label>
+                <input
+                  type="date"
+                  value={amendForm.start_date}
+                  onChange={e => setAmendForm(f => ({ ...f, start_date: e.target.value }))}
+                />
+                <label>New End Date</label>
+                <input
+                  type="date"
+                  value={amendForm.end_date}
+                  onChange={e => setAmendForm(f => ({ ...f, end_date: e.target.value }))}
+                />
+              </div>
+            )}
+            <div className="modal-comment">
+              <label>Reason for amendment</label>
+              <textarea
+                rows={3}
+                value={amendForm.reason}
+                placeholder="Why are you changing/cancelling this leave?"
+                onChange={e => setAmendForm(f => ({ ...f, reason: e.target.value }))}
+              />
+            </div>
+            <div className="modal-actions">
+              <button className="modal-btn modal-btn--reject" onClick={() => setAmendModal(null)}>
+                Close
+              </button>
+              <button className="modal-btn modal-btn--approve" disabled={amendSubmitting} onClick={handleSubmitAmendment}>
+                {amendSubmitting ? "Submitting…" : "Submit Amendment"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

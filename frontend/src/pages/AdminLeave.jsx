@@ -16,6 +16,7 @@ const LEAVE_LABELS = {
 export default function AdminLeave() {
   const [tab, setTab] = useState("applications");
   const [applications, setApplications] = useState([]);
+  const [amendments, setAmendments] = useState([]);
   const [summary, setSummary] = useState(null);
   const [policy, setPolicy] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -34,6 +35,14 @@ export default function AdminLeave() {
   const [savingPolicy, setSavingPolicy] = useState(false);
   const [kbDocs, setKbDocs] = useState([]);
   const [selectedKbDoc, setSelectedKbDoc] = useState("");
+
+  // Separate fetch for amendment requests to avoid changing existing tab behaviour.
+  const fetchAmendments = useCallback(async () => {
+    try {
+      const amendRes = await authFetch(`${API}/api/v1/leave/admin/amendments?status=pending`);
+      if (amendRes.ok) setAmendments((await amendRes.json()).amendments || []);
+    } catch { /* ignore */ }
+  }, []);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -64,9 +73,10 @@ export default function AdminLeave() {
         }
       }
       if (kbRes.ok) { const d = await kbRes.json(); setKbDocs(Array.isArray(d) ? d : d.documents || []); }
+      await fetchAmendments();
     } catch (e) { console.error(e); }
     setLoading(false);
-  }, []);
+  }, [fetchAmendments]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -83,6 +93,17 @@ export default function AdminLeave() {
       fetchAll();
     }
     setReviewing(false);
+  };
+
+  const handleAmendmentReview = async (amendmentId, decision) => {
+    const res = await authFetch(`${API}/api/v1/leave/admin/amendments/${amendmentId}/review`, {
+      method: "POST",
+      body: JSON.stringify({ decision, comment: reviewComment || null }),
+    });
+    if (res.ok) {
+      setReviewComment("");
+      fetchAll();
+    }
   };
 
   const handleSavePolicy = async () => {
@@ -147,6 +168,9 @@ export default function AdminLeave() {
         <button className={`admin-tab ${tab === "applications" ? "active" : ""}`} onClick={() => setTab("applications")}>
           📋 Applications {pendingCount > 0 && <span className="tab-count">{pendingCount}</span>}
         </button>
+        <button className={`admin-tab ${tab === "amendments" ? "active" : ""}`} onClick={() => setTab("amendments")}>
+          🛠 Amendments {amendments.length > 0 && <span className="tab-count">{amendments.length}</span>}
+        </button>
         <button className={`admin-tab ${tab === "policy" ? "active" : ""}`} onClick={() => setTab("policy")}>
           ⚙️ Leave Policy
         </button>
@@ -207,6 +231,46 @@ export default function AdminLeave() {
                   </div>
                 );
               })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === "amendments" && (
+        <div className="apps-tab">
+          {amendments.length === 0 ? (
+            <div className="admin-leave-empty">No pending amendment requests.</div>
+          ) : (
+            <div className="admin-apps-list">
+              {amendments.map(am => (
+                <div key={am.id} className="admin-app-card admin-app-card--pending">
+                  <div className="admin-app-main">
+                    <div className="admin-app-employee">
+                      <div className="employee-avatar">{(am.full_name || "?")[0]}</div>
+                      <div>
+                        <div className="employee-name">{am.full_name || "Unknown Employee"}</div>
+                        <div className="employee-meta">{am.email} {am.department && `· ${am.department}`}</div>
+                      </div>
+                    </div>
+                    <div className="admin-app-details">
+                      <div className="app-leave-type">{LEAVE_LABELS[am.leave_type] || am.leave_type} Amendment</div>
+                      {am.cancel_leave ? (
+                        <div className="app-reason-text">Requested action: Cancel approved leave</div>
+                      ) : (
+                        <div className="app-dates-info">New dates: {am.requested_start_date} → {am.requested_end_date} ({am.requested_working_days} days)</div>
+                      )}
+                      {am.requested_reason && <div className="app-reason-text">Reason: {am.requested_reason}</div>}
+                    </div>
+                    <div className="admin-app-actions">
+                      <span className="status-badge badge-pending">Pending Amendment</span>
+                      <div className="action-btns">
+                        <button className="approve-btn" onClick={() => handleAmendmentReview(am.id, "approved")}>Approve</button>
+                        <button className="modal-btn modal-btn--reject" onClick={() => handleAmendmentReview(am.id, "rejected")}>Reject</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>

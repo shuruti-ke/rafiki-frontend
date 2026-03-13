@@ -18,9 +18,10 @@ from sqlalchemy import or_
 from sqlalchemy import func
 
 from app.database import get_db
-from app.dependencies import get_current_org_id, require_admin, require_manager
+from app.dependencies import get_current_org_id, require_admin, require_manager, require_it_admin
 from app.models.user import User  # users_legacy (UUID)
 from app.models.employee_profile import EmployeeProfile
+from app.models.org_profile import OrgProfile
 from app.models.timesheet import TimesheetEntry
 from app.models.objective import Objective
 from app.models.calendar_event import CalendarEvent
@@ -101,6 +102,8 @@ def _profile_dict(p: Optional[EmployeeProfile]) -> Optional[dict]:
 
         "job_title": p.job_title,
         "department": p.department,
+        "employment_type": p.employment_type,
+        "work_location": p.work_location,
         "job_description": p.job_description,
 
         "contract_type": p.contract_type,
@@ -168,6 +171,8 @@ class EmployeeCreateRequest(BaseModel):
     language_preference: Optional[str] = "en"  # ✅ NEW
     department: Optional[str] = None
     job_title: Optional[str] = None
+    employment_type: Optional[str] = None
+    work_location: Optional[str] = None
     manager_id: Optional[str] = None
 
     # employee_profiles (existing + new)
@@ -218,6 +223,8 @@ class EmployeeUpdateRequest(BaseModel):
     language_preference: Optional[str] = None  # ✅ NEW
     department: Optional[str] = None
     job_title: Optional[str] = None
+    employment_type: Optional[str] = None
+    work_location: Optional[str] = None
     manager_id: Optional[str] = None
     is_active: Optional[bool] = None
     gender: Optional[str] = None  # 'male' | 'female' | 'other' — used for leave entitlements
@@ -298,6 +305,35 @@ def list_employees(
     return [_combined(u, pmap.get(u.user_id)) for u in users]
 
 
+@router.get("/meta/options")
+def employee_form_options(
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+):
+    """Return configurable dropdown options for employee forms."""
+    profile = db.query(OrgProfile).filter(OrgProfile.org_id == org_id).first()
+    configured_departments = []
+    if profile and isinstance(getattr(profile, "departments", None), list):
+        configured_departments = [str(d).strip() for d in profile.departments if str(d).strip()]
+
+    existing_departments = [
+        row[0]
+        for row in db.query(User.department)
+        .filter(User.org_id == org_id, User.department.isnot(None))
+        .distinct()
+        .all()
+        if row[0]
+    ]
+    departments = sorted(set(configured_departments + existing_departments), key=lambda x: x.lower())
+
+    return {
+        "departments": departments,
+        "employment_types": ["Permanent", "Contract", "Part-time", "Trainee", "Intern", "Consultant"],
+        "work_locations": ["Office", "Remote", "Hybrid", "Field", "Branch"],
+        "roles": ["user", "manager", "hr_admin", "super_admin"],
+    }
+
+
 @router.post("/")
 def create_employee(
     body: EmployeeCreateRequest,
@@ -339,6 +375,8 @@ def create_employee(
         national_id=body.national_id,
         job_title=body.job_title,
         department=body.department,
+        employment_type=body.employment_type,
+        work_location=body.work_location,
         job_description=body.job_description,
 
         contract_type=body.contract_type,
@@ -743,7 +781,7 @@ def update_employee(
         "terms_of_service_title", "terms_of_service_text",
         "address_line1", "address_line2", "city", "state", "postal_code", "country",
         "emergency_contact_name", "emergency_contact_phone", "emergency_contact_relationship",
-        "notes", "gender",
+        "notes", "gender", "employment_type", "work_location",
     ]:
         val = getattr(body, field, None)
         if val is not None:
@@ -832,9 +870,9 @@ def get_credentials(
     user_id: uuid.UUID,
     db: Session = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org_id),
-    _role: str = Depends(require_admin),
+    _role: str = Depends(require_it_admin),
 ):
-    """Return the stored initial password for an employee (HR admin only)."""
+    """Return the stored initial password for an employee (IT/HR admin only)."""
     u = db.query(User).filter(User.user_id == user_id, User.org_id == org_id).first()
     if not u:
         raise HTTPException(status_code=404, detail="Employee not found")
@@ -851,7 +889,7 @@ def reset_employee_password(
     user_id: uuid.UUID,
     db: Session = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org_id),
-    _role: str = Depends(require_admin),
+    _role: str = Depends(require_it_admin),
 ):
     """Generate a new temporary password for an employee and store it on their profile."""
     u = db.query(User).filter(User.user_id == user_id, User.org_id == org_id).first()

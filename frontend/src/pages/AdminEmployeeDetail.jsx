@@ -33,6 +33,8 @@ export default function AdminEmployeeDetail() {
     name: "",
     job_title: "",
     department: "",
+    employment_type: "",
+    work_location: "",
     phone: "",
     gender: "",
     city: "",
@@ -44,6 +46,7 @@ export default function AdminEmployeeDetail() {
   const [resetMsg, setResetMsg] = useState(null);
   const [statusLoading, setStatusLoading] = useState(false);
   const [statusMsg, setStatusMsg] = useState(null);
+  const [formOptions, setFormOptions] = useState({ departments: [], employment_types: [], work_locations: [] });
 
   const fetchEmployee = useCallback(async () => {
     setLoading(true);
@@ -63,6 +66,8 @@ export default function AdminEmployeeDetail() {
           name: merged.name || "",
           job_title: merged.job_title || "",
           department: merged.department || "",
+          employment_type: merged.employment_type || "",
+          work_location: merged.work_location || "",
           phone: merged.phone || "",
           gender: merged.gender || "",
           city: merged.city || "",
@@ -76,6 +81,12 @@ export default function AdminEmployeeDetail() {
   }, [userId]);
 
   useEffect(() => { fetchEmployee(); }, [fetchEmployee]);
+  useEffect(() => {
+    authFetch(`${API}/api/v1/employees/meta/options`)
+      .then(r => (r && r.ok ? r.json() : null))
+      .then(d => d && setFormOptions(d))
+      .catch(() => {});
+  }, []);
 
   const handleSave = async () => {
     setSaving(true); setSaveMsg(""); setSaveErr("");
@@ -86,6 +97,8 @@ export default function AdminEmployeeDetail() {
           name: form.name || null,
           job_title: form.job_title || null,
           department: form.department || null,
+          employment_type: form.employment_type || null,
+          work_location: form.work_location || null,
           phone: form.phone || null,
           gender: form.gender || null,
           city: form.city || null,
@@ -244,7 +257,30 @@ export default function AdminEmployeeDetail() {
               </div>
               <div className="emp-form-field">
                 <label>Department</label>
-                <input value={form.department} onChange={e => setForm(f => ({ ...f, department: e.target.value }))} />
+                <select value={form.department} onChange={e => setForm(f => ({ ...f, department: e.target.value }))}>
+                  <option value="">Select department</option>
+                  {(formOptions.departments || []).map(dep => (
+                    <option key={dep} value={dep}>{dep}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="emp-form-field">
+                <label>Employment Type</label>
+                <select value={form.employment_type} onChange={e => setForm(f => ({ ...f, employment_type: e.target.value }))}>
+                  <option value="">Select employment type</option>
+                  {(formOptions.employment_types || []).map(t => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="emp-form-field">
+                <label>Work Location</label>
+                <select value={form.work_location} onChange={e => setForm(f => ({ ...f, work_location: e.target.value }))}>
+                  <option value="">Select work location</option>
+                  {(formOptions.work_locations || []).map(loc => (
+                    <option key={loc} value={loc}>{loc}</option>
+                  ))}
+                </select>
               </div>
               <div className="emp-form-field">
                 <label>Phone</label>
@@ -300,6 +336,8 @@ export default function AdminEmployeeDetail() {
               { label: "Full Name", value: employee.name || "—" },
                 { label: "Phone", value: employee.phone || "—" },
                 { label: "Department", value: employee.department || "—" },
+                { label: "Employment Type", value: employee.employment_type || "—" },
+                { label: "Work Location", value: employee.work_location || "—" },
                 { label: "Job Title", value: employee.job_title || "—" },
                 { label: "City / Office", value: employee.city || "—" },
                 { label: "Role", value: employee.role?.replace("_", " ") || "—" },

@@ -10,6 +10,7 @@ class OrgProfileCreate(BaseModel):
     org_purpose: str | None = None
     industry: str | None = None
     work_environment: str | None = None  # remote, hybrid, on-site, field-based
+    departments: list[str] = []
     benefits_tags: list[str] = []
 
 
@@ -17,6 +18,7 @@ class OrgProfileUpdate(BaseModel):
     org_purpose: Optional[str] = None
     industry: Optional[str] = None
     work_environment: Optional[str] = None
+    departments: Optional[list[str]] = None
     benefits_tags: Optional[list[str]] = None
 
 
@@ -25,6 +27,7 @@ class OrgProfileResponse(BaseModel):
     org_purpose: str | None = None
     industry: str | None = None
     work_environment: str | None = None
+    departments: list[str] | None = None
     benefits_tags: list[str] | None = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None

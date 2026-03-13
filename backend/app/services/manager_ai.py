@@ -9,6 +9,7 @@ import os
 import json
 import logging
 import httpx
+import uuid
 from sqlalchemy.orm import Session
 from app.models.performance import PerformanceEvaluation
 from app.models.org_profile import OrgProfile, RoleProfile
@@ -46,9 +47,9 @@ Respond in valid JSON with this structure:
 
 def assemble_manager_context(
     db: Session,
-    manager_user_id: int,
-    employee_user_id: int,
-    org_id: int,
+    manager_user_id: uuid.UUID,
+    employee_user_id: uuid.UUID,
+    org_id: uuid.UUID,
 ) -> dict:
     """Gather ONLY performance domain data. NEVER wellbeing data.
 
@@ -144,9 +145,9 @@ def _build_coaching_prompt(context: dict, concern: str) -> str:
 
 def generate_coaching_plan(
     db: Session,
-    manager_id: int,
-    employee_user_id: int,
-    org_id: int,
+    manager_id: uuid.UUID,
+    employee_user_id: uuid.UUID,
+    org_id: uuid.UUID,
     concern: str,
     employee_name: str = "",
 ) -> dict:

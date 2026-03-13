@@ -47,3 +47,4 @@ backend/static/uploads/
 
 # Claude
 .claude/
+.vercel

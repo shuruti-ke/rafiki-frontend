@@ -24,9 +24,11 @@ export default function AdminOrgConfig() {
     org_purpose: "",
     industry: "",
     work_environment: "",
+    departments: [],
     benefits_tags: [],
   });
   const [benefitInput, setBenefitInput] = useState("");
+  const [departmentInput, setDepartmentInput] = useState("");
 
   // Logo state
   const [logoUrl, setLogoUrl] = useState(null);
@@ -96,6 +98,7 @@ export default function AdminOrgConfig() {
           org_purpose: data.org_purpose || "",
           industry: data.industry || "",
           work_environment: data.work_environment || "",
+          departments: data.departments || [],
           benefits_tags: data.benefits_tags || [],
         });
       }
@@ -141,6 +144,21 @@ export default function AdminOrgConfig() {
     setOrgProfile({
       ...orgProfile,
       benefits_tags: orgProfile.benefits_tags.filter((t) => t !== tag),
+    });
+  }
+
+  function addDepartment() {
+    const dept = departmentInput.trim();
+    if (dept && !orgProfile.departments.includes(dept)) {
+      setOrgProfile({ ...orgProfile, departments: [...orgProfile.departments, dept] });
+    }
+    setDepartmentInput("");
+  }
+
+  function removeDepartment(dept) {
+    setOrgProfile({
+      ...orgProfile,
+      departments: orgProfile.departments.filter((d) => d !== dept),
     });
   }
 
@@ -320,6 +338,26 @@ export default function AdminOrgConfig() {
               onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addBenefit())}
             />
             <button className="btn btnTiny" onClick={addBenefit}>Add</button>
+          </div>
+
+          <label className="aoc-label">Departments (for employee onboarding dropdowns)</label>
+          <div className="aoc-tags">
+            {(orgProfile.departments || []).map((dept) => (
+              <span key={dept} className="aoc-tag">
+                {dept}
+                <button onClick={() => removeDepartment(dept)}>&times;</button>
+              </span>
+            ))}
+          </div>
+          <div className="aoc-tag-input-row">
+            <input
+              className="aoc-input"
+              placeholder="Add department (e.g. Finance, Operations)"
+              value={departmentInput}
+              onChange={(e) => setDepartmentInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addDepartment())}
+            />
+            <button className="btn btnTiny" onClick={addDepartment}>Add</button>
           </div>
 
           <div className="aoc-actions">

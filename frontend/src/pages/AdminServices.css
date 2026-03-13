@@ -1,0 +1,118 @@
+.admin-services-page {
+  padding: 1.5rem;
+  max-width: 900px;
+}
+
+.admin-services-header {
+  margin-bottom: 1.5rem;
+}
+
+.admin-services-header h1 {
+  font-size: 1.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.admin-services-header p {
+  color: var(--muted, #6b7280);
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.admin-services-loading,
+.admin-services-empty {
+  color: var(--muted, #6b7280);
+  padding: 2rem;
+}
+
+.admin-services-table-wrap {
+  overflow-x: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.admin-services-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.admin-services-table th,
+.admin-services-table td {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.admin-services-table th {
+  background: #f9fafb;
+  font-weight: 600;
+}
+
+.admin-services-desc {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-services-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.admin-services-modal {
+  background: white;
+  border-radius: 8px;
+  padding: 1.5rem;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.admin-services-modal h3 {
+  margin-bottom: 1rem;
+  font-size: 1.1rem;
+}
+
+.admin-services-modal label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 500;
+  margin-top: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+
+.admin-services-modal input,
+.admin-services-modal textarea,
+.admin-services-modal select {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  box-sizing: border-box;
+}
+
+.admin-services-price-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.admin-services-price-row input {
+  flex: 1;
+}
+
+.admin-services-price-row select {
+  width: 80px;
+}
+
+.admin-services-modal-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+  justify-content: flex-end;
+}

@@ -1,4 +1,5 @@
 import logging
+import uuid
 from sqlalchemy import text as sa_text
 from sqlalchemy.orm import Session
 from app.models.document import Document, DocumentChunk
@@ -6,7 +7,7 @@ from app.models.document import Document, DocumentChunk
 logger = logging.getLogger(__name__)
 
 
-def search_chunks(db: Session, org_id: int, query: str, limit: int = 5) -> list[dict]:
+def search_chunks(db: Session, org_id: uuid.UUID, query: str, limit: int = 5) -> list[dict]:
     """Search document chunks using PostgreSQL full-text search with ILIKE fallback."""
     if not query or not query.strip():
         return []
@@ -32,7 +33,7 @@ _STOP_WORDS = {
 }
 
 
-def _fts_search(db: Session, org_id: int, query: str, limit: int) -> list[dict]:
+def _fts_search(db: Session, org_id: uuid.UUID, query: str, limit: int) -> list[dict]:
     # Build an OR-style tsquery so chunks matching ANY keyword are returned,
     # ranked by how many keywords match. This replaces the old AND-style
     # plainto_tsquery which required ALL words to be present in a chunk.
@@ -73,7 +74,7 @@ def _fts_search(db: Session, org_id: int, query: str, limit: int) -> list[dict]:
     ]
 
 
-def _ilike_search(db: Session, org_id: int, query: str, limit: int) -> list[dict]:
+def _ilike_search(db: Session, org_id: uuid.UUID, query: str, limit: int) -> list[dict]:
     # Extract meaningful keywords and search for ANY of them individually
     words = [w for w in query.lower().split() if len(w) >= 3 and w not in _STOP_WORDS]
     if not words:

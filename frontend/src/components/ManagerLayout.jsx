@@ -46,6 +46,9 @@ export default function ManagerLayout() {
           <NavLink to="/manager/attendance" className={({ isActive }) => `mgr-nav-link ${isActive ? "active" : ""}`}>
             Team Attendance
           </NavLink>
+          <NavLink to="/manager/billing" className={({ isActive }) => `mgr-nav-link ${isActive ? "active" : ""}`}>
+            Billing
+          </NavLink>
         </nav>
 
         <div className="mgr-nav-footer">
