@@ -17,9 +17,6 @@ import AdminUsageReport from "./pages/AdminUsageReport.jsx";
 import AdminLeave from "./pages/AdminLeave.jsx";
 import AdminWellbeing from "./pages/AdminWellbeing.jsx";
 import AdminAttendancePage from "./pages/AdminAttendancePage.jsx";
-import AdminServices from "./pages/AdminServices.jsx";
-import AdminBilling from "./pages/AdminBilling.jsx";
-import AccountBillingPage from "./pages/AccountBillingPage.jsx";
 import AdminShiftManagement from "./pages/AdminShiftManagement.jsx";
 import AdminPerformance360 from "./pages/AdminPerformance360.jsx";
 import AdminWorkflows from "./pages/AdminWorkflows.jsx";
@@ -91,7 +88,6 @@ export default function App() {
           <Route path="/leave" element={<LeaveApplication />} />
           <Route path="/my-shifts" element={<MyShiftsPage />} />
           <Route path="/my-workflows" element={<MyWorkflowsPage />} />
-          <Route path="/account-billing" element={<AccountBillingPage />} />
         </Route>
 
         {/* Super Admin Portal */}
@@ -117,7 +113,6 @@ export default function App() {
           <Route path="calendar" element={<CalendarPage />} />
           <Route path="timesheets" element={<TimesheetPage />} />
           <Route path="attendance" element={<AdminAttendancePage />} />
-          <Route path="billing" element={<AccountBillingPage />} />
         </Route>
 
         {/* Admin HR Portal */}
@@ -146,8 +141,6 @@ export default function App() {
           <Route path="workflows" element={<AdminWorkflows />} />
           <Route path="reports-builder" element={<AdminReportsBuilder />} />
           <Route path="payroll-compliance" element={<AdminPayrollCompliance />} />
-          <Route path="services" element={<AdminServices />} />
-          <Route path="billing" element={<AdminBilling />} />
         </Route>
       </Routes>
     </BrowserRouter>

@@ -1,15 +1,8 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { API, authFetch } from "../api.js";
+import SuperAdminBillingPanel from "../components/SuperAdminBillingPanel.jsx";
 import "./SuperAdminDashboard.css";
-
-function getHeaders() {
-  const token = localStorage.getItem("rafiki_token");
-  return {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-}
 
 export default function SuperAdminDashboard() {
   const navigate = useNavigate();
@@ -187,6 +180,8 @@ export default function SuperAdminDashboard() {
           </table>
         )}
       </div>
+
+      <SuperAdminBillingPanel orgs={orgs} />
 
       {/* Onboard Company Modal */}
       {showOrgModal && (

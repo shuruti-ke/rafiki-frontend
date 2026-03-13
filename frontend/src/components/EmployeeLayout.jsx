@@ -38,12 +38,6 @@ const NAV_GROUPS = [
       { to: "/guided-paths", label: "Guided Paths", icon: "🧭" },
     ],
   },
-  {
-    label: "Account",
-    links: [
-      { to: "/account-billing", label: "Account & Billing", icon: "💳" },
-    ],
-  },
 ];
 
 /* ══════════════════════════════════════
@@ -485,7 +479,6 @@ const PAGE_TITLES = {
   "/knowledge-base": "Knowledge Base",
   "/my-documents": "My Documents",
   "/guided-paths": "Guided Paths",
-  "/account-billing": "Account & Billing",
 };
 
 /* ══════════════════════════════════════

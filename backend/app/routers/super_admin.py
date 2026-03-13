@@ -10,18 +10,20 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Query
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 import logging
 
 from app.database import get_db
-from app.dependencies import require_super_admin
+from app.dependencies import require_super_admin, get_current_user_id
 from app.models.user import Organization, User
 from app.models.document import Document
+from app.models.billing import Invoice, InvoiceLineItem, Payment
 from app.routers.auth import _hash_password
 from app.services.email import send_hr_admin_welcome_email
+from app.services.file_storage import save_upload, get_download_url
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +117,93 @@ class PlatformStats(BaseModel):
     total_users: int
     active_orgs: int
     total_documents: int
+
+
+class OrgBillingLineItemIn(BaseModel):
+    description: str
+    quantity: float = 1.0
+    unit_price_minor: int
+
+
+class OrgInvoiceCreate(BaseModel):
+    purpose: Optional[str] = None
+    due_date: Optional[str] = None
+    currency: str = "KES"
+    line_items: list[OrgBillingLineItemIn]
+
+
+def _next_invoice_number(org_id: UUID, db: Session) -> str:
+    year = datetime.utcnow().year
+    prefix = f"ORG-INV-{year}-"
+    last = (
+        db.query(Invoice.invoice_number)
+        .filter(Invoice.org_id == org_id, Invoice.invoice_number.like(f"{prefix}%"))
+        .order_by(Invoice.invoice_number.desc())
+        .first()
+    )
+    if last:
+        try:
+            num = int(last[0].split("-")[-1]) + 1
+        except (ValueError, IndexError):
+            num = 1
+    else:
+        num = 1
+    return f"{prefix}{num:05d}"
+
+
+def _receipt_number(payment: Payment) -> str:
+    stamp = (payment.received_at or datetime.utcnow()).year
+    return f"RCT-{stamp}-{str(payment.id).split('-')[0].upper()}"
+
+
+def _serialize_payment(payment: Payment) -> dict:
+    return {
+        "id": str(payment.id),
+        "receipt_number": _receipt_number(payment),
+        "method": payment.method,
+        "amount_minor": payment.amount_minor,
+        "amount": payment.amount_minor / 100,
+        "currency": payment.currency,
+        "reference": payment.reference,
+        "has_attachment": bool(payment.attachment_storage_key),
+        "received_at": payment.received_at.isoformat() if payment.received_at else None,
+    }
+
+
+def _org_billing_summary(org_id: UUID, db: Session) -> dict:
+    invoice_rows = db.query(Invoice).filter(Invoice.org_id == org_id).all()
+    invoice_ids = [inv.id for inv in invoice_rows]
+    paid_map = {}
+    if invoice_ids:
+        paid_rows = (
+            db.query(Payment.invoice_id, func.coalesce(func.sum(Payment.amount_minor), 0))
+            .filter(Payment.invoice_id.in_(invoice_ids))
+            .group_by(Payment.invoice_id)
+            .all()
+        )
+        paid_map = {row[0]: int(row[1] or 0) for row in paid_rows}
+    total_invoiced = sum(int(inv.amount_minor or 0) for inv in invoice_rows)
+    total_received = sum(paid_map.values())
+    pending_count = 0
+    overdue_count = 0
+    now = datetime.utcnow()
+    for inv in invoice_rows:
+        paid = paid_map.get(inv.id, 0)
+        if paid < int(inv.amount_minor or 0):
+            pending_count += 1
+            if inv.due_date and inv.due_date.replace(tzinfo=None) < now:
+                overdue_count += 1
+    return {
+        "total_invoiced_minor": total_invoiced,
+        "total_invoiced": total_invoiced / 100,
+        "total_received_minor": total_received,
+        "total_received": total_received / 100,
+        "outstanding_minor": total_invoiced - total_received,
+        "outstanding": (total_invoiced - total_received) / 100,
+        "invoice_count": len(invoice_rows),
+        "pending_invoice_count": pending_count,
+        "overdue_invoice_count": overdue_count,
+    }
 
 
 # ---------- Platform stats ----------
@@ -489,3 +578,437 @@ def activate_user(
     db.commit()
     db.refresh(user)
     return user
+
+
+# ---------- Organization billing ----------
+
+
+@router.get("/billing/overview")
+def super_admin_billing_overview(
+    role: str = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    orgs = db.query(Organization).order_by(Organization.name.asc()).all()
+    rows = []
+    total_invoiced_minor = 0
+    total_received_minor = 0
+    total_outstanding_minor = 0
+    for org in orgs:
+        summary = _org_billing_summary(org.org_id, db)
+        total_invoiced_minor += summary["total_invoiced_minor"]
+        total_received_minor += summary["total_received_minor"]
+        total_outstanding_minor += summary["outstanding_minor"]
+        rows.append(
+            {
+                "org_id": str(org.org_id),
+                "org_name": org.name,
+                "org_code": org.org_code,
+                **summary,
+            }
+        )
+    return {
+        "summary": {
+            "total_invoiced": total_invoiced_minor / 100,
+            "total_received": total_received_minor / 100,
+            "total_outstanding": total_outstanding_minor / 100,
+            "organization_count": len(rows),
+        },
+        "organizations": rows,
+    }
+
+
+@router.get("/orgs/{org_id}/billing/summary")
+def get_org_billing_summary(
+    org_id: UUID,
+    role: str = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    org = db.query(Organization).filter(Organization.org_id == org_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    return {"org_id": str(org_id), "org_name": org.name, **_org_billing_summary(org_id, db)}
+
+
+@router.get("/orgs/{org_id}/billing/invoices")
+def list_org_billing_invoices(
+    org_id: UUID,
+    status_filter: Optional[str] = Query(None, alias="status"),
+    role: str = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    org = db.query(Organization).filter(Organization.org_id == org_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    query = db.query(Invoice).filter(Invoice.org_id == org_id)
+    if status_filter:
+        query = query.filter(Invoice.status == status_filter.upper())
+    invoices = query.order_by(Invoice.created_at.desc()).all()
+    paid_rows = (
+        db.query(Payment.invoice_id, func.coalesce(func.sum(Payment.amount_minor), 0))
+        .filter(Payment.invoice_id.in_([inv.id for inv in invoices]) if invoices else False)
+        .group_by(Payment.invoice_id)
+        .all()
+    ) if invoices else []
+    paid_map = {row[0]: int(row[1] or 0) for row in paid_rows}
+    return {
+        "invoices": [
+            {
+                "id": str(inv.id),
+                "invoice_number": inv.invoice_number,
+                "org_id": str(inv.org_id),
+                "org_name": org.name,
+                "amount_minor": inv.amount_minor,
+                "amount": inv.amount_minor / 100,
+                "currency": inv.currency,
+                "status": inv.status,
+                "purpose": inv.purpose,
+                "due_date": inv.due_date.isoformat() if inv.due_date else None,
+                "created_at": inv.created_at.isoformat() if inv.created_at else None,
+                "total_paid_minor": paid_map.get(inv.id, 0),
+                "total_paid": paid_map.get(inv.id, 0) / 100,
+                "balance_minor": inv.amount_minor - paid_map.get(inv.id, 0),
+                "balance": (inv.amount_minor - paid_map.get(inv.id, 0)) / 100,
+            }
+            for inv in invoices
+        ]
+    }
+
+
+@router.post("/orgs/{org_id}/billing/invoices", status_code=201)
+def create_org_billing_invoice(
+    org_id: UUID,
+    payload: OrgInvoiceCreate,
+    role: str = Depends(require_super_admin),
+    current_user_id: UUID = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    org = db.query(Organization).filter(Organization.org_id == org_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    if not payload.line_items:
+        raise HTTPException(status_code=400, detail="At least one line item is required")
+    amount_minor = 0
+    normalized_items = []
+    for item in payload.line_items:
+        if not item.description.strip():
+            raise HTTPException(status_code=400, detail="Line item description is required")
+        if item.unit_price_minor < 0 or item.quantity <= 0:
+            raise HTTPException(status_code=400, detail="Line item amount must be positive")
+        line_amount = int(item.quantity * item.unit_price_minor)
+        amount_minor += line_amount
+        normalized_items.append(
+            {
+                "description": item.description.strip(),
+                "quantity": item.quantity,
+                "unit_price_minor": item.unit_price_minor,
+                "amount_minor": line_amount,
+            }
+        )
+    due_dt = None
+    if payload.due_date:
+        try:
+            due_dt = datetime.strptime(payload.due_date, "%Y-%m-%d")
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="due_date must be YYYY-MM-DD") from exc
+    invoice = Invoice(
+        org_id=org_id,
+        user_id=None,
+        invoice_number=_next_invoice_number(org_id, db),
+        amount_minor=amount_minor,
+        currency=payload.currency,
+        status="PENDING",
+        purpose=payload.purpose,
+        due_date=due_dt,
+        description_json={"line_items": normalized_items, "bill_to_org": org.name},
+        created_by_user_id=current_user_id,
+    )
+    db.add(invoice)
+    db.flush()
+    for item in normalized_items:
+        db.add(
+            InvoiceLineItem(
+                invoice_id=invoice.id,
+                service_id=None,
+                description=item["description"],
+                quantity=item["quantity"],
+                unit_price_minor=item["unit_price_minor"],
+                amount_minor=item["amount_minor"],
+            )
+        )
+    db.commit()
+    db.refresh(invoice)
+    return {
+        "id": str(invoice.id),
+        "invoice_number": invoice.invoice_number,
+        "org_id": str(org_id),
+        "org_name": org.name,
+        "amount": invoice.amount_minor / 100,
+        "amount_minor": invoice.amount_minor,
+        "currency": invoice.currency,
+        "status": invoice.status,
+        "purpose": invoice.purpose,
+    }
+
+
+@router.get("/billing/invoices/{invoice_id}")
+def get_super_admin_invoice_detail(
+    invoice_id: UUID,
+    role: str = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    org = db.query(Organization).filter(Organization.org_id == invoice.org_id).first()
+    line_items = db.query(InvoiceLineItem).filter(InvoiceLineItem.invoice_id == invoice.id).all()
+    payments = db.query(Payment).filter(Payment.invoice_id == invoice.id).order_by(Payment.received_at.desc()).all()
+    total_paid = sum(int(payment.amount_minor or 0) for payment in payments)
+    return {
+        "id": str(invoice.id),
+        "invoice_number": invoice.invoice_number,
+        "org_id": str(invoice.org_id),
+        "org_name": org.name if org else None,
+        "amount": invoice.amount_minor / 100,
+        "amount_minor": invoice.amount_minor,
+        "currency": invoice.currency,
+        "status": invoice.status,
+        "purpose": invoice.purpose,
+        "due_date": invoice.due_date.isoformat() if invoice.due_date else None,
+        "created_at": invoice.created_at.isoformat() if invoice.created_at else None,
+        "total_paid": total_paid / 100,
+        "total_paid_minor": total_paid,
+        "balance": (invoice.amount_minor - total_paid) / 100,
+        "balance_minor": invoice.amount_minor - total_paid,
+        "line_items": [
+            {
+                "description": item.description,
+                "quantity": float(item.quantity),
+                "unit_price_minor": item.unit_price_minor,
+                "amount_minor": item.amount_minor,
+                "unit_price": item.unit_price_minor / 100,
+                "amount": item.amount_minor / 100,
+            }
+            for item in line_items
+        ],
+        "payments": [_serialize_payment(payment) for payment in payments],
+    }
+
+
+@router.get("/billing/invoices/{invoice_id}/payments")
+def list_super_admin_invoice_payments(
+    invoice_id: UUID,
+    role: str = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    payments = db.query(Payment).filter(Payment.invoice_id == invoice_id).order_by(Payment.received_at.desc()).all()
+    return {"payments": [_serialize_payment(payment) for payment in payments]}
+
+
+@router.post("/billing/invoices/{invoice_id}/payments")
+def record_org_invoice_payment(
+    invoice_id: UUID,
+    method: str = Form(...),
+    amount_minor: int = Form(...),
+    currency: str = Form("KES"),
+    reference: Optional[str] = Form(None),
+    attachment: Optional[UploadFile] = File(None),
+    role: str = Depends(require_super_admin),
+    current_user_id: UUID = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    if invoice.status == "CANCELLED":
+        raise HTTPException(status_code=400, detail="Cannot record payment for a cancelled invoice")
+    if amount_minor <= 0:
+        raise HTTPException(status_code=400, detail="Payment amount must be positive")
+    method_upper = (method or "").strip().upper()
+    if method_upper not in {"MPESA", "CASH", "CHEQUE", "EFT_RTGS"}:
+        raise HTTPException(status_code=400, detail="Unsupported payment method")
+    attachment_key = None
+    attachment_name = None
+    if attachment and attachment.filename:
+        attachment_key, attachment_name, _ = save_upload(attachment, subfolder="super_admin_billing")
+    payment = Payment(
+        invoice_id=invoice.id,
+        org_id=invoice.org_id,
+        method=method_upper,
+        amount_minor=amount_minor,
+        currency=currency or invoice.currency or "KES",
+        reference=(reference or "").strip() or None,
+        attachment_storage_key=attachment_key,
+        attachment_original_name=attachment_name,
+        received_by_user_id=current_user_id,
+    )
+    db.add(payment)
+    db.flush()
+    total_paid = (
+        db.query(func.coalesce(func.sum(Payment.amount_minor), 0))
+        .filter(Payment.invoice_id == invoice.id)
+        .scalar()
+        or 0
+    )
+    invoice.status = "PAID" if total_paid >= invoice.amount_minor else "PENDING"
+    db.commit()
+    db.refresh(payment)
+    return {
+        **_serialize_payment(payment),
+        "invoice_status": invoice.status,
+        "invoice_balance": (invoice.amount_minor - total_paid) / 100,
+        "invoice_balance_minor": invoice.amount_minor - total_paid,
+    }
+
+
+@router.get("/billing/payments/{payment_id}/attachment")
+def get_super_admin_payment_attachment(
+    payment_id: UUID,
+    role: str = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    payment = db.query(Payment).filter(Payment.id == payment_id).first()
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    if not payment.attachment_storage_key:
+        raise HTTPException(status_code=404, detail="No attachment for this payment")
+    return {
+        "url": get_download_url(payment.attachment_storage_key, expires_in=3600),
+        "filename": payment.attachment_original_name or "attachment",
+    }
+
+
+@router.get("/billing/payments/{payment_id}/receipt")
+def get_payment_receipt(
+    payment_id: UUID,
+    role: str = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    payment = db.query(Payment).filter(Payment.id == payment_id).first()
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    invoice = db.query(Invoice).filter(Invoice.id == payment.invoice_id).first()
+    org = db.query(Organization).filter(Organization.org_id == payment.org_id).first()
+    return {
+        "receipt_number": _receipt_number(payment),
+        "invoice_number": invoice.invoice_number if invoice else None,
+        "organization_name": org.name if org else None,
+        "method": payment.method,
+        "amount": payment.amount_minor / 100,
+        "amount_minor": payment.amount_minor,
+        "currency": payment.currency,
+        "reference": payment.reference,
+        "received_at": payment.received_at.isoformat() if payment.received_at else None,
+    }
+
+
+@router.get("/orgs/{org_id}/billing/statement")
+def get_org_billing_statement(
+    org_id: UUID,
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    role: str = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    org = db.query(Organization).filter(Organization.org_id == org_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    invoice_query = db.query(Invoice).filter(Invoice.org_id == org_id)
+    payment_query = db.query(Payment).filter(Payment.org_id == org_id)
+    if start_date:
+        start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+        invoice_query = invoice_query.filter(Invoice.created_at >= start_dt)
+        payment_query = payment_query.filter(Payment.received_at >= start_dt)
+    if end_date:
+        end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+        invoice_query = invoice_query.filter(Invoice.created_at <= end_dt)
+        payment_query = payment_query.filter(Payment.received_at <= end_dt)
+    invoices = invoice_query.all()
+    payments = payment_query.all()
+    entries = []
+    for invoice in invoices:
+        entries.append(
+            {
+                "type": "invoice",
+                "date": invoice.created_at.isoformat() if invoice.created_at else None,
+                "reference": invoice.invoice_number,
+                "description": invoice.purpose or "Organization invoice",
+                "debit": invoice.amount_minor / 100,
+                "credit": 0,
+            }
+        )
+    invoice_map = {inv.id: inv for inv in invoices}
+    for payment in payments:
+        invoice = invoice_map.get(payment.invoice_id) or db.query(Invoice).filter(Invoice.id == payment.invoice_id).first()
+        entries.append(
+            {
+                "type": "receipt",
+                "date": payment.received_at.isoformat() if payment.received_at else None,
+                "reference": _receipt_number(payment),
+                "description": f"Receipt for {invoice.invoice_number if invoice else 'invoice'}",
+                "debit": 0,
+                "credit": payment.amount_minor / 100,
+            }
+        )
+    entries.sort(key=lambda entry: entry["date"] or "")
+    running_balance = 0.0
+    for entry in entries:
+        running_balance += float(entry["debit"] or 0) - float(entry["credit"] or 0)
+        entry["running_balance"] = round(running_balance, 2)
+    return {
+        "org_id": str(org_id),
+        "org_name": org.name,
+        "entries": entries,
+        "summary": _org_billing_summary(org_id, db),
+    }
+
+
+@router.get("/orgs/{org_id}/billing/reconciliation")
+def get_org_billing_reconciliation(
+    org_id: UUID,
+    role: str = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    org = db.query(Organization).filter(Organization.org_id == org_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    invoices = db.query(Invoice).filter(Invoice.org_id == org_id).order_by(Invoice.created_at.desc()).all()
+    rows = []
+    total_expected = 0
+    total_received = 0
+    for invoice in invoices:
+        paid_minor = (
+            db.query(func.coalesce(func.sum(Payment.amount_minor), 0))
+            .filter(Payment.invoice_id == invoice.id)
+            .scalar()
+            or 0
+        )
+        balance_minor = invoice.amount_minor - int(paid_minor)
+        rows.append(
+            {
+                "invoice_id": str(invoice.id),
+                "invoice_number": invoice.invoice_number,
+                "status": invoice.status,
+                "expected": invoice.amount_minor / 100,
+                "received": int(paid_minor) / 100,
+                "outstanding": balance_minor / 100,
+                "is_reconciled": balance_minor <= 0,
+                "due_date": invoice.due_date.isoformat() if invoice.due_date else None,
+            }
+        )
+        total_expected += invoice.amount_minor
+        total_received += int(paid_minor)
+    return {
+        "org_id": str(org_id),
+        "org_name": org.name,
+        "summary": {
+            "expected": total_expected / 100,
+            "received": total_received / 100,
+            "outstanding": (total_expected - total_received) / 100,
+            "invoice_count": len(rows),
+            "reconciled_count": sum(1 for row in rows if row["is_reconciled"]),
+        },
+        "rows": rows,
+    }
