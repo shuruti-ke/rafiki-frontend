@@ -15,6 +15,7 @@ from app.dependencies import (
     get_current_user_id,
     get_current_user,
     require_admin,
+    require_payroll_access,
     get_current_role,
 )
 from app.models.payroll import PayrollTemplate, PayrollBatch, Payslip
@@ -199,6 +200,8 @@ def run_monthly_payroll(
                 db, org_id, current_user_id, "run_monthly_payroll", "payroll_batch", batch.batch_id,
                 {"month": month, "employee_count": len(rows), "previous_distributed": str(existing.batch_id)},
             )
+            _auto_send_payroll_approval_request(db, org_id=org_id, batch=batch, requested_by_user_id=current_user_id)
+            db.refresh(batch)
             return {
                 **PayrollBatchResponse.model_validate(batch).model_dump(),
                 "replaced": False,
@@ -227,6 +230,8 @@ def run_monthly_payroll(
             db, org_id, current_user_id, "run_monthly_payroll", "payroll_batch", existing.batch_id,
             {"month": month, "employee_count": len(rows)},
         )
+        _auto_send_payroll_approval_request(db, org_id=org_id, batch=existing, requested_by_user_id=current_user_id)
+        db.refresh(existing)
         return {
             **PayrollBatchResponse.model_validate(existing).model_dump(),
             "replaced": True,
@@ -251,6 +256,8 @@ def run_monthly_payroll(
         db, org_id, current_user_id, "run_monthly_payroll", "payroll_batch", batch.batch_id,
         {"month": month, "employee_count": len(rows)},
     )
+    _auto_send_payroll_approval_request(db, org_id=org_id, batch=batch, requested_by_user_id=current_user_id)
+    db.refresh(batch)
     return {
         **PayrollBatchResponse.model_validate(batch).model_dump(),
         "replaced": False,
@@ -333,6 +340,48 @@ def _get_or_create_direct_conversation(
     db.flush()
 
     return convo
+
+
+def _auto_send_payroll_approval_request(
+    db: Session,
+    *,
+    org_id: uuid.UUID,
+    batch: PayrollBatch,
+    requested_by_user_id: uuid.UUID,
+) -> None:
+    """
+    After run_monthly or upload creates a batch in uploaded_needs_approval,
+    find an approver (can_approve_payroll or hr_admin/super_admin) and send them a DM.
+    """
+    approvers = (
+        db.query(User)
+        .filter(User.org_id == org_id, User.is_active == True)  # noqa: E712
+        .all()
+    )
+    # Prefer users with can_approve_payroll; fallback to hr_admin/super_admin
+    candidates = [
+        u for u in approvers
+        if u.user_id != requested_by_user_id
+        and (
+            bool(getattr(u, "can_approve_payroll", False))
+            or str(getattr(u, "role", "") or "") in _PRIVILEGED_ROLES
+        )
+    ]
+    candidates.sort(key=lambda u: (getattr(u, "name", None) or getattr(u, "email", "") or "").lower())
+    if not candidates:
+        return
+    approver = candidates[0]
+    _set_if_attr(batch, "approval_requested_to", approver.user_id)
+    _set_if_attr(batch, "approval_requested_by", requested_by_user_id)
+    _set_if_attr(batch, "approval_requested_at", _now_utc())
+    _send_payroll_approval_dm(
+        db,
+        org_id=org_id,
+        sender_id=requested_by_user_id,
+        recipient_id=approver.user_id,
+        batch=batch,
+    )
+    db.commit()
 
 
 def _send_payroll_approval_dm(
@@ -840,7 +889,7 @@ def upload_payroll(
 def list_batches(
     db: Session = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org_id),
-    _role: str = Depends(require_admin),
+    _user: User = Depends(require_payroll_access),
 ):
     return (
         db.query(PayrollBatch)
@@ -855,7 +904,7 @@ def get_batch(
     batch_id: uuid.UUID,
     db: Session = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org_id),
-    _role: str = Depends(require_admin),
+    _user: User = Depends(require_payroll_access),
 ):
     batch = (
         db.query(PayrollBatch)
@@ -872,7 +921,7 @@ def download_batch_file(
     batch_id: uuid.UUID,
     db: Session = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org_id),
-    _role: str = Depends(require_admin),
+    _user: User = Depends(require_payroll_access),
 ):
     """Return a presigned download URL for the uploaded payroll file."""
     batch = (

@@ -155,6 +155,20 @@ def require_admin(
     return role
 
 
+def require_payroll_access(
+    user: Optional[User] = Depends(get_current_user),
+) -> User:
+    """Require valid user with payroll access: admin role or can_process/approve/authorize payroll."""
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    role = str(getattr(user, "role", "") or "")
+    if role in ("hr_admin", "super_admin"):
+        return user
+    if bool(getattr(user, "can_process_payroll", False)) or bool(getattr(user, "can_approve_payroll", False)) or bool(getattr(user, "can_authorize_payroll", False)):
+        return user
+    raise HTTPException(status_code=403, detail="Payroll access required")
+
+
 def require_it_admin(
     authorization: Optional[str] = Header(default=None),
     x_user_role: Optional[str] = Header(default=None),
