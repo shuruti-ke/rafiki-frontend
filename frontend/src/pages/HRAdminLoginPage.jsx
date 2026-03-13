@@ -170,8 +170,11 @@ export default function HRAdminLoginPage() {
             {error && <div className="login-error">{error}</div>}
 
             <button className="login-btn" type="submit" disabled={loading}>
-              {loading ? "Signing in..." : "Sign In"}
+              {loading ? "Signing in..." : "Sign In to HR Admin Portal"}
             </button>
+            <div className="login-btn-helper">
+              Continue to employee management, payroll, reports, and HR administration.
+            </div>
           </form>
         )}
 

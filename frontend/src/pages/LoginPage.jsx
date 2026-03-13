@@ -126,8 +126,11 @@ export default function LoginPage() {
             </div>
             {error && <div className="login-error">{error}</div>}
             <button className="login-btn" type="submit" disabled={loading}>
-              {loading ? "Signing in..." : "Sign In"}
+              {loading ? "Signing in..." : `Sign In to ${orgName}`}
             </button>
+            <div className="login-btn-helper">
+              You will be taken to your employee, manager, or HR workspace after sign-in.
+            </div>
           </form>
         )}
 

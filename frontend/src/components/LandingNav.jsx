@@ -48,7 +48,7 @@ export default function LandingNav() {
             </a>
           ))}
           <Link to="/login" className="landing-nav__cta" onClick={() => setMenuOpen(false)}>
-            Login
+            Sign In
           </Link>
         </div>
 

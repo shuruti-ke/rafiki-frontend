@@ -70,8 +70,11 @@ export default function SuperAdminLoginPage() {
           </div>
           {error && <div className="login-error">{error}</div>}
           <button className="login-btn" type="submit" disabled={loading}>
-            {loading ? "Signing in..." : "Sign In"}
+            {loading ? "Signing in..." : "Sign In to Platform Admin"}
           </button>
+          <div className="login-btn-helper">
+            Continue to organization billing, platform oversight, and super admin controls.
+          </div>
         </form>
 
         <div className="login-links">

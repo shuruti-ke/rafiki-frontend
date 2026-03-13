@@ -101,6 +101,13 @@
   cursor: not-allowed;
 }
 
+.login-btn-helper {
+  margin-top: -6px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .login-error {
   color: var(--danger);
   font-size: 13px;

@@ -122,8 +122,11 @@ export default function EmployeeLoginPage() {
             </div>
             {error && <div className="login-error">{error}</div>}
             <button className="login-btn" type="submit" disabled={loading}>
-              {loading ? "Signing in..." : "Sign In"}
+              {loading ? "Signing in..." : "Sign In to Employee Portal"}
             </button>
+            <div className="login-btn-helper">
+              Continue to your employee dashboard, documents, leave, and HR support tools.
+            </div>
           </form>
         )}
 
