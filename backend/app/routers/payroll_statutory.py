@@ -1,6 +1,6 @@
 import json
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -295,7 +295,7 @@ def upsert_statutory_config(
             "org": str(org_id),
             "effective_from": effective_from,
             "previous_end": effective_from,
-            "updated_at": datetime.utcnow(),
+            "updated_at": datetime.now(timezone.utc),
         },
     )
     db.execute(
@@ -304,7 +304,7 @@ def upsert_statutory_config(
                (id, org_id, jurisdiction, tax_bands, personal_relief, insurance_relief_rate, insurance_relief_cap,
                 nssf_lower_limit, nssf_upper_limit, nssf_rate_tier1, nssf_rate_tier2, shif_rate, ahl_rate,
                 effective_from, effective_to, is_active, notes, created_by, updated_at)
-               VALUES (:id, :org, 'KE', :tax_bands::jsonb, :personal_relief, :insurance_relief_rate, :insurance_relief_cap,
+               VALUES (:id, :org, 'KE', CAST(:tax_bands AS jsonb), :personal_relief, :insurance_relief_rate, :insurance_relief_cap,
                        :nssf_lower_limit, :nssf_upper_limit, :nssf_rate_tier1, :nssf_rate_tier2, :shif_rate, :ahl_rate,
                        :effective_from, :effective_to, true, :notes, :created_by, :updated_at)"""
         ),
@@ -316,7 +316,7 @@ def upsert_statutory_config(
             "effective_from": effective_from,
             "effective_to": effective_to,
             "notes": notes,
-            "updated_at": datetime.utcnow(),
+            "updated_at": datetime.now(timezone.utc),
             **payload,
         },
     )
