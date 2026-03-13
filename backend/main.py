@@ -31,6 +31,26 @@ try:
 except Exception:
     pass
 
+# Sentry: init only when DSN is set (production/staging)
+_sentry_dsn = os.getenv("SENTRY_DSN", "").strip()
+if _sentry_dsn:
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+    from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+
+    sentry_sdk.init(
+        dsn=_sentry_dsn,
+        environment=os.getenv("APP_ENV", "production"),
+        traces_sample_rate=0.1,
+        profiles_sample_rate=0.1,
+        send_default_pii=False,
+        integrations=[
+            FastApiIntegration(transaction_style="endpoint"),
+            SqlalchemyIntegration(),
+        ],
+    )
+    logger.info("Sentry monitoring enabled")
+
 app = FastAPI(title="Rafiki API")
 
 # --------------------

@@ -50,6 +50,16 @@ python -m app.bootstrap_admin --email owner@example.com --password "Use-A-Strong
 
 See `docs/PRODUCTION_READINESS.md` for monitoring, backups, audit controls, and launch checklists.
 
+## Smoke Test (after deploy)
+
+```powershell
+python scripts/smoke_test.py https://rafiki-backend.onrender.com
+```
+
+## Backups
+
+See `docs/BACKUP_RESTORE.md`. Quick backup: `python scripts/backup_db.py` (requires `pg_dump` in PATH and `DATABASE_URL`).
+
 ## Endpoints
 
 | Method | Path      | Description                          |

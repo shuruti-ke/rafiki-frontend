@@ -28,6 +28,8 @@ services:
         sync: false
       - key: TAVILY_API_KEY
         sync: false
+      - key: SENTRY_DSN
+        sync: false
       - key: PYTHON_VERSION
         value: "3.12.0"
 

@@ -47,6 +47,12 @@ After first login:
 
 ## 3. Monitoring and Alerting
 
+### Sentry (optional)
+
+Set `SENTRY_DSN` in Render environment to enable error monitoring and performance tracing. Create a project at [sentry.io](https://sentry.io) and add the DSN as a secret.
+
+### Health endpoints
+
 Use the following endpoints:
 - `/health` for basic uptime probes
 - `/health/ready` for readiness probes that confirm database connectivity
@@ -59,13 +65,15 @@ Recommended alerts:
 - Abnormal latency on report, payroll, and file-processing endpoints
 
 Recommended tooling:
-- Error monitoring: Sentry or equivalent
+- Error monitoring: Sentry (configure via `SENTRY_DSN`) or equivalent
 - Uptime: Render health checks plus external uptime monitoring
 - Log aggregation: Datadog, Grafana Cloud, Logtail, or equivalent
 
 ## 4. Backups and Disaster Recovery
 
-Commercial production should not run on a free database tier.
+See [BACKUP_RESTORE.md](BACKUP_RESTORE.md) for scripts and procedures.
+
+Commercial production should not run on a free database tier. **Move the DB off free once clients start paying.**
 
 Minimum expectations:
 - Daily automated database backups
@@ -103,6 +111,16 @@ Known current improvement areas:
 - Large frontend bundle should be split further with route-level code splitting
 - Heavier reporting and payroll endpoints should be profiled with production-sized data
 - Background processing should be considered for expensive file parsing/report generation
+
+### Smoke test
+
+After deploy, run:
+
+```bash
+python scripts/smoke_test.py https://rafiki-backend.onrender.com
+```
+
+Or against a custom URL: `python scripts/smoke_test.py <BASE_URL>`
 
 Release gate before commercial launch:
 - CI green

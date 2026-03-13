@@ -33,11 +33,26 @@ jobs:
 
   backend:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
       PYTHONPATH: backend
       APP_ENV: test
       AUTH_MODE: jwt
       JWT_SECRET: ci-test-secret
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -52,6 +67,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r backend/requirements.txt
           pip install -r backend/requirements-dev.txt
+
+      - name: Run migrations
+        run: |
+          cd backend && alembic upgrade head
+
+      - name: Bootstrap test super admin
+        run: |
+          cd backend && python -m app.bootstrap_admin --email e2e@test.local --password "E2ETestPass123!" --name "E2E Admin" --org-name "E2E Org" --org-code "e2e-org"
 
       - name: Compile backend
         run: python -m compileall backend/app
