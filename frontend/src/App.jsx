@@ -21,7 +21,6 @@ import AdminShiftManagement from "./pages/AdminShiftManagement.jsx";
 import AdminPerformance360 from "./pages/AdminPerformance360.jsx";
 import AdminWorkflows from "./pages/AdminWorkflows.jsx";
 import AdminReportsBuilder from "./pages/AdminReportsBuilder.jsx";
-import AdminPayrollCompliance from "./pages/AdminPayrollCompliance.jsx";
 import EmployeeKnowledgeBase from "./pages/EmployeeKnowledgeBase.jsx";
 import EmployeeAnnouncements from "./pages/EmployeeAnnouncements.jsx";
 import GuidedPathExplore from "./pages/GuidedPathExplore.jsx";
@@ -140,7 +139,7 @@ export default function App() {
           <Route path="performance-360" element={<AdminPerformance360 />} />
           <Route path="workflows" element={<AdminWorkflows />} />
           <Route path="reports-builder" element={<AdminReportsBuilder />} />
-          <Route path="payroll-compliance" element={<AdminPayrollCompliance />} />
+          <Route path="payroll-compliance" element={<Navigate to="/admin/payroll?tab=compliance" replace />} />
         </Route>
       </Routes>
     </BrowserRouter>

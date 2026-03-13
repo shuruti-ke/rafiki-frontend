@@ -1,7 +1,117 @@
 import { useEffect, useState } from "react";
 import { API, authFetch } from "../api.js";
 
-export default function AdminPayrollCompliance() {
+const CONFIG_FIELDS = [
+  {
+    key: "effective_from",
+    label: "Effective From",
+    help: "The date this statutory configuration starts applying to payroll runs.",
+    type: "date",
+  },
+  {
+    key: "effective_to",
+    label: "Effective To",
+    help: "Optional end date. Leave blank if this is the active open-ended config.",
+    type: "date",
+  },
+  {
+    key: "personal_relief",
+    label: "PAYE Personal Relief",
+    help: "Monthly personal tax relief subtracted from PAYE before final tax is charged.",
+    type: "number",
+    step: "0.01",
+  },
+  {
+    key: "shif_rate",
+    label: "SHIF Rate",
+    help: "Percentage applied to gross pay for the Social Health Insurance Fund.",
+    type: "number",
+    step: "0.0001",
+  },
+  {
+    key: "ahl_rate",
+    label: "Affordable Housing Levy Rate",
+    help: "Percentage charged on gross pay for the housing levy.",
+    type: "number",
+    step: "0.0001",
+  },
+  {
+    key: "nssf_lower_limit",
+    label: "NSSF Lower Earnings Limit",
+    help: "Upper earnings cap used for the first NSSF contribution tier.",
+    type: "number",
+    step: "0.01",
+  },
+  {
+    key: "nssf_upper_limit",
+    label: "NSSF Upper Earnings Limit",
+    help: "Maximum pensionable earnings considered when calculating NSSF tier contributions.",
+    type: "number",
+    step: "0.01",
+  },
+  {
+    key: "nssf_rate_tier1",
+    label: "NSSF Tier 1 Rate",
+    help: "Contribution rate applied to earnings up to the lower NSSF limit.",
+    type: "number",
+    step: "0.0001",
+  },
+  {
+    key: "nssf_rate_tier2",
+    label: "NSSF Tier 2 Rate",
+    help: "Contribution rate applied to earnings between the lower and upper NSSF limits.",
+    type: "number",
+    step: "0.0001",
+  },
+];
+
+const CALCULATOR_FIELDS = [
+  {
+    key: "gross_pay",
+    label: "Gross Pay",
+    help: "Total monthly earnings before statutory deductions and voluntary deductions.",
+    type: "number",
+    step: "0.01",
+  },
+  {
+    key: "pension_contribution",
+    label: "Employee Pension Contribution",
+    help: "Any employee pension amount that should reduce taxable pay before PAYE.",
+    type: "number",
+    step: "0.01",
+  },
+  {
+    key: "insurance_relief_basis",
+    label: "Insurance Relief Basis",
+    help: "Monthly qualifying insurance premium used to compute insurance tax relief.",
+    type: "number",
+    step: "0.01",
+  },
+];
+
+function FieldCard({ label, help, children }) {
+  return (
+    <div style={{ border: "1px solid var(--border)", borderRadius: 12, padding: 12, background: "#fff" }}>
+      <div style={{ fontWeight: 700, marginBottom: 4 }}>{label}</div>
+      <div style={{ color: "var(--muted)", fontSize: 12, marginBottom: 10 }}>{help}</div>
+      {children}
+    </div>
+  );
+}
+
+function SectionShell({ title, description, children }) {
+  return (
+    <div style={{ display: "grid", gap: 12, border: "1px solid var(--border)", borderRadius: 12, padding: 16, background: "var(--panel)" }}>
+      <div>
+        <h3 style={{ margin: 0 }}>{title}</h3>
+        {description ? <p style={{ color: "var(--muted)", margin: "6px 0 0" }}>{description}</p> : null}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+export function PayrollCompliancePanel({ embedded = false }) {
   const [cfg, setCfg] = useState(null);
   const [versions, setVersions] = useState([]);
   const [batches, setBatches] = useState([]);
@@ -32,7 +142,9 @@ export default function AdminPayrollCompliance() {
     }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   const saveConfig = async () => {
     if (!cfg) return;
@@ -42,8 +154,10 @@ export default function AdminPayrollCompliance() {
     });
     const data = await res.json();
     setMsg(res.ok ? "Statutory config saved." : (data.detail || "Failed to save config"));
-    if (res.ok) setCfg(data.config);
-    if (res.ok) load();
+    if (res.ok) {
+      setCfg(data.config);
+      load();
+    }
   };
 
   const runCalc = async () => {
@@ -52,8 +166,12 @@ export default function AdminPayrollCompliance() {
       body: JSON.stringify(calc),
     });
     const data = await res.json();
-    if (res.ok) setResult(data.result);
-    else setMsg(data.detail || "Calculation failed");
+    if (res.ok) {
+      setResult(data.result);
+      setMsg("");
+    } else {
+      setMsg(data.detail || "Calculation failed");
+    }
   };
 
   const loadValidation = async () => {
@@ -64,45 +182,92 @@ export default function AdminPayrollCompliance() {
     ]);
     const validateData = await validateRes.json();
     const reportData = await reportRes.json();
-    if (validateRes.ok) setValidation(validateData);
-    else setMsg(validateData.detail || "Failed to validate payroll batch");
+    if (validateRes.ok) {
+      setValidation(validateData);
+      setMsg("");
+    } else {
+      setMsg(validateData.detail || "Failed to validate payroll batch");
+    }
     if (reportRes.ok) setReport(reportData);
   };
 
   return (
     <div style={{ maxWidth: 1200 }}>
-      <h1>Payroll Statutory Compliance (Kenya)</h1>
-      <p style={{ color: "var(--muted)" }}>
-        Version your statutory rules, validate parsed payroll batches against them, and generate filing-ready summaries for PAYE, NSSF, SHIF, and AHL.
-      </p>
+      {!embedded && (
+        <>
+          <h1>Payroll Statutory Compliance (Kenya)</h1>
+          <p style={{ color: "var(--muted)" }}>
+            Version your statutory rules, validate parsed payroll batches against them, and generate filing-ready summaries for PAYE, NSSF, SHIF, and AHL.
+          </p>
+        </>
+      )}
       {msg && <div style={{ marginBottom: 12 }}>{msg}</div>}
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(320px, 420px) 1fr", gap: 20, alignItems: "start" }}>
         <div style={{ display: "grid", gap: 16 }}>
           {cfg && (
-            <div style={{ display: "grid", gap: 8, marginBottom: 18, border: "1px solid var(--border)", borderRadius: 12, padding: 16, background: "var(--panel)" }}>
-              <h3 style={{ margin: 0 }}>Effective-Dated Config</h3>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                <input className="search" type="date" value={cfg.effective_from || ""} onChange={(e) => setCfg(c => ({ ...c, effective_from: e.target.value }))} placeholder="Effective from" />
-                <input className="search" type="date" value={cfg.effective_to || ""} onChange={(e) => setCfg(c => ({ ...c, effective_to: e.target.value }))} placeholder="Effective to" />
-                <input className="search" type="number" value={cfg.personal_relief} onChange={(e) => setCfg(c => ({ ...c, personal_relief: Number(e.target.value) }))} placeholder="Personal relief" />
-                <input className="search" type="number" step="0.0001" value={cfg.shif_rate} onChange={(e) => setCfg(c => ({ ...c, shif_rate: Number(e.target.value) }))} placeholder="SHIF rate" />
-                <input className="search" type="number" step="0.0001" value={cfg.ahl_rate} onChange={(e) => setCfg(c => ({ ...c, ahl_rate: Number(e.target.value) }))} placeholder="AHL rate" />
-                <input className="search" type="number" value={cfg.nssf_lower_limit} onChange={(e) => setCfg(c => ({ ...c, nssf_lower_limit: Number(e.target.value) }))} placeholder="NSSF lower limit" />
-                <input className="search" type="number" value={cfg.nssf_upper_limit} onChange={(e) => setCfg(c => ({ ...c, nssf_upper_limit: Number(e.target.value) }))} placeholder="NSSF upper limit" />
-                <input className="search" type="number" step="0.0001" value={cfg.nssf_rate_tier1} onChange={(e) => setCfg(c => ({ ...c, nssf_rate_tier1: Number(e.target.value) }))} placeholder="NSSF Tier 1 rate" />
-                <input className="search" type="number" step="0.0001" value={cfg.nssf_rate_tier2} onChange={(e) => setCfg(c => ({ ...c, nssf_rate_tier2: Number(e.target.value) }))} placeholder="NSSF Tier 2 rate" />
+            <SectionShell
+              title="Effective-Dated Statutory Config"
+              description="Keep historical payroll rules intact by saving dated versions whenever rates or tax relief rules change."
+            >
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                {CONFIG_FIELDS.map((field) => (
+                  <FieldCard key={field.key} label={field.label} help={field.help}>
+                    <input
+                      className="search"
+                      type={field.type}
+                      step={field.step}
+                      value={cfg[field.key] ?? ""}
+                      onChange={(e) =>
+                        setCfg((current) => ({
+                          ...current,
+                          [field.key]:
+                            field.type === "number"
+                              ? Number(e.target.value)
+                              : e.target.value,
+                        }))
+                      }
+                      placeholder={field.label}
+                      style={{ width: "100%", boxSizing: "border-box" }}
+                    />
+                  </FieldCard>
+                ))}
               </div>
-              <input className="search" value={cfg.notes || ""} onChange={(e) => setCfg(c => ({ ...c, notes: e.target.value }))} placeholder="Notes for this version" />
+              <FieldCard
+                label="Version Notes"
+                help="Document why this config exists, for example a government rate change or a new compliance period."
+              >
+                <input
+                  className="search"
+                  value={cfg.notes || ""}
+                  onChange={(e) => setCfg((current) => ({ ...current, notes: e.target.value }))}
+                  placeholder="Notes for this version"
+                  style={{ width: "100%", boxSizing: "border-box" }}
+                />
+              </FieldCard>
               <button className="btn btnPrimary" onClick={saveConfig}>Save Compliance Config</button>
-            </div>
+            </SectionShell>
           )}
 
-          <div style={{ display: "grid", gap: 8, border: "1px solid var(--border)", borderRadius: 12, padding: 16, background: "var(--panel)" }}>
-            <h3 style={{ margin: 0 }}>Statutory Calculator</h3>
-            <input className="search" type="number" value={calc.gross_pay} onChange={(e) => setCalc(c => ({ ...c, gross_pay: Number(e.target.value) }))} placeholder="Gross pay" />
-            <input className="search" type="number" value={calc.pension_contribution} onChange={(e) => setCalc(c => ({ ...c, pension_contribution: Number(e.target.value) }))} placeholder="Pension contribution" />
-            <input className="search" type="number" value={calc.insurance_relief_basis} onChange={(e) => setCalc(c => ({ ...c, insurance_relief_basis: Number(e.target.value) }))} placeholder="Insurance relief basis" />
+          <SectionShell
+            title="Statutory Calculator"
+            description="Use this quick estimator to understand how a single employee's gross pay flows into statutory deductions and estimated net pay."
+          >
+            <div style={{ display: "grid", gap: 10 }}>
+              {CALCULATOR_FIELDS.map((field) => (
+                <FieldCard key={field.key} label={field.label} help={field.help}>
+                  <input
+                    className="search"
+                    type={field.type}
+                    step={field.step}
+                    value={calc[field.key]}
+                    onChange={(e) => setCalc((current) => ({ ...current, [field.key]: Number(e.target.value) }))}
+                    placeholder={field.label}
+                    style={{ width: "100%", boxSizing: "border-box" }}
+                  />
+                </FieldCard>
+              ))}
+            </div>
             <button className="btn btnPrimary" onClick={runCalc}>Calculate</button>
             {result && (
               <div style={{ display: "grid", gap: 6 }}>
@@ -111,10 +276,12 @@ export default function AdminPayrollCompliance() {
                 ))}
               </div>
             )}
-          </div>
+          </SectionShell>
 
-          <div style={{ display: "grid", gap: 8, border: "1px solid var(--border)", borderRadius: 12, padding: 16, background: "var(--panel)" }}>
-            <h3 style={{ margin: 0 }}>Config Versions</h3>
+          <SectionShell
+            title="Config Versions"
+            description="Review the dated versions saved for this organization so payroll teams can audit which rates applied to which period."
+          >
             {versions.map((version) => (
               <div key={version.id || `${version.effective_from}-${version.updated_at || "default"}`} className="btn" style={{ textAlign: "left" }}>
                 <strong>{version.effective_from || "Default"}{version.is_active ? " · Active" : ""}</strong>
@@ -123,12 +290,14 @@ export default function AdminPayrollCompliance() {
                 </div>
               </div>
             ))}
-          </div>
+          </SectionShell>
         </div>
 
         <div style={{ display: "grid", gap: 16 }}>
-          <div style={{ display: "grid", gap: 8, border: "1px solid var(--border)", borderRadius: 12, padding: 16, background: "var(--panel)" }}>
-            <h3 style={{ margin: 0 }}>Batch Validation & Filing Pack</h3>
+          <SectionShell
+            title="Batch Validation & Filing Pack"
+            description="Validate a parsed payroll batch against the active statutory config, then review the filing summary before final payroll sign-off."
+          >
             <div style={{ display: "flex", gap: 8 }}>
               <select className="search" value={batchId} onChange={(e) => setBatchId(e.target.value)}>
                 <option value="">Select payroll batch</option>
@@ -183,9 +352,13 @@ export default function AdminPayrollCompliance() {
                 </div>
               </>
             )}
-          </div>
+          </SectionShell>
         </div>
       </div>
     </div>
   );
+}
+
+export default function AdminPayrollCompliance() {
+  return <PayrollCompliancePanel />;
 }

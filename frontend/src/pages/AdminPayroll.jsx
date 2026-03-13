@@ -1,18 +1,43 @@
 import { useState, useEffect, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import { API, authFetch } from "../api.js";
+import { PayrollCompliancePanel } from "./AdminPayrollCompliance.jsx";
 import "./AdminPayroll.css";
 
-const TABS = ["upload", "batches", "templates"];
-const TAB_LABELS = { upload: "Upload Payroll", batches: "History", templates: "Templates" };
+const TABS = ["upload", "batches", "templates", "compliance"];
+const TAB_LABELS = {
+  upload: "Payroll Run",
+  batches: "Batch History",
+  templates: "Templates",
+  compliance: "Compliance & Filing",
+};
 
 export default function AdminPayroll() {
-  const [tab, setTab] = useState("upload");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [tab, setTab] = useState(() => {
+    const requestedTab = searchParams.get("tab");
+    return TABS.includes(requestedTab) ? requestedTab : "upload";
+  });
+
+  useEffect(() => {
+    const requestedTab = searchParams.get("tab");
+    if (requestedTab && TABS.includes(requestedTab) && requestedTab !== tab) {
+      setTab(requestedTab);
+    }
+  }, [searchParams, tab]);
+
+  function handleTabChange(nextTab) {
+    setTab(nextTab);
+    setSearchParams(nextTab === "upload" ? {} : { tab: nextTab });
+  }
 
   return (
     <div className="ap-page">
       <div className="ap-header">
         <h1 className="ap-title">Payroll</h1>
-        <p className="ap-subtitle">Upload monthly payroll files, verify totals, and distribute payslips to employees.</p>
+        <p className="ap-subtitle">
+          Run payroll, validate statutory compliance, and complete filing review from one workspace.
+        </p>
       </div>
 
       <div className="ap-tabs">
@@ -20,7 +45,7 @@ export default function AdminPayroll() {
           <button
             key={t}
             className={`ap-tab ${tab === t ? "active" : ""}`}
-            onClick={() => setTab(t)}
+            onClick={() => handleTabChange(t)}
           >
             {TAB_LABELS[t]}
           </button>
@@ -31,6 +56,7 @@ export default function AdminPayroll() {
         {tab === "upload" && <UploadTab />}
         {tab === "batches" && <BatchesTab />}
         {tab === "templates" && <TemplatesTab />}
+        {tab === "compliance" && <PayrollCompliancePanel embedded />}
       </div>
     </div>
   );
