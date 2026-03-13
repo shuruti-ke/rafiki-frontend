@@ -1,14 +1,16 @@
 import json
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_current_org_id, get_current_user_id, require_admin, require_manager
+from app.services.file_storage import R2_BUCKET, _get_s3
+from app.services.payroll_parser import parse_payroll_file
 
 router = APIRouter(prefix="/api/v1/payroll/statutory", tags=["Payroll Statutory"])
 
@@ -31,6 +33,9 @@ class StatutoryConfigIn(BaseModel):
     nssf_rate_tier2: float = 0.06
     shif_rate: float = 0.0275
     ahl_rate: float = 0.015
+    effective_from: date | None = None
+    effective_to: date | None = None
+    notes: str | None = None
 
 
 class StatutoryCalcIn(BaseModel):
@@ -39,13 +44,7 @@ class StatutoryCalcIn(BaseModel):
     insurance_relief_basis: float = 0.0
 
 
-def _get_config(db: Session, org_id: uuid.UUID) -> dict:
-    row = db.execute(
-        text("SELECT * FROM payroll_statutory_configs WHERE org_id=:org"),
-        {"org": str(org_id)},
-    ).mappings().first()
-    if row:
-        return dict(row)
+def _default_config() -> dict:
     return {
         "tax_bands": DEFAULT_KE_BANDS,
         "personal_relief": 2400.0,
@@ -57,6 +56,144 @@ def _get_config(db: Session, org_id: uuid.UUID) -> dict:
         "nssf_rate_tier2": 0.06,
         "shif_rate": 0.0275,
         "ahl_rate": 0.015,
+        "effective_from": None,
+        "effective_to": None,
+        "is_active": True,
+        "notes": None,
+    }
+
+
+def _serialize_row(row) -> dict:
+    data = dict(row)
+    if isinstance(data.get("tax_bands"), str):
+        data["tax_bands"] = json.loads(data["tax_bands"])
+    return {**_default_config(), **data}
+
+
+def _get_config(db: Session, org_id: uuid.UUID, effective_on: date | None = None) -> dict:
+    effective_on = effective_on or date.today()
+    row = db.execute(
+        text(
+            """SELECT * FROM payroll_statutory_configs
+               WHERE org_id=:org
+                 AND is_active=true
+                 AND (effective_from IS NULL OR effective_from <= :effective_on)
+                 AND (effective_to IS NULL OR effective_to >= :effective_on)
+               ORDER BY effective_from DESC NULLS LAST, updated_at DESC
+               LIMIT 1"""
+        ),
+        {"org": str(org_id), "effective_on": effective_on},
+    ).mappings().first()
+    if row:
+        return _serialize_row(row)
+    return _default_config()
+
+
+def _extract_detail_amount(details: dict | None, *keys: str) -> float:
+    if not details:
+        return 0.0
+    lowered = {str(k).lower(): v for k, v in details.items()}
+    for key in keys:
+        for detail_key, value in lowered.items():
+            if key in detail_key:
+                try:
+                    cleaned = str(value).replace(",", "").replace(" ", "")
+                    cleaned = "".join(ch for ch in cleaned if ch.isdigit() or ch in ".-")
+                    return abs(float(cleaned)) if cleaned else 0.0
+                except ValueError:
+                    continue
+    return 0.0
+
+
+def _load_batch_parse_result(db: Session, org_id: uuid.UUID, batch_id: uuid.UUID) -> tuple[dict, dict]:
+    batch = db.execute(
+        text("SELECT * FROM payroll_batches WHERE batch_id=:batch_id AND org_id=:org"),
+        {"batch_id": str(batch_id), "org": str(org_id)},
+    ).mappings().first()
+    if not batch:
+        raise HTTPException(status_code=404, detail="Payroll batch not found")
+    if not batch.get("upload_storage_key"):
+        raise HTTPException(status_code=404, detail="Payroll file not found for this batch")
+    try:
+        obj = _get_s3().get_object(Bucket=R2_BUCKET, Key=batch["upload_storage_key"])
+        content = obj["Body"].read()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to read payroll batch: {exc}") from exc
+    filename = batch.get("upload_original_filename") or batch["upload_storage_key"]
+    result = parse_payroll_file(filename, content, db, org_id)
+    if "error" in result:
+        raise HTTPException(status_code=500, detail=result["error"])
+    return dict(batch), result
+
+
+def _build_batch_validation(result: dict, cfg: dict) -> dict:
+    rows = []
+    totals = {
+        "gross_pay": 0.0,
+        "declared_statutory": 0.0,
+        "expected_statutory": 0.0,
+        "declared_paye": 0.0,
+        "expected_paye": 0.0,
+        "declared_nssf": 0.0,
+        "expected_nssf": 0.0,
+        "declared_shif": 0.0,
+        "expected_shif": 0.0,
+        "declared_ahl": 0.0,
+        "expected_ahl": 0.0,
+    }
+    within_tolerance = 0
+    for entry in result.get("entries", []):
+        details = entry.get("details") or {}
+        declared_paye = _extract_detail_amount(details, "paye", "tax")
+        declared_nssf = _extract_detail_amount(details, "nssf")
+        declared_shif = _extract_detail_amount(details, "shif", "nhif")
+        declared_ahl = _extract_detail_amount(details, "ahl", "housing")
+        declared_total = round(declared_paye + declared_nssf + declared_shif + declared_ahl, 2)
+        expected = _calculate_kenya(
+            gross_pay=float(entry.get("gross_salary") or 0),
+            pension_contribution=0.0,
+            insurance_relief_basis=0.0,
+            cfg=cfg,
+        )
+        variance = round(declared_total - expected["statutory_total"], 2)
+        if abs(variance) <= 5:
+            within_tolerance += 1
+        rows.append(
+            {
+                "employee_name": entry.get("employee_name"),
+                "matched_user_id": entry.get("matched_user_id"),
+                "gross_pay": round(float(entry.get("gross_salary") or 0), 2),
+                "declared": {
+                    "paye": round(declared_paye, 2),
+                    "nssf": round(declared_nssf, 2),
+                    "shif": round(declared_shif, 2),
+                    "ahl": round(declared_ahl, 2),
+                    "statutory_total": declared_total,
+                },
+                "expected": expected,
+                "variance": variance,
+                "status": "ok" if abs(variance) <= 5 else "review",
+            }
+        )
+        totals["gross_pay"] += float(entry.get("gross_salary") or 0)
+        totals["declared_statutory"] += declared_total
+        totals["expected_statutory"] += expected["statutory_total"]
+        totals["declared_paye"] += declared_paye
+        totals["expected_paye"] += expected["paye"]
+        totals["declared_nssf"] += declared_nssf
+        totals["expected_nssf"] += expected["nssf"]
+        totals["declared_shif"] += declared_shif
+        totals["expected_shif"] += expected["shif"]
+        totals["declared_ahl"] += declared_ahl
+        totals["expected_ahl"] += expected["ahl"]
+    return {
+        "summary": {
+            "employee_count": len(rows),
+            "within_tolerance_count": within_tolerance,
+            "needs_review_count": len(rows) - within_tolerance,
+            **{k: round(v, 2) for k, v in totals.items()},
+        },
+        "rows": rows,
     }
 
 
@@ -111,11 +248,29 @@ def _calculate_kenya(gross_pay: float, pension_contribution: float, insurance_re
 
 @router.get("/config")
 def get_statutory_config(
+    effective_on: date | None = Query(default=None),
     db: Session = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org_id),
     _role: str = Depends(require_manager),
 ):
-    return {"config": _get_config(db, org_id)}
+    return {"config": _get_config(db, org_id, effective_on=effective_on)}
+
+
+@router.get("/config/versions")
+def list_statutory_config_versions(
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    _role: str = Depends(require_manager),
+):
+    rows = db.execute(
+        text(
+            """SELECT * FROM payroll_statutory_configs
+               WHERE org_id=:org
+               ORDER BY effective_from DESC NULLS LAST, created_at DESC"""
+        ),
+        {"org": str(org_id)},
+    ).mappings().all()
+    return {"versions": [_serialize_row(row) for row in rows]}
 
 
 @router.put("/config")
@@ -126,43 +281,47 @@ def upsert_statutory_config(
     user_id: uuid.UUID = Depends(get_current_user_id),
     _role: str = Depends(require_admin),
 ):
-    exists = db.execute(
-        text("SELECT id FROM payroll_statutory_configs WHERE org_id=:org"),
-        {"org": str(org_id)},
-    ).first()
     payload = body.model_dump()
-    if exists:
-        db.execute(
-            text(
-                """UPDATE payroll_statutory_configs SET
-                   tax_bands=:tax_bands::jsonb, personal_relief=:personal_relief,
-                   insurance_relief_rate=:insurance_relief_rate, insurance_relief_cap=:insurance_relief_cap,
-                   nssf_lower_limit=:nssf_lower_limit, nssf_upper_limit=:nssf_upper_limit,
-                   nssf_rate_tier1=:nssf_rate_tier1, nssf_rate_tier2=:nssf_rate_tier2,
-                   shif_rate=:shif_rate, ahl_rate=:ahl_rate, updated_at=:updated_at
-                   WHERE org_id=:org"""
-            ),
-            {**payload, "tax_bands": json.dumps(payload["tax_bands"]), "updated_at": datetime.utcnow(), "org": str(org_id)},
-        )
-    else:
-        db.execute(
-            text(
-                """INSERT INTO payroll_statutory_configs
-                   (id, org_id, jurisdiction, tax_bands, personal_relief, insurance_relief_rate, insurance_relief_cap,
-                    nssf_lower_limit, nssf_upper_limit, nssf_rate_tier1, nssf_rate_tier2, shif_rate, ahl_rate, created_by)
-                   VALUES (:id, :org, 'KE', :tax_bands::jsonb, :personal_relief, :insurance_relief_rate, :insurance_relief_cap,
-                           :nssf_lower_limit, :nssf_upper_limit, :nssf_rate_tier1, :nssf_rate_tier2, :shif_rate, :ahl_rate, :created_by)"""
-            ),
-            {
-                "id": str(uuid.uuid4()),
-                "org": str(org_id),
-                "created_by": str(user_id),
-                "tax_bands": json.dumps(payload["tax_bands"]),
-                **payload,
-            },
-        )
+    effective_from = payload.pop("effective_from") or date.today()
+    effective_to = payload.pop("effective_to", None)
+    notes = payload.pop("notes", None)
+    db.execute(
+        text(
+            """UPDATE payroll_statutory_configs
+               SET is_active=false, effective_to=COALESCE(effective_to, :previous_end), updated_at=:updated_at
+               WHERE org_id=:org AND is_active=true AND (effective_from IS NULL OR effective_from <= :effective_from)"""
+        ),
+        {
+            "org": str(org_id),
+            "effective_from": effective_from,
+            "previous_end": effective_from,
+            "updated_at": datetime.utcnow(),
+        },
+    )
+    db.execute(
+        text(
+            """INSERT INTO payroll_statutory_configs
+               (id, org_id, jurisdiction, tax_bands, personal_relief, insurance_relief_rate, insurance_relief_cap,
+                nssf_lower_limit, nssf_upper_limit, nssf_rate_tier1, nssf_rate_tier2, shif_rate, ahl_rate,
+                effective_from, effective_to, is_active, notes, created_by, updated_at)
+               VALUES (:id, :org, 'KE', :tax_bands::jsonb, :personal_relief, :insurance_relief_rate, :insurance_relief_cap,
+                       :nssf_lower_limit, :nssf_upper_limit, :nssf_rate_tier1, :nssf_rate_tier2, :shif_rate, :ahl_rate,
+                       :effective_from, :effective_to, true, :notes, :created_by, :updated_at)"""
+        ),
+        {
+            "id": str(uuid.uuid4()),
+            "org": str(org_id),
+            "created_by": str(user_id),
+            "tax_bands": json.dumps(payload["tax_bands"]),
+            "effective_from": effective_from,
+            "effective_to": effective_to,
+            "notes": notes,
+            "updated_at": datetime.utcnow(),
+            **payload,
+        },
+    )
     db.commit()
-    return {"message": "Statutory config saved", "config": _get_config(db, org_id)}
+    return {"message": "Statutory config saved", "config": _get_config(db, org_id, effective_on=effective_from)}
 
 
 @router.post("/calculate")
@@ -195,3 +354,56 @@ def calculate_statutory_batch(
         for r in rows
     ]
     return {"jurisdiction": "KE", "results": results}
+
+
+@router.post("/validate/batch/{batch_id}")
+def validate_payroll_batch_statutory(
+    batch_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    _role: str = Depends(require_manager),
+):
+    batch, result = _load_batch_parse_result(db, org_id, batch_id)
+    effective_on = date(int(batch["period_year"]), int(batch["period_month"]), 1)
+    cfg = _get_config(db, org_id, effective_on=effective_on)
+    validation = _build_batch_validation(result, cfg)
+    return {
+        "batch_id": str(batch_id),
+        "period": f'{batch["period_year"]}-{int(batch["period_month"]):02d}',
+        "config_effective_from": cfg.get("effective_from"),
+        **validation,
+    }
+
+
+@router.get("/reports/batch/{batch_id}")
+def statutory_batch_report(
+    batch_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    _role: str = Depends(require_manager),
+):
+    batch, result = _load_batch_parse_result(db, org_id, batch_id)
+    effective_on = date(int(batch["period_year"]), int(batch["period_month"]), 1)
+    cfg = _get_config(db, org_id, effective_on=effective_on)
+    validation = _build_batch_validation(result, cfg)
+    summary = validation["summary"]
+    return {
+        "batch_id": str(batch_id),
+        "period": f'{batch["period_year"]}-{int(batch["period_month"]):02d}',
+        "filing_summary": {
+            "paye": summary["declared_paye"],
+            "nssf": summary["declared_nssf"],
+            "shif": summary["declared_shif"],
+            "ahl": summary["declared_ahl"],
+            "total_statutory": summary["declared_statutory"],
+        },
+        "expected_summary": {
+            "paye": summary["expected_paye"],
+            "nssf": summary["expected_nssf"],
+            "shif": summary["expected_shif"],
+            "ahl": summary["expected_ahl"],
+            "total_statutory": summary["expected_statutory"],
+        },
+        "review_status": "ready" if summary["needs_review_count"] == 0 else "review_required",
+        "rows": validation["rows"],
+    }

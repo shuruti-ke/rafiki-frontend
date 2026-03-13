@@ -37,6 +37,8 @@ import AttendancePage from "./pages/AttendancePage.jsx";
 import EmployeeDashboard from "./pages/EmployeeDashboard.jsx";
 import PersonalUsageReport from "./pages/PersonalUsageReport.jsx";
 import LeaveApplication from "./pages/LeaveApplication.jsx";
+import MyShiftsPage from "./pages/MyShiftsPage.jsx";
+import MyWorkflowsPage from "./pages/MyWorkflowsPage.jsx";
 import ManagerLayout from "./components/ManagerLayout.jsx";
 import ManagerDashboard from "./pages/ManagerDashboard.jsx";
 import ManagerTeam from "./pages/ManagerTeam.jsx";
@@ -87,6 +89,8 @@ export default function App() {
           <Route path="/meetings" element={<MeetingsPage />} />
           <Route path="/my-report" element={<PersonalUsageReport />} />
           <Route path="/leave" element={<LeaveApplication />} />
+          <Route path="/my-shifts" element={<MyShiftsPage />} />
+          <Route path="/my-workflows" element={<MyWorkflowsPage />} />
           <Route path="/account-billing" element={<AccountBillingPage />} />
         </Route>
 

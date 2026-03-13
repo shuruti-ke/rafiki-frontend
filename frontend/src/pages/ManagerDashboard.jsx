@@ -46,6 +46,8 @@ function Counter({ value }) {
 
 export default function ManagerDashboard() {
   const [dash, setDash]     = useState(null);
+  const [shiftDash, setShiftDash] = useState(null);
+  const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
   const user = JSON.parse(localStorage.getItem("rafiki_user") || "{}");
   const name = user.full_name || user.name || "Manager";
@@ -53,10 +55,21 @@ export default function ManagerDashboard() {
   const initials = name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
 
   useEffect(() => {
-    authFetch(`${API}/api/v1/manager/dashboard`)
-      .then(r => r.ok ? r.json() : null)
-      .then(setDash)
-      .catch(() => setDash(null))
+    Promise.allSettled([
+      authFetch(`${API}/api/v1/manager/dashboard`).then(r => r.ok ? r.json() : null),
+      authFetch(`${API}/api/v1/shifts/dashboard`).then(r => r.ok ? r.json() : null),
+      authFetch(`${API}/api/v1/performance-360/my-reviews`).then(r => r.ok ? r.json() : { reviews: [] }),
+    ])
+      .then(([dashR, shiftR, reviewR]) => {
+        setDash(dashR.status === "fulfilled" ? dashR.value : null);
+        setShiftDash(shiftR.status === "fulfilled" ? shiftR.value : null);
+        setReviews(reviewR.status === "fulfilled" ? (reviewR.value.reviews || []) : []);
+      })
+      .catch(() => {
+        setDash(null);
+        setShiftDash(null);
+        setReviews([]);
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -70,7 +83,7 @@ export default function ManagerDashboard() {
     { value: d.team_size || 0,              label: "Team Members",     icon: "👥", color: "#8b5cf6", accent: "rgba(139,92,246,.15)"  },
     { value: d.avg_performance_rating || 0, label: "Avg Rating",       icon: "⭐", color: "#fbbf24", accent: "rgba(251,191,36,.15)"  },
     { value: d.coaching_sessions_count || 0,label: "Coaching Sessions", icon: "🧠", color: "#1fbfb8", accent: "rgba(31,191,184,.15)"  },
-    { value: d.upcoming_deadlines || 0,     label: "Deadlines",        icon: "🗓️", color: "#f87171", accent: "rgba(248,113,113,.15)" },
+    { value: shiftDash?.pending_swap_requests || reviews.filter(r => r.status === "pending").length || 0, label: "Pending Actions", icon: "🗓️", color: "#f87171", accent: "rgba(248,113,113,.15)" },
   ];
 
   if (loading) {
@@ -193,6 +206,56 @@ export default function ManagerDashboard() {
                   </div>
                 );
               })}
+            </div>
+          )}
+        </div>
+
+        <div className="md-card">
+          <div className="md-card-head">
+            <span className="md-card-title">📆 Shift Coverage</span>
+          </div>
+          {!shiftDash ? (
+            <div className="md-empty">No shift insights available.</div>
+          ) : (
+            <div className="md-rows">
+              <div className="md-row">
+                <div className="md-row-info">
+                  <span className="md-row-name">Assignments next 7 days</span>
+                  <span className="md-row-sub">Planned coverage window</span>
+                </div>
+                <span className="md-chip" style={{ color: "#8b5cf6", background: "rgba(139,92,246,.12)" }}>{shiftDash.assignments_next_7_days || 0}</span>
+              </div>
+              <div className="md-row">
+                <div className="md-row-info">
+                  <span className="md-row-name">Pending swaps</span>
+                  <span className="md-row-sub">Requests awaiting review</span>
+                </div>
+                <span className="md-chip" style={{ color: "#f87171", background: "rgba(248,113,113,.12)" }}>{shiftDash.pending_swap_requests || 0}</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="md-card">
+          <div className="md-card-head">
+            <span className="md-card-title">📝 Review Inbox</span>
+          </div>
+          {reviews.length === 0 ? (
+            <div className="md-empty">No 360 reviews assigned to you right now.</div>
+          ) : (
+            <div className="md-rows">
+              {reviews.slice(0, 5).map((review) => (
+                <div key={review.id} className="md-row">
+                  <div className="md-row-avatar">{(review.employee_name || "?")[0]}</div>
+                  <div className="md-row-info">
+                    <span className="md-row-name">{review.employee_name}</span>
+                    <span className="md-row-sub">{review.cycle_name} · {review.reviewer_type}</span>
+                  </div>
+                  <span className="md-chip" style={review.status === "submitted" ? { color: "#34d399", background: "rgba(52,211,153,.12)" } : { color: "#fbbf24", background: "rgba(251,191,36,.12)" }}>
+                    {review.status}
+                  </span>
+                </div>
+              ))}
             </div>
           )}
         </div>

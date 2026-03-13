@@ -373,17 +373,38 @@ export default function AdminDashboard() {
   const [data,          setData]          = useState(null);
   const [loading,       setLoading]       = useState(true);
   const [showAnalytics, setShowAnalytics] = useState(false);
+  const [widgets,       setWidgets]       = useState([]);
 
   useEffect(() => {
     Promise.allSettled([
       authFetch(`${API}/api/v1/employees/analytics`).then(r => r.ok ? r.json() : null),
       authFetch(`${API}/api/v1/employees/`).then(r => r.ok ? r.json() : []),
+      authFetch(`${API}/api/v1/custom-reports/`).then(r => r.ok ? r.json() : { reports: [] }),
     ]).then(([analyticsR, empListR]) => {
       const analytics = analyticsR.status === "fulfilled" ? analyticsR.value : null;
       const empList   = empListR.status   === "fulfilled" ? empListR.value   : [];
       const empCount  = Array.isArray(empList) ? empList.length : (empList?.total ?? null);
       setData({ ...analytics, _empCount: empCount });
     }).catch(() => {}).finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    authFetch(`${API}/api/v1/custom-reports/`)
+      .then(r => r.ok ? r.json() : { reports: [] })
+      .then(async (payload) => {
+        const reports = (payload.reports || []).filter((report) => report.config?.dashboard_widget).slice(0, 3);
+        const results = await Promise.all(
+          reports.map(async (report) => {
+            const res = await authFetch(`${API}/api/v1/custom-reports/run`, {
+              method: "POST",
+              body: JSON.stringify({ saved_report_id: report.id }),
+            });
+            return res.ok ? { report, result: await res.json() } : null;
+          })
+        );
+        setWidgets(results.filter(Boolean));
+      })
+      .catch(() => setWidgets([]));
   }, []);
 
   if (loading) return <div className="adash-loading">Loading analytics...</div>;
@@ -517,6 +538,27 @@ export default function AdminDashboard() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {widgets.length > 0 && (
+        <div className="adash-charts" style={{ marginTop: 0 }}>
+          {widgets.map(({ report, result }) => (
+            <div key={report.id} className="adash-chart">
+              <div className="adash-chart-title">{report.name}</div>
+              <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10 }}>
+                {(result.rows || []).length} row(s) · {report.config?.dataset || "custom"}
+              </div>
+              <div style={{ display: "grid", gap: 8 }}>
+                {(result.rows || []).slice(0, 5).map((row, idx) => (
+                  <div key={idx} className="adash-ts-row adash-ts-row--ok" style={{ justifyContent: "space-between" }}>
+                    <span>{Object.values(row)[0] ?? `Row ${idx + 1}`}</span>
+                    <span style={{ color: "var(--muted)" }}>{Object.values(row)[1] ?? ""}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 

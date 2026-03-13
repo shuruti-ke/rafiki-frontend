@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api/v1/workflows", tags=["Onboarding Offboarding"])
 
 class WorkflowStartIn(BaseModel):
     title: Optional[str] = None
-    tasks: Optional[list[str]] = None
+    tasks: Optional[list[dict | str]] = None
 
 
 DEFAULT_ONBOARDING_TASKS = [
@@ -33,6 +33,36 @@ DEFAULT_OFFBOARDING_TASKS = [
 ]
 
 
+def _normalize_tasks(raw_tasks: list[dict | str] | None, workflow_type: str) -> list[dict]:
+    default_owner = "employee" if workflow_type == "onboarding" else "admin"
+    defaults = DEFAULT_ONBOARDING_TASKS if workflow_type == "onboarding" else DEFAULT_OFFBOARDING_TASKS
+    source = raw_tasks or defaults
+    normalized = []
+    for item in source:
+        if isinstance(item, str):
+            title = item.strip()
+            if title:
+                normalized.append({"title": title, "owner_type": default_owner, "due_date": date.today()})
+            continue
+        if isinstance(item, dict):
+            title = str(item.get("title") or "").strip()
+            if not title:
+                continue
+            owner_type = str(item.get("owner_type") or default_owner)
+            due_value = item.get("due_date")
+            if isinstance(due_value, str) and due_value:
+                try:
+                    due_value = date.fromisoformat(due_value)
+                except ValueError:
+                    due_value = date.today()
+            normalized.append({
+                "title": title,
+                "owner_type": owner_type,
+                "due_date": due_value or date.today(),
+            })
+    return normalized
+
+
 @router.post("/onboarding/{user_id}")
 def start_onboarding(
     user_id: uuid.UUID,
@@ -43,7 +73,7 @@ def start_onboarding(
     _role: str = Depends(require_admin),
 ):
     title = body.title or "Employee Onboarding"
-    tasks = body.tasks or DEFAULT_ONBOARDING_TASKS
+    tasks = _normalize_tasks(body.tasks, "onboarding")
     workflow_id = str(uuid.uuid4())
     db.execute(
         text(
@@ -58,9 +88,15 @@ def start_onboarding(
             text(
                 """INSERT INTO employee_workflow_tasks
                    (id, workflow_id, title, owner_type, due_date, is_completed)
-                   VALUES (:id, :workflow_id, :title, 'employee', :due, false)"""
+                   VALUES (:id, :workflow_id, :title, :owner_type, :due, false)"""
             ),
-            {"id": str(uuid.uuid4()), "workflow_id": workflow_id, "title": t, "due": date.today()},
+            {
+                "id": str(uuid.uuid4()),
+                "workflow_id": workflow_id,
+                "title": t["title"],
+                "owner_type": t["owner_type"],
+                "due": t["due_date"],
+            },
         )
     db.commit()
     return {"workflow_id": workflow_id, "workflow_type": "onboarding", "task_count": len(tasks)}
@@ -76,7 +112,7 @@ def start_offboarding(
     _role: str = Depends(require_admin),
 ):
     title = body.title or "Employee Offboarding"
-    tasks = body.tasks or DEFAULT_OFFBOARDING_TASKS
+    tasks = _normalize_tasks(body.tasks, "offboarding")
     workflow_id = str(uuid.uuid4())
     db.execute(
         text(
@@ -91,9 +127,15 @@ def start_offboarding(
             text(
                 """INSERT INTO employee_workflow_tasks
                    (id, workflow_id, title, owner_type, due_date, is_completed)
-                   VALUES (:id, :workflow_id, :title, 'admin', :due, false)"""
+                   VALUES (:id, :workflow_id, :title, :owner_type, :due, false)"""
             ),
-            {"id": str(uuid.uuid4()), "workflow_id": workflow_id, "title": t, "due": date.today()},
+            {
+                "id": str(uuid.uuid4()),
+                "workflow_id": workflow_id,
+                "title": t["title"],
+                "owner_type": t["owner_type"],
+                "due": t["due_date"],
+            },
         )
     db.commit()
     return {"workflow_id": workflow_id, "workflow_type": "offboarding", "task_count": len(tasks)}

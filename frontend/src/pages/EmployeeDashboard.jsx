@@ -35,6 +35,8 @@ const QUICK_ACTIONS = [
   { to: "/chat",        icon: "💬", label: "Ask Rafiki",     color: C.purple },
   { to: "/timesheet",   icon: "⏱️", label: "Log Time",       color: C.teal   },
   { to: "/leave",       icon: "🌴", label: "Request Leave",  color: C.green  },
+  { to: "/my-shifts",   icon: "🗓️", label: "My Shifts",      color: C.yellow },
+  { to: "/my-workflows",icon: "✅", label: "My Workflows",   color: C.teal   },
   { to: "/objectives",  icon: "🎯", label: "My Objectives",  color: C.blue   },
   { to: "/my-documents",icon: "📄", label: "My Documents",   color: C.yellow },
   { to: "/guided-paths",icon: "🧭", label: "Learning Paths", color: C.red    },
@@ -116,6 +118,8 @@ export default function EmployeeDashboard() {
   const [announcements,  setAnnouncements]  = useState([]);
   const [weeklyHours,    setWeeklyHours]    = useState(null);
   const [leaveBalance,   setLeaveBalance]   = useState(null);
+  const [shifts,         setShifts]         = useState([]);
+  const [workflows,      setWorkflows]      = useState([]);
   const [loading,        setLoading]        = useState(true);
 
   useEffect(() => {
@@ -133,7 +137,9 @@ export default function EmployeeDashboard() {
       authFetch(`${API}/api/v1/announcements/`).then(r => r.ok ? r.json() : []),
       authFetch(`${API}/api/v1/timesheets/summary/weekly?week_start=${weekStart}`).then(r => r.ok ? r.json() : null),
       authFetch(`${API}/api/v1/leave/balance`).then(r => r.ok ? r.json() : null),
-    ]).then(([objR, evR, annR, tsR, lbR]) => {
+      authFetch(`${API}/api/v1/shifts/my?days=14`).then(r => r.ok ? r.json() : { assignments: [] }),
+      authFetch(`${API}/api/v1/workflows/my`).then(r => r.ok ? r.json() : { workflows: [] }),
+    ]).then(([objR, evR, annR, tsR, lbR, shiftR, workflowR]) => {
       if (objR.status === "fulfilled") setObjectives(Array.isArray(objR.value) ? objR.value : []);
       if (evR.status  === "fulfilled") setEvents(Array.isArray(evR.value) ? evR.value : []);
       if (annR.status === "fulfilled") setAnnouncements(Array.isArray(annR.value) ? annR.value : []);
@@ -143,6 +149,8 @@ export default function EmployeeDashboard() {
         const annual = balances.find(b => b.leave_type === "annual");
         if (annual) setLeaveBalance(parseFloat(annual.entitled_days) - parseFloat(annual.used_days || 0));
       }
+      if (shiftR.status === "fulfilled") setShifts(shiftR.value.assignments || []);
+      if (workflowR.status === "fulfilled") setWorkflows(workflowR.value.workflows || []);
       setLoading(false);
     });
   }, []);
@@ -238,6 +246,48 @@ export default function EmployeeDashboard() {
           {events.length === 0
             ? <div className="edash-empty">No upcoming events.</div>
             : events.slice(0, 6).map(e => <EventPill key={e.id} ev={e} />)
+          }
+        </div>
+
+        <div className="edash-card">
+          <div className="edash-card-head">
+            <div className="edash-card-title">Upcoming Shifts</div>
+            <Link to="/my-shifts" className="edash-card-link">View all →</Link>
+          </div>
+          {shifts.length === 0
+            ? <div className="edash-empty">No upcoming shifts assigned.</div>
+            : shifts.slice(0, 3).map((shift) => (
+              <div key={shift.id} className="edash-ann-card">
+                <div className="edash-ann-top">
+                  <span className="edash-ann-dot" />
+                  <span className="edash-ann-title">{shift.shift_name}</span>
+                  <span className="edash-ann-date">{shift.shift_date}</span>
+                </div>
+                <div className="edash-ann-body">{shift.start_time} - {shift.end_time} · {shift.shift_type}</div>
+              </div>
+            ))
+          }
+        </div>
+
+        <div className="edash-card">
+          <div className="edash-card-head">
+            <div className="edash-card-title">Workflow Tasks</div>
+            <Link to="/my-workflows" className="edash-card-link">Open →</Link>
+          </div>
+          {workflows.length === 0
+            ? <div className="edash-empty">No active onboarding or offboarding workflows.</div>
+            : workflows.slice(0, 2).map((workflow) => (
+              <div key={workflow.id} className="edash-ann-card">
+                <div className="edash-ann-top">
+                  <span className="edash-ann-dot" />
+                  <span className="edash-ann-title">{workflow.title}</span>
+                  <span className="edash-ann-date">{workflow.status}</span>
+                </div>
+                <div className="edash-ann-body">
+                  {(workflow.tasks || []).filter((task) => !task.is_completed).length} open task(s)
+                </div>
+              </div>
+            ))
           }
         </div>
 

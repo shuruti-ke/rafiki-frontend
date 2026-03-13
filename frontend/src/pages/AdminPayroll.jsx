@@ -425,6 +425,8 @@ function BatchesTab() {
   const [parsing, setParsing] = useState(false);
   const [distributing, setDistributing] = useState(false);
   const [distributeResult, setDistributeResult] = useState(null);
+  const [validation, setValidation] = useState(null);
+  const [filingReport, setFilingReport] = useState(null);
 
   useEffect(() => {
     authFetch(`${API}/api/v1/payroll/batches`)
@@ -440,10 +442,18 @@ function BatchesTab() {
     setLoadingDetail(true);
     setDetail(null);
     setDistributeResult(null);
+    setValidation(null);
+    setFilingReport(null);
     if (batch.status === "distributed" || batch.status === "parsed") {
       try {
-        const r = await authFetch(`${API}/api/v1/payroll/batches/${batch.batch_id}/verify`);
+        const [r, validationRes, reportRes] = await Promise.all([
+          authFetch(`${API}/api/v1/payroll/batches/${batch.batch_id}/verify`),
+          authFetch(`${API}/api/v1/payroll/statutory/validate/batch/${batch.batch_id}`, { method: "POST" }),
+          authFetch(`${API}/api/v1/payroll/statutory/reports/batch/${batch.batch_id}`),
+        ]);
         if (r.ok) setDetail(await r.json());
+        if (validationRes.ok) setValidation(await validationRes.json());
+        if (reportRes.ok) setFilingReport(await reportRes.json());
       } catch {}
     }
     // Also show distribute button for parsed batches
@@ -588,6 +598,29 @@ function BatchesTab() {
                   </tbody>
                 </table>
               </div>
+
+              {validation?.summary && (
+                <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                  <div className="ap-step-title">Statutory Validation</div>
+                  <div className="ap-stats-row">
+                    <Stat label="Within Tolerance" value={validation.summary.within_tolerance_count} />
+                    <Stat label="Needs Review" value={validation.summary.needs_review_count} warn={validation.summary.needs_review_count > 0} />
+                    <Stat label="Declared Statutory" value={fmt(validation.summary.declared_statutory)} />
+                    <Stat label="Expected Statutory" value={fmt(validation.summary.expected_statutory)} />
+                  </div>
+                </div>
+              )}
+
+              {filingReport?.filing_summary && (
+                <div style={{ marginTop: 14, display: "grid", gap: 8 }}>
+                  <div className="ap-step-title">Filing Summary</div>
+                  <div className="ap-stats-row">
+                    {Object.entries(filingReport.filing_summary).map(([key, value]) => (
+                      <Stat key={key} label={key.toUpperCase()} value={fmt(value)} />
+                    ))}
+                  </div>
+                </div>
+              )}
             </>
           )}
 
