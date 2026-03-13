@@ -479,6 +479,7 @@ const PAGE_TITLES = {
   "/knowledge-base": "Knowledge Base",
   "/my-documents": "My Documents",
   "/guided-paths": "Guided Paths",
+  "/payroll": "Payroll",
 };
 
 /* ══════════════════════════════════════
@@ -492,13 +493,14 @@ export default function EmployeeLayout() {
   const [msgPanelOpen, setMsgPanelOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [convoOpen, setConvoOpen] = useState(false);
+  const [user, setUser] = useState(() => JSON.parse(localStorage.getItem("rafiki_user") || "{}"));
 
-  const user = JSON.parse(localStorage.getItem("rafiki_user") || "{}");
   const name = user.full_name || user.name || user.email || "Employee";
   const initials = name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
   const role = localStorage.getItem("rafiki_role") || "";
   const isManager = role === "manager" || role === "hr_admin" || role === "super_admin";
   const isAdmin = role === "hr_admin" || role === "super_admin";
+  const hasPayrollAccess = !!(user.can_process_payroll || user.can_approve_payroll || user.can_authorize_payroll);
   const isFlush = location.pathname === "/chat";
 
   const pageTitle = PAGE_TITLES[location.pathname] || "Rafiki";
@@ -511,6 +513,21 @@ export default function EmployeeLayout() {
   };
 
   useEffect(() => { setMobileOpen(false); }, [location.pathname]);
+
+  // Refresh user from /me so payroll (and other) permission changes appear without re-login
+  useEffect(() => {
+    const token = localStorage.getItem("rafiki_token");
+    if (!token) return;
+    authFetch(`${API}/auth/me`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data) {
+          localStorage.setItem("rafiki_user", JSON.stringify(data));
+          setUser(data);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   return (
     <div className="emp-layout">
@@ -539,19 +556,24 @@ export default function EmployeeLayout() {
         </div>
 
         <div className="emp-nav-scroll">
-          {NAV_GROUPS.map(group => (
-            <div key={group.label} className="emp-nav-section">
-              <div className="emp-nav-section-label">{group.label}</div>
-              {group.links.map(link => (
-                <NavLink key={link.to} to={link.to} className={({ isActive }) => `emp-nav-link${isActive ? " active" : ""}`}>
-                  <span className="emp-nav-icon">{link.icon}</span>
-                  <span className="emp-nav-label">{link.label}</span>
-                  {link.to === "/chat" && unreadCount > 0 && <span className="emp-nav-badge">{unreadCount}</span>}
-                  <span className="emp-nav-tooltip">{link.label}</span>
-                </NavLink>
-              ))}
-            </div>
-          ))}
+          {NAV_GROUPS.map(group => {
+            const links = group.label === "My Work" && hasPayrollAccess
+              ? [...group.links, { to: "/payroll", label: "Payroll", icon: "💰" }]
+              : group.links;
+            return (
+              <div key={group.label} className="emp-nav-section">
+                <div className="emp-nav-section-label">{group.label}</div>
+                {links.map(link => (
+                  <NavLink key={link.to} to={link.to} className={({ isActive }) => `emp-nav-link${isActive ? " active" : ""}`}>
+                    <span className="emp-nav-icon">{link.icon}</span>
+                    <span className="emp-nav-label">{link.label}</span>
+                    {link.to === "/chat" && unreadCount > 0 && <span className="emp-nav-badge">{unreadCount}</span>}
+                    <span className="emp-nav-tooltip">{link.label}</span>
+                  </NavLink>
+                ))}
+              </div>
+            );
+          })}
         </div>
 
         <div className="emp-nav-bottom">

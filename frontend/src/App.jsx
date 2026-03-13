@@ -87,6 +87,7 @@ export default function App() {
           <Route path="/leave" element={<LeaveApplication />} />
           <Route path="/my-shifts" element={<MyShiftsPage />} />
           <Route path="/my-workflows" element={<MyWorkflowsPage />} />
+          <Route path="/payroll" element={<AdminPayroll />} />
         </Route>
 
         {/* Super Admin Portal */}

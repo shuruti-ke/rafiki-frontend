@@ -82,6 +82,9 @@ class UserOut(BaseModel):
     full_name: str | None
     role: str
     org_id: str | None
+    can_process_payroll: bool = False
+    can_approve_payroll: bool = False
+    can_authorize_payroll: bool = False
 
 
 class LoginResponse(BaseModel):
@@ -138,6 +141,9 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
                 full_name=user.name,
                 role=str(user.role),
                 org_id=str(user.org_id) if user.org_id else None,
+                can_process_payroll=bool(getattr(user, "can_process_payroll", False)),
+                can_approve_payroll=bool(getattr(user, "can_approve_payroll", False)),
+                can_authorize_payroll=bool(getattr(user, "can_authorize_payroll", False)),
             ),
         )
 
@@ -174,6 +180,9 @@ def demo_login(body: DemoLoginRequest, db: Session = Depends(get_db)):
             full_name=user.name,
             role=str(user.role),
             org_id=str(user.org_id) if user.org_id else None,
+            can_process_payroll=bool(getattr(user, "can_process_payroll", False)),
+            can_approve_payroll=bool(getattr(user, "can_approve_payroll", False)),
+            can_authorize_payroll=bool(getattr(user, "can_authorize_payroll", False)),
         ),
     )
 
@@ -205,4 +214,7 @@ def me(
         full_name=user.name,
         role=str(user.role),
         org_id=str(user.org_id) if user.org_id else None,
+        can_process_payroll=bool(getattr(user, "can_process_payroll", False)),
+        can_approve_payroll=bool(getattr(user, "can_approve_payroll", False)),
+        can_authorize_payroll=bool(getattr(user, "can_authorize_payroll", False)),
     )
