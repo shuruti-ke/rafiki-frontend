@@ -381,6 +381,22 @@ def _auto_send_payroll_approval_request(
         recipient_id=approver.user_id,
         batch=batch,
     )
+    # Notify finance managers (can_authorize_payroll) that payroll is awaiting HR approval
+    month_str = _month_str(batch)
+    authorizers = [
+        u for u in approvers
+        if u.user_id != requested_by_user_id
+        and u.user_id != approver.user_id
+        and bool(getattr(u, "can_authorize_payroll", False))
+    ]
+    for auth_user in authorizers:
+        _send_simple_dm(
+            db,
+            org_id=org_id,
+            sender_id=requested_by_user_id,
+            recipient_id=auth_user.user_id,
+            text=f"📋 Payroll for {month_str} has been submitted and is **awaiting HR Admin approval**. You will be notified when it is approved.",
+        )
     db.commit()
 
 
@@ -611,6 +627,27 @@ def request_payroll_approval(
         recipient_id=approver_user_id,
         batch=batch,
     )
+    # Notify finance managers (can_authorize_payroll) that payroll is awaiting HR approval
+    month_str = _month_str(batch)
+    authorizers = (
+        db.query(User)
+        .filter(
+            User.org_id == org_id,
+            User.is_active == True,  # noqa: E712
+            User.user_id != current_user_id,
+            User.user_id != approver_user_id,
+        )
+        .all()
+    )
+    authorizers = [u for u in authorizers if bool(getattr(u, "can_authorize_payroll", False))]
+    for auth_user in authorizers:
+        _send_simple_dm(
+            db,
+            org_id=org_id,
+            sender_id=current_user_id,
+            recipient_id=auth_user.user_id,
+            text=f"📋 Payroll for {month_str} has been submitted and is **awaiting HR Admin approval**. You will be notified when it is approved.",
+        )
 
     db.commit()
 
@@ -1007,6 +1044,86 @@ def parse_payroll(
         "unmatched_names": result["unmatched_names"],
         "reconciled": result["reconciled"],
         "entries": result["entries"],
+    }
+
+
+@router.get("/batches/{batch_id}/preview")
+def preview_batch_statutory(
+    batch_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    _user: User = Depends(require_payroll_access),
+):
+    """
+    For batches in uploaded or uploaded_needs_approval: return per-employee statutory
+    breakdown (PAYE, NSSF, SHIF, housing levy, etc.) so approvers can review before approving.
+    Does not change batch status.
+    """
+    batch = (
+        db.query(PayrollBatch)
+        .filter(PayrollBatch.batch_id == batch_id, PayrollBatch.org_id == org_id)
+        .first()
+    )
+    if not batch:
+        raise HTTPException(status_code=404, detail="Payroll batch not found")
+    if batch.status not in ("uploaded", "uploaded_needs_approval"):
+        raise HTTPException(status_code=400, detail="Preview only available for batches not yet parsed")
+
+    from app.services.file_storage import _get_s3, R2_BUCKET
+    from datetime import date as date_type
+    from app.routers import payroll_statutory
+
+    try:
+        s3 = _get_s3()
+        obj = s3.get_object(Bucket=R2_BUCKET, Key=batch.upload_storage_key)
+        content = obj["Body"].read()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read payroll file: {e}") from e
+    filename = (
+        getattr(batch, "upload_original_filename", None)
+        or getattr(batch, "original_filename", None)
+        or batch.upload_storage_key
+    )
+    result = parse_payroll_file(filename, content, db, org_id)
+    if "error" in result:
+        raise HTTPException(status_code=500, detail=result["error"])
+
+    effective_on = date_type(batch.period_year, batch.period_month, 1)
+    cfg = payroll_statutory._get_config(db, org_id, effective_on=effective_on)
+    personal_relief = float(cfg.get("personal_relief") or 0)
+
+    entries = []
+    totals = {"gross_pay": 0.0, "paye": 0.0, "nssf": 0.0, "shif": 0.0, "ahl": 0.0, "statutory_total": 0.0, "estimated_net_pay": 0.0}
+    for e in result.get("entries", []):
+        gross = float(e.get("gross_salary") or 0)
+        calc = payroll_statutory._calculate_kenya(gross, 0.0, 0.0, cfg)
+        row = {
+            "employee_name": e.get("employee_name") or "",
+            "gross_pay": round(gross, 2),
+            "paye": calc["paye"],
+            "nssf": calc["nssf"],
+            "shif": calc["shif"],
+            "ahl": calc["ahl"],
+            "personal_relief": personal_relief,
+            "statutory_total": calc["statutory_total"],
+            "estimated_net_pay": calc["estimated_net_pay"],
+        }
+        entries.append(row)
+        totals["gross_pay"] += row["gross_pay"]
+        totals["paye"] += row["paye"]
+        totals["nssf"] += row["nssf"]
+        totals["shif"] += row["shif"]
+        totals["ahl"] += row["ahl"]
+        totals["statutory_total"] += row["statutory_total"]
+        totals["estimated_net_pay"] += row["estimated_net_pay"]
+
+    totals = {k: round(v, 2) for k, v in totals.items()}
+    return {
+        "batch_id": str(batch.batch_id),
+        "month": _month_str(batch),
+        "entries": entries,
+        "totals": totals,
+        "employee_count": len(entries),
     }
 
 

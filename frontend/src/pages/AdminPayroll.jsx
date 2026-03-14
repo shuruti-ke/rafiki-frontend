@@ -4,31 +4,42 @@ import { API, authFetch } from "../api.js";
 import { PayrollCompliancePanel } from "./AdminPayrollCompliance.jsx";
 import "./AdminPayroll.css";
 
-const TABS = ["upload", "batches", "templates", "compliance"];
 const TAB_LABELS = {
+  approve: "Approve Payroll",
   upload: "Payroll Run",
   batches: "Batch History",
   templates: "Templates",
   compliance: "Compliance & Filing",
 };
 
+function getTabsAndDefault() {
+  const user = JSON.parse(localStorage.getItem("rafiki_user") || "{}");
+  const hasApprove = !!(user.can_approve_payroll || user.role === "hr_admin" || user.role === "super_admin");
+  const tabs = hasApprove
+    ? ["approve", "batches", "upload", "templates", "compliance"]
+    : ["upload", "batches", "templates", "compliance"];
+  const defaultTab = hasApprove ? "approve" : "upload";
+  return { tabs, defaultTab };
+}
+
 export default function AdminPayroll() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { tabs, defaultTab } = getTabsAndDefault();
   const [tab, setTab] = useState(() => {
     const requestedTab = searchParams.get("tab");
-    return TABS.includes(requestedTab) ? requestedTab : "upload";
+    return tabs.includes(requestedTab) ? requestedTab : defaultTab;
   });
 
   useEffect(() => {
     const requestedTab = searchParams.get("tab");
-    if (requestedTab && TABS.includes(requestedTab) && requestedTab !== tab) {
+    if (requestedTab && tabs.includes(requestedTab) && requestedTab !== tab) {
       setTab(requestedTab);
     }
-  }, [searchParams, tab]);
+  }, [searchParams, tab, tabs]);
 
   function handleTabChange(nextTab) {
     setTab(nextTab);
-    setSearchParams(nextTab === "upload" ? {} : { tab: nextTab });
+    setSearchParams(nextTab === "upload" || nextTab === defaultTab ? {} : { tab: nextTab });
   }
 
   return (
@@ -36,12 +47,12 @@ export default function AdminPayroll() {
       <div className="ap-header">
         <h1 className="ap-title">Payroll</h1>
         <p className="ap-subtitle">
-          Run payroll, validate statutory compliance, and complete filing review from one workspace.
+          Approve payroll, view batch history, run payroll, and complete filing review from one workspace.
         </p>
       </div>
 
       <div className="ap-tabs">
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <button
             key={t}
             className={`ap-tab ${tab === t ? "active" : ""}`}
@@ -53,10 +64,114 @@ export default function AdminPayroll() {
       </div>
 
       <div className="ap-body">
+        {tab === "approve" && <ApproveTab />}
         {tab === "upload" && <UploadTab />}
         {tab === "batches" && <BatchesTab />}
         {tab === "templates" && <TemplatesTab />}
         {tab === "compliance" && <PayrollCompliancePanel embedded />}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// Approve Tab — batches pending approval (for HR Admin / can_approve_payroll)
+// ─────────────────────────────────────────────
+function ApproveTab() {
+  const [batches, setBatches] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [acting, setActing] = useState(null); // batch_id being approved/rejected
+
+  useEffect(() => {
+    authFetch(`${API}/api/v1/payroll/batches`)
+      .then((r) => r.json())
+      .then((data) => { if (Array.isArray(data)) setBatches(data); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const pending = batches.filter((b) => b.status === "uploaded_needs_approval");
+
+  async function handleApprove(batchId) {
+    setActing(batchId);
+    try {
+      const r = await authFetch(`${API}/api/v1/payroll/batches/${batchId}/approve`, { method: "POST" });
+      const data = await r.json();
+      if (r.ok) {
+        const br = await authFetch(`${API}/api/v1/payroll/batches`);
+        const bdata = await br.json();
+        if (Array.isArray(bdata)) setBatches(bdata);
+      } else {
+        alert(data.detail || "Approve failed");
+      }
+    } catch (e) {
+      alert(e.message || "Approve failed");
+    }
+    setActing(null);
+  }
+
+  async function handleReject(batchId) {
+    const reason = window.prompt("Rejection reason (optional):") || "";
+    setActing(batchId);
+    try {
+      const r = await authFetch(
+        `${API}/api/v1/payroll/batches/${batchId}/reject?reason=${encodeURIComponent(reason)}`,
+        { method: "POST" }
+      );
+      const data = await r.json();
+      if (r.ok) {
+        const br = await authFetch(`${API}/api/v1/payroll/batches`);
+        const bdata = await br.json();
+        if (Array.isArray(bdata)) setBatches(bdata);
+      } else {
+        alert(data.detail || "Reject failed");
+      }
+    } catch (e) {
+      alert(e.message || "Reject failed");
+    }
+    setActing(null);
+  }
+
+  if (loading) return <div className="ap-loading">Loading…</div>;
+  if (pending.length === 0) {
+    return (
+      <div className="ap-section">
+        <p className="ap-hint">No payroll batches awaiting your approval. Check Batch History for all batches.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="ap-section">
+      <p className="ap-hint" style={{ marginBottom: 16 }}>
+        The following batches need your approval before they can be parsed and distributed.
+      </p>
+      <div className="ap-batches-list">
+        {pending.map((b) => (
+          <div key={b.batch_id} className="ap-batch-row">
+            <div className="ap-batch-month">
+              {b.period_year}-{String(b.period_month).padStart(2, "0")}
+            </div>
+            <span className="ap-badge" data-status={b.status}>{b.status.replace(/_/g, " ")}</span>
+            <span className="ap-batch-date">{new Date(b.created_at).toLocaleDateString()}</span>
+            <div style={{ display: "flex", gap: 8, marginLeft: "auto" }}>
+              <button
+                className="ap-btn ap-btn-primary"
+                onClick={() => handleApprove(b.batch_id)}
+                disabled={acting === b.batch_id}
+              >
+                {acting === b.batch_id ? "…" : "Approve"}
+              </button>
+              <button
+                className="ap-btn ap-btn-ghost"
+                onClick={() => handleReject(b.batch_id)}
+                disabled={acting === b.batch_id}
+              >
+                Reject
+              </button>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -506,6 +621,7 @@ function BatchesTab() {
   const [selected, setSelected] = useState(null);
   const [selectedBatch, setSelectedBatch] = useState(null);
   const [detail, setDetail] = useState(null);
+  const [preview, setPreview] = useState(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [parsing, setParsing] = useState(false);
@@ -513,6 +629,8 @@ function BatchesTab() {
   const [distributeResult, setDistributeResult] = useState(null);
   const [validation, setValidation] = useState(null);
   const [filingReport, setFilingReport] = useState(null);
+  const [approving, setApproving] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
 
   useEffect(() => {
     authFetch(`${API}/api/v1/payroll/batches`)
@@ -527,6 +645,7 @@ function BatchesTab() {
     setSelectedBatch(batch);
     setLoadingDetail(true);
     setDetail(null);
+    setPreview(null);
     setDistributeResult(null);
     setValidation(null);
     setFilingReport(null);
@@ -541,8 +660,12 @@ function BatchesTab() {
         if (validationRes.ok) setValidation(await validationRes.json());
         if (reportRes.ok) setFilingReport(await reportRes.json());
       } catch {}
+    } else if (batch.status === "uploaded_needs_approval" || batch.status === "uploaded") {
+      try {
+        const r = await authFetch(`${API}/api/v1/payroll/batches/${batch.batch_id}/preview`);
+        if (r.ok) setPreview(await r.json());
+      } catch {}
     }
-    // Also show distribute button for parsed batches
     setLoadingDetail(false);
   }
 
@@ -756,7 +879,120 @@ function BatchesTab() {
             <div className="ap-success" style={{ marginTop: 12 }}>{distributeResult}</div>
           )}
 
-          {!detail && !loadingDetail && selectedBatch.status !== "distributed" && selectedBatch.status !== "parsed" && selectedBatch.status !== "uploaded" && (
+          {/* Statutory preview for uploaded / uploaded_needs_approval (PAYE, SHIF, housing, etc.) */}
+          {preview && (selectedBatch.status === "uploaded_needs_approval" || selectedBatch.status === "uploaded") && (
+            <div className="ap-step" style={{ marginTop: 16 }}>
+              <h3 className="ap-step-title">Statutory breakdown (preview)</h3>
+              <div className="ap-stats-row" style={{ marginBottom: 12 }}>
+                <Stat label="Employees" value={preview.employee_count} />
+                <Stat label="Total Gross" value={fmt(preview.totals?.gross_pay)} />
+                <Stat label="PAYE" value={fmt(preview.totals?.paye)} />
+                <Stat label="NSSF" value={fmt(preview.totals?.nssf)} />
+                <Stat label="SHIF" value={fmt(preview.totals?.shif)} />
+                <Stat label="Housing (AHL)" value={fmt(preview.totals?.ahl)} />
+                <Stat label="Statutory Total" value={fmt(preview.totals?.statutory_total)} />
+                <Stat label="Est. Net Pay" value={fmt(preview.totals?.estimated_net_pay)} />
+              </div>
+              <div className="ap-entries-table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Gross</th>
+                      <th>PAYE</th>
+                      <th>NSSF</th>
+                      <th>SHIF</th>
+                      <th>Housing (AHL)</th>
+                      <th>Relief</th>
+                      <th>Statutory Total</th>
+                      <th>Est. Net</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.entries?.map((e, i) => (
+                      <tr key={i}>
+                        <td>{e.employee_name}</td>
+                        <td>{fmt(e.gross_pay)}</td>
+                        <td>{fmt(e.paye)}</td>
+                        <td>{fmt(e.nssf)}</td>
+                        <td>{fmt(e.shif)}</td>
+                        <td>{fmt(e.ahl)}</td>
+                        <td>{fmt(e.personal_relief)}</td>
+                        <td>{fmt(e.statutory_total)}</td>
+                        <td>{fmt(e.estimated_net_pay)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {selectedBatch.status === "uploaded_needs_approval" && (
+                <div style={{ marginTop: 16, display: "flex", gap: 8 }}>
+                  <button
+                    className="ap-btn ap-btn-primary"
+                    onClick={async () => {
+                      setApproving(true);
+                      try {
+                        const r = await authFetch(`${API}/api/v1/payroll/batches/${selected}/approve`, { method: "POST" });
+                        const data = await r.json();
+                        if (r.ok) {
+                          const br = await authFetch(`${API}/api/v1/payroll/batches`);
+                          const bdata = await br.json();
+                          if (Array.isArray(bdata)) {
+                            setBatches(bdata);
+                            const updated = bdata.find((b) => b.batch_id === selected);
+                            if (updated) {
+                              setSelectedBatch(updated);
+                              setPreview(null);
+                              loadDetail(updated);
+                            }
+                          }
+                        } else alert(data.detail || "Approve failed");
+                      } catch (e) {
+                        alert(e.message || "Approve failed");
+                      }
+                      setApproving(false);
+                    }}
+                    disabled={approving}
+                  >
+                    {approving ? "…" : "Approve"}
+                  </button>
+                  <button
+                    className="ap-btn ap-btn-ghost"
+                    onClick={async () => {
+                      const reason = window.prompt("Rejection reason (optional):") ?? "";
+                      setRejecting(true);
+                      try {
+                        const r = await authFetch(
+                          `${API}/api/v1/payroll/batches/${selected}/reject?reason=${encodeURIComponent(reason)}`,
+                          { method: "POST" }
+                        );
+                        const data = await r.json();
+                        if (r.ok) {
+                          const br = await authFetch(`${API}/api/v1/payroll/batches`);
+                          const bdata = await br.json();
+                          if (Array.isArray(bdata)) {
+                            setBatches(bdata);
+                            const updated = bdata.find((b) => b.batch_id === selected);
+                            if (updated) setSelectedBatch(updated);
+                            setPreview(null);
+                            setDetail(null);
+                          }
+                        } else alert(data.detail || "Reject failed");
+                      } catch (e) {
+                        alert(e.message || "Reject failed");
+                      }
+                      setRejecting(false);
+                    }}
+                    disabled={rejecting}
+                  >
+                    Reject
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {!detail && !preview && !loadingDetail && selectedBatch.status !== "distributed" && selectedBatch.status !== "parsed" && selectedBatch.status !== "uploaded" && selectedBatch.status !== "uploaded_needs_approval" && (
             <div className="ap-hint" style={{ marginTop: 12 }}>
               Detailed breakdown available after parsing.
             </div>
