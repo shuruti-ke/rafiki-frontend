@@ -203,6 +203,7 @@ function UploadTab() {
   });
   const [runMsg, setRunMsg] = useState("");
   const [runErr, setRunErr] = useState("");
+  const [runningMonthly, setRunningMonthly] = useState(false);
   const runBtnRef = useRef(null);
 
   // Approval state
@@ -268,6 +269,7 @@ function UploadTab() {
     setRunMsg("");
     setRunErr("");
     setError("");
+    setRunningMonthly(true);
     try {
       const r = await authFetch(
         `${API}/api/v1/payroll/run-monthly?month=${encodeURIComponent(runMonth)}`,
@@ -286,6 +288,8 @@ function UploadTab() {
       setRunMsg(data.warning || "Batch created from employee salaries. Request approval, then parse and distribute.");
     } catch (err) {
       setRunErr("Failed to run monthly payroll: " + err.message);
+    } finally {
+      setRunningMonthly(false);
     }
   }
 
@@ -358,6 +362,9 @@ function UploadTab() {
     }
   }
 
+  const user = JSON.parse(localStorage.getItem("rafiki_user") || "{}");
+  const canParsePayroll = (user.role === "manager" || user.role === "super_admin" || !!user.can_process_payroll) && user.role !== "hr_admin";
+  const canDistributePayroll = user.role === "hr_admin" || user.role === "super_admin";
   const canParse = batch && batch.status === "uploaded";
   const canDistribute = batch && batch.status === "parsed" && parseResult && parseResult.reconciled;
   const needsApproval = batch && batch.status === "uploaded_needs_approval";
@@ -381,9 +388,16 @@ function UploadTab() {
                 type="button"
                 className="ap-btn ap-btn-secondary"
                 onClick={handleRunMonthly}
+                disabled={runningMonthly}
               >
                 Run for Month
               </button>
+              {runningMonthly && (
+                <span className="ap-loading" style={{ marginLeft: 12, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <span className="ap-spinner" style={{ width: 16, height: 16, borderWidth: 2 }} aria-hidden />
+                  Payroll is processing…
+                </span>
+              )}
             </div>
             <p className="ap-hint">
               Choose the month to process. After running, complete the flow in Batch History (approve → parse → distribute).
@@ -406,45 +420,17 @@ function UploadTab() {
 
           {batch.warning && <div className="ap-warning">{batch.warning}</div>}
 
-          {/* Step 1: Request Approval */}
-          {needsApproval && !approvalSent && (
+          {/* Approval is automated: DMs sent to HR Admin and finance manager on batch creation */}
+          {needsApproval && (
             <div className="ap-step">
-              <h3 className="ap-step-title">Step 1 — Request Approval</h3>
-              <p className="ap-hint">Select an approver to send a DM approval request before proceeding.</p>
-              <div className="ap-form-row">
-                <select
-                  className="ap-input"
-                  value={approverId}
-                  onChange={(e) => setApproverId(e.target.value)}
-                >
-                  <option value="">Select approver…</option>
-                  {approvers.map((a) => (
-                    <option key={a.user_id} value={a.user_id}>
-                      {a.name || a.email} ({a.role})
-                    </option>
-                  ))}
-                </select>
-                <button
-                  className="ap-btn ap-btn-primary"
-                  onClick={handleRequestApproval}
-                  disabled={!approverId || requestingApproval}
-                >
-                  {requestingApproval ? "Sending…" : "Send Approval Request"}
-                </button>
+              <div className="ap-hint">
+                Approval request sent automatically to HR Admin. Complete the flow in Batch History (approve → parse → distribute).
               </div>
             </div>
           )}
 
-          {needsApproval && approvalSent && (
-            <div className="ap-step">
-              <div className="ap-success">
-                Approval request sent via DM. Waiting for approver to approve before you can parse.
-              </div>
-            </div>
-          )}
-
-          {/* Step 2: Parse */}
-          {canParse && (
+          {/* Step 2: Parse (managers only; HR Admin cannot parse) */}
+          {canParse && canParsePayroll && (
             <div className="ap-step">
               <h3 className="ap-step-title">Step 2 — Parse & Verify</h3>
               <p className="ap-hint">Extract employee salary data from the uploaded file.</p>
@@ -455,6 +441,11 @@ function UploadTab() {
               >
                 {parsing ? "Parsing…" : "Parse Payroll File"}
               </button>
+            </div>
+          )}
+          {canParse && !canParsePayroll && (
+            <div className="ap-step">
+              <p className="ap-hint">Only managers (or users with parse permission) can parse and verify. Complete this step in Batch History.</p>
             </div>
           )}
 
@@ -510,26 +501,32 @@ function UploadTab() {
                 </table>
               </div>
 
-              {/* Step 3: Distribute */}
+              {/* Step 3: Distribute (HR Admin only) */}
               <div className="ap-step">
                 <h3 className="ap-step-title">Step 3 — Distribute Payslips</h3>
-                {!parseResult.reconciled && (
-                  <div className="ap-error">
-                    Cannot distribute — totals do not reconcile. Check the payroll file for errors.
-                  </div>
+                {canDistributePayroll ? (
+                  <>
+                    {!parseResult.reconciled && (
+                      <div className="ap-error">
+                        Cannot distribute — totals do not reconcile. Check the payroll file for errors.
+                      </div>
+                    )}
+                    {parseResult.matched_count === 0 && (
+                      <div className="ap-error">
+                        No employees matched. Ensure employee names in the file match their names in the system.
+                      </div>
+                    )}
+                    <button
+                      className="ap-btn ap-btn-primary"
+                      onClick={handleDistribute}
+                      disabled={!canDistribute || distributing}
+                    >
+                      {distributing ? "Distributing…" : `Distribute to ${parseResult.matched_count} employees`}
+                    </button>
+                  </>
+                ) : (
+                  <p className="ap-hint">Only HR Admin can distribute and issue payslips. Complete this step in Batch History.</p>
                 )}
-                {parseResult.matched_count === 0 && (
-                  <div className="ap-error">
-                    No employees matched. Ensure employee names in the file match their names in the system.
-                  </div>
-                )}
-                <button
-                  className="ap-btn ap-btn-primary"
-                  onClick={handleDistribute}
-                  disabled={!canDistribute || distributing}
-                >
-                  {distributing ? "Distributing…" : `Distribute to ${parseResult.matched_count} employees`}
-                </button>
               </div>
             </div>
           )}
@@ -668,6 +665,12 @@ function BatchesTab() {
     setDownloading(false);
   }
 
+  const user = JSON.parse(localStorage.getItem("rafiki_user") || "{}");
+  const canParsePayroll = (user.role === "manager" || user.role === "super_admin" || !!user.can_process_payroll) && user.role !== "hr_admin";
+  const canDistributePayroll = user.role === "hr_admin" || user.role === "super_admin";
+  const canApprovePayroll = !!(user.can_approve_payroll || user.role === "hr_admin" || user.role === "super_admin");
+  const canRejectPayroll = !!(user.can_approve_payroll || user.can_authorize_payroll || user.role === "hr_admin" || user.role === "super_admin");
+
   if (loading) return <div className="ap-loading">Loading…</div>;
   if (batches.length === 0) {
     return <div className="ap-empty">No payroll batches yet. Upload a payroll file to get started.</div>;
@@ -774,7 +777,7 @@ function BatchesTab() {
           {/* Action buttons for uploaded or parsed batches */}
           {(selectedBatch.status === "uploaded" || selectedBatch.status === "parsed") && (
             <div className="ap-step" style={{ marginTop: 16 }}>
-              {!detail && (
+              {!detail && canParsePayroll && (
                 <>
                   <p className="ap-hint">Parse the payroll file to verify totals before distributing.</p>
                   <button
@@ -786,10 +789,13 @@ function BatchesTab() {
                   </button>
                 </>
               )}
+              {!detail && !canParsePayroll && selectedBatch.status === "uploaded" && (
+                <p className="ap-hint">Only managers (or users with parse permission) can parse and verify. HR Admin distributes after verification.</p>
+              )}
               {detail?.error && (
                 <div className="ap-error" style={{ marginTop: 8 }}>{detail.error}</div>
               )}
-              {detail && (
+              {detail && canDistributePayroll && (
                 <>
                   <h3 className="ap-step-title">Distribute Payslips</h3>
                   {detail.matched_count === 0 && (
@@ -809,6 +815,9 @@ function BatchesTab() {
                     </button>
                   )}
                 </>
+              )}
+              {detail && !canDistributePayroll && (
+                <p className="ap-hint">Only HR Admin can distribute and issue payslips.</p>
               )}
             </div>
           )}
@@ -863,68 +872,72 @@ function BatchesTab() {
                   </tbody>
                 </table>
               </div>
-              {selectedBatch.status === "uploaded_needs_approval" && (
+              {selectedBatch.status === "uploaded_needs_approval" && (canApprovePayroll || canRejectPayroll) && (
                 <div style={{ marginTop: 16, display: "flex", gap: 8 }}>
-                  <button
-                    className="ap-btn ap-btn-primary"
-                    onClick={async () => {
-                      setApproving(true);
-                      try {
-                        const r = await authFetch(`${API}/api/v1/payroll/batches/${selected}/approve`, { method: "POST" });
-                        const data = await r.json();
-                        if (r.ok) {
-                          const br = await authFetch(`${API}/api/v1/payroll/batches`);
-                          const bdata = await br.json();
-                          if (Array.isArray(bdata)) {
-                            setBatches(bdata);
-                            const updated = bdata.find((b) => b.batch_id === selected);
-                            if (updated) {
-                              setSelectedBatch(updated);
-                              setPreview(null);
-                              loadDetail(updated);
+                  {canApprovePayroll && (
+                    <button
+                      className="ap-btn ap-btn-primary"
+                      onClick={async () => {
+                        setApproving(true);
+                        try {
+                          const r = await authFetch(`${API}/api/v1/payroll/batches/${selected}/approve`, { method: "POST" });
+                          const data = await r.json();
+                          if (r.ok) {
+                            const br = await authFetch(`${API}/api/v1/payroll/batches`);
+                            const bdata = await br.json();
+                            if (Array.isArray(bdata)) {
+                              setBatches(bdata);
+                              const updated = bdata.find((b) => b.batch_id === selected);
+                              if (updated) {
+                                setSelectedBatch(updated);
+                                setPreview(null);
+                                loadDetail(updated);
+                              }
                             }
-                          }
-                        } else alert(data.detail || "Approve failed");
-                      } catch (e) {
-                        alert(e.message || "Approve failed");
-                      }
-                      setApproving(false);
-                    }}
-                    disabled={approving}
-                  >
-                    {approving ? "…" : "Approve"}
-                  </button>
-                  <button
-                    className="ap-btn ap-btn-ghost"
-                    onClick={async () => {
-                      const reason = window.prompt("Rejection reason (optional):") ?? "";
-                      setRejecting(true);
-                      try {
-                        const r = await authFetch(
-                          `${API}/api/v1/payroll/batches/${selected}/reject?reason=${encodeURIComponent(reason)}`,
-                          { method: "POST" }
-                        );
-                        const data = await r.json();
-                        if (r.ok) {
-                          const br = await authFetch(`${API}/api/v1/payroll/batches`);
-                          const bdata = await br.json();
-                          if (Array.isArray(bdata)) {
-                            setBatches(bdata);
-                            const updated = bdata.find((b) => b.batch_id === selected);
-                            if (updated) setSelectedBatch(updated);
-                            setPreview(null);
-                            setDetail(null);
-                          }
-                        } else alert(data.detail || "Reject failed");
-                      } catch (e) {
-                        alert(e.message || "Reject failed");
-                      }
-                      setRejecting(false);
-                    }}
-                    disabled={rejecting}
-                  >
-                    Reject
-                  </button>
+                          } else alert(data.detail || "Approve failed");
+                        } catch (e) {
+                          alert(e.message || "Approve failed");
+                        }
+                        setApproving(false);
+                      }}
+                      disabled={approving}
+                    >
+                      {approving ? "…" : "Approve"}
+                    </button>
+                  )}
+                  {canRejectPayroll && (
+                    <button
+                      className="ap-btn ap-btn-ghost"
+                      onClick={async () => {
+                        const reason = window.prompt("Rejection reason (optional):") ?? "";
+                        setRejecting(true);
+                        try {
+                          const r = await authFetch(
+                            `${API}/api/v1/payroll/batches/${selected}/reject?reason=${encodeURIComponent(reason)}`,
+                            { method: "POST" }
+                          );
+                          const data = await r.json();
+                          if (r.ok) {
+                            const br = await authFetch(`${API}/api/v1/payroll/batches`);
+                            const bdata = await br.json();
+                            if (Array.isArray(bdata)) {
+                              setBatches(bdata);
+                              const updated = bdata.find((b) => b.batch_id === selected);
+                              if (updated) setSelectedBatch(updated);
+                              setPreview(null);
+                              setDetail(null);
+                            }
+                          } else alert(data.detail || "Reject failed");
+                        } catch (e) {
+                          alert(e.message || "Reject failed");
+                        }
+                        setRejecting(false);
+                      }}
+                      disabled={rejecting}
+                    >
+                      Reject
+                    </button>
+                  )}
                 </div>
               )}
             </div>

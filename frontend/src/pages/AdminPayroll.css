@@ -375,6 +375,17 @@
   padding: 20px 0;
 }
 
+.ap-spinner {
+  display: inline-block;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent, #8b5cf6);
+  border-radius: 50%;
+  animation: ap-spin 0.7s linear infinite;
+}
+@keyframes ap-spin {
+  to { transform: rotate(360deg); }
+}
+
 .ap-batch-detail-header {
   display: flex;
   align-items: center;

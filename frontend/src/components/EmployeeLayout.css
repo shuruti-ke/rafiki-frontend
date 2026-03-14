@@ -272,6 +272,9 @@
   transition: opacity 0.15s;
   flex-shrink: 0;
 }
+.emp-nav-badge--action {
+  background: #dc2626;
+}
 
 .emp-sidebar-nav.collapsed .emp-nav-badge {
   opacity: 0;

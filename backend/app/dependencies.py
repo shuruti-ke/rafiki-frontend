@@ -183,6 +183,34 @@ def require_can_change_statutory_config(
     raise HTTPException(status_code=403, detail="Only finance managers or HR admin can change statutory rates")
 
 
+def require_can_parse_payroll(
+    user: Optional[User] = Depends(get_current_user),
+) -> User:
+    """Require manager or can_process_payroll; HR admin cannot parse (only distribute)."""
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    role = str(getattr(user, "role", "") or "")
+    if role == "hr_admin":
+        raise HTTPException(status_code=403, detail="Only managers (or users with parse permission) can parse and verify payroll")
+    if role in ("manager", "super_admin"):
+        return user
+    if bool(getattr(user, "can_process_payroll", False)):
+        return user
+    raise HTTPException(status_code=403, detail="Parse and verify permission required")
+
+
+def require_can_distribute_payroll(
+    user: Optional[User] = Depends(get_current_user),
+) -> User:
+    """Require HR admin or super_admin to distribute/issue payslips."""
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    role = str(getattr(user, "role", "") or "")
+    if role in ("hr_admin", "super_admin"):
+        return user
+    raise HTTPException(status_code=403, detail="Admin access required")
+
+
 def require_it_admin(
     authorization: Optional[str] = Header(default=None),
     x_user_role: Optional[str] = Header(default=None),

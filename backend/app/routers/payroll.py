@@ -14,9 +14,11 @@ from app.dependencies import (
     get_current_org_id,
     get_current_user_id,
     get_current_user,
+    get_current_role,
     require_admin,
     require_payroll_access,
-    get_current_role,
+    require_can_parse_payroll,
+    require_can_distribute_payroll,
 )
 from app.models.payroll import PayrollTemplate, PayrollBatch, Payslip
 from app.models.employee_document import EmployeeDocument
@@ -736,10 +738,10 @@ def reject_batch(
     db: Session = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org_id),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
-    role: str = Depends(get_current_role),
+    current_user: User | None = Depends(get_current_user),
 ):
     """
-    Approver rejects.
+    HR admin, finance manager (can_authorize_payroll), or the designated approver can reject.
     - Keep it blocked (uploaded_needs_approval).
     - Record rejection metadata if columns exist.
     """
@@ -753,8 +755,15 @@ def reject_batch(
 
     _require_pending_approval(batch)
 
+    role = str(getattr(current_user, "role", "") or "") if current_user else ""
     requested_to = _get_if_attr(batch, "approval_requested_to", None)
-    if requested_to and requested_to != current_user_id and str(role) not in _PRIVILEGED_ROLES:
+    is_designated_approver = requested_to and str(requested_to) == str(current_user_id)
+    can_reject = (
+        is_designated_approver
+        or role in _PRIVILEGED_ROLES
+        or bool(getattr(current_user, "can_authorize_payroll", False))
+    )
+    if not can_reject:
         raise HTTPException(status_code=403, detail="Not authorized to reject this payroll batch")
 
     _set_if_attr(batch, "rejected_by", current_user_id)
@@ -980,7 +989,7 @@ def parse_payroll(
     db: Session = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org_id),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
-    _role: str = Depends(require_admin),
+    _user=Depends(require_can_parse_payroll),
 ):
     batch = (
         db.query(PayrollBatch)
@@ -1183,7 +1192,7 @@ def distribute_payslips(
     db: Session = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org_id),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
-    _role: str = Depends(require_admin),
+    _user=Depends(require_can_distribute_payroll),
 ):
     batch = (
         db.query(PayrollBatch)

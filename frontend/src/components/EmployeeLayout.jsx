@@ -501,6 +501,8 @@ export default function EmployeeLayout() {
   const isManager = role === "manager" || role === "hr_admin" || role === "super_admin";
   const isAdmin = role === "hr_admin" || role === "super_admin";
   const hasPayrollAccess = !!(user.can_process_payroll || user.can_approve_payroll || user.can_authorize_payroll);
+  const needsPayrollAction = !!(user.can_approve_payroll || user.can_authorize_payroll);
+  const [pendingPayrollApprovals, setPendingPayrollApprovals] = useState(0);
   const isFlush = location.pathname === "/chat";
 
   const pageTitle = PAGE_TITLES[location.pathname] || "Rafiki";
@@ -529,6 +531,17 @@ export default function EmployeeLayout() {
       })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!needsPayrollAction) return;
+    authFetch(`${API}/api/v1/payroll/batches`)
+      .then((r) => r.ok ? r.json() : [])
+      .then((batches) => {
+        const count = Array.isArray(batches) ? batches.filter((b) => b.status === "uploaded_needs_approval").length : 0;
+        setPendingPayrollApprovals(count);
+      })
+      .catch(() => {});
+  }, [needsPayrollAction]);
 
   return (
     <div className="emp-layout">
@@ -569,6 +582,9 @@ export default function EmployeeLayout() {
                     <span className="emp-nav-icon">{link.icon}</span>
                     <span className="emp-nav-label">{link.label}</span>
                     {link.to === "/chat" && unreadCount > 0 && <span className="emp-nav-badge">{unreadCount}</span>}
+                    {link.to === "/payroll" && pendingPayrollApprovals > 0 && (
+                      <span className="emp-nav-badge emp-nav-badge--action" title="Action required">{pendingPayrollApprovals}</span>
+                    )}
                     <span className="emp-nav-tooltip">{link.label}</span>
                   </NavLink>
                 ))}
