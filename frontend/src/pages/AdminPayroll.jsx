@@ -206,6 +206,13 @@ function UploadTab() {
   const [runningMonthly, setRunningMonthly] = useState(false);
   const runBtnRef = useRef(null);
 
+  // Prepare pay: run-preview rows and local edits (for Thomas: bonuses, deductions, loans)
+  const [previewRows, setPreviewRows] = useState([]);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState("");
+  const [savingAdjustments, setSavingAdjustments] = useState(false);
+  const [adjustmentsSaved, setAdjustmentsSaved] = useState(false);
+
   // Approval state
   const [approvers, setApprovers] = useState([]);
   const [approverId, setApproverId] = useState("");
@@ -261,6 +268,74 @@ function UploadTab() {
       setError("Upload failed: " + err.message);
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function loadPreview() {
+    setPreviewError("");
+    setPreviewLoading(true);
+    try {
+      const r = await authFetch(`${API}/api/v1/payroll/run-preview?month=${encodeURIComponent(runMonth)}`);
+      const data = await r.json();
+      if (!r.ok) {
+        setPreviewError(data.detail || "Failed to load preview");
+        setPreviewRows([]);
+        return;
+      }
+      setPreviewRows(data.rows || []);
+    } catch (err) {
+      setPreviewError("Failed to load preview: " + err.message);
+      setPreviewRows([]);
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  function updatePreviewRow(userId, field, value) {
+    const next =
+      field === "notes"
+        ? value
+        : field === "base_salary_override"
+          ? (value === "" || isNaN(parseFloat(value)) ? null : parseFloat(value))
+          : parseFloat(value) || 0;
+    setPreviewRows((rows) =>
+      rows.map((r) =>
+        r.user_id === userId ? { ...r, adjustment: { ...(r.adjustment || {}), [field]: next } } : r
+      )
+    );
+    setAdjustmentsSaved(false);
+  }
+
+  async function saveAdjustments() {
+    setPreviewError("");
+    setSavingAdjustments(true);
+    try {
+      const adjustments = previewRows.map((r) => ({
+        user_id: r.user_id,
+        base_salary_override: r.adjustment?.base_salary_override ?? null,
+        bonus: r.adjustment?.bonus ?? 0,
+        pension_optional: r.adjustment?.pension_optional ?? 0,
+        insurance_relief_basis: r.adjustment?.insurance_relief_basis ?? 0,
+        loan_repayment: r.adjustment?.loan_repayment ?? 0,
+        other_deductions: r.adjustment?.other_deductions ?? 0,
+        notes: r.adjustment?.notes ?? null,
+      }));
+      const r = await authFetch(`${API}/api/v1/payroll/run-adjustments`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ month: runMonth, adjustments }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        setPreviewError(data.detail || "Failed to save adjustments");
+        return;
+      }
+      setAdjustmentsSaved(true);
+      loadPreview();
+    } catch (err) {
+      setPreviewError("Failed to save: " + err.message);
+    } finally {
+      setSavingAdjustments(false);
     }
   }
 
@@ -363,6 +438,7 @@ function UploadTab() {
   }
 
   const user = JSON.parse(localStorage.getItem("rafiki_user") || "{}");
+  const canProcessPayroll = !!(user.can_process_payroll || user.role === "super_admin");
   const canParsePayroll = (user.role === "manager" || user.role === "super_admin" || !!user.can_process_payroll) && user.role !== "hr_admin";
   const canDistributePayroll = user.role === "hr_admin" || user.role === "super_admin";
   const canParse = batch && batch.status === "uploaded";
@@ -371,6 +447,126 @@ function UploadTab() {
 
   return (
     <div className="ap-section">
+      {canProcessPayroll && (
+        <div className="ap-prepare-pay">
+          <h3 className="ap-subtitle">Prepare pay for month</h3>
+          <p className="ap-hint" style={{ marginBottom: 12 }}>
+            Edit bonuses, deductions, loan repayments, and optional pension before running the month. Tax (PAYE, NSSF, SHIF, housing) is calculated from the same formula as the final run.
+          </p>
+          <div className="ap-run-row" style={{ marginBottom: 12 }}>
+            <input
+              type="month"
+              className="ap-input ap-input--month"
+              value={runMonth}
+              onChange={(e) => { setRunMonth(e.target.value); setAdjustmentsSaved(false); }}
+            />
+            <button type="button" className="ap-btn ap-btn-ghost" onClick={loadPreview} disabled={previewLoading}>
+              {previewLoading ? "Loading…" : "Load preview"}
+            </button>
+            {previewRows.length > 0 && (
+              <button type="button" className="ap-btn ap-btn-primary" onClick={saveAdjustments} disabled={savingAdjustments}>
+                {savingAdjustments ? "Saving…" : "Save adjustments"}
+              </button>
+            )}
+          </div>
+          {previewError && <div className="ap-notice ap-notice--error">{previewError}</div>}
+          {adjustmentsSaved && <div className="ap-notice ap-notice--success">Adjustments saved. Run for Month will use these values.</div>}
+          {previewRows.length > 0 && (
+            <>
+              <p className="ap-hint" style={{ marginTop: 8, marginBottom: 0 }}>
+                Pass-through columns (PAYE, NSSF, SHIF, AHL, Net) reflect saved values. Save adjustments to refresh after editing.
+              </p>
+              <div className="ap-preview-table-wrap">
+              <table className="ap-preview-table">
+                <thead>
+                  <tr>
+                    <th>Employee</th>
+                    <th>Base</th>
+                    <th>Base override</th>
+                    <th>Bonus</th>
+                    <th>Pension</th>
+                    <th>Loan</th>
+                    <th>Other ded.</th>
+                    <th>PAYE</th>
+                    <th>NSSF</th>
+                    <th>SHIF</th>
+                    <th>AHL</th>
+                    <th>Total stat.</th>
+                    <th>Net</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {previewRows.map((r) => (
+                    <tr key={r.user_id}>
+                      <td>{r.employee_name}</td>
+                      <td>{Number(r.base_salary).toLocaleString()}</td>
+                      <td>
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.01}
+                          placeholder="—"
+                          className="ap-input ap-input--small"
+                          value={r.adjustment?.base_salary_override ?? ""}
+                          onChange={(e) => updatePreviewRow(r.user_id, "base_salary_override", e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.01}
+                          className="ap-input ap-input--small"
+                          value={r.adjustment?.bonus ?? 0}
+                          onChange={(e) => updatePreviewRow(r.user_id, "bonus", e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.01}
+                          className="ap-input ap-input--small"
+                          value={r.adjustment?.pension_optional ?? 0}
+                          onChange={(e) => updatePreviewRow(r.user_id, "pension_optional", e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.01}
+                          className="ap-input ap-input--small"
+                          value={r.adjustment?.loan_repayment ?? 0}
+                          onChange={(e) => updatePreviewRow(r.user_id, "loan_repayment", e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.01}
+                          className="ap-input ap-input--small"
+                          value={r.adjustment?.other_deductions ?? 0}
+                          onChange={(e) => updatePreviewRow(r.user_id, "other_deductions", e.target.value)}
+                        />
+                      </td>
+                      <td>{Number(r.paye).toLocaleString()}</td>
+                      <td>{Number(r.nssf).toLocaleString()}</td>
+                      <td>{Number(r.shif).toLocaleString()}</td>
+                      <td>{Number(r.ahl).toLocaleString()}</td>
+                      <td>{Number(r.statutory_total).toLocaleString()}</td>
+                      <td>{Number(r.net).toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       <form className="ap-form" onSubmit={handleUpload}>
         <div className="ap-form-row ap-form-row-split">
           <div>

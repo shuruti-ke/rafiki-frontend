@@ -72,3 +72,20 @@ class PayslipEntry(BaseModel):
     deductions: float
     net_salary: float
     matched_user_id: Optional[str] = None
+
+
+class RunAdjustmentPayload(BaseModel):
+    """Per-employee pay adjustments for a payroll run (bonuses, deductions, pension, loans)."""
+    user_id: uuid.UUID
+    base_salary_override: Optional[float] = None
+    bonus: float = 0.0
+    pension_optional: float = 0.0
+    insurance_relief_basis: float = 0.0
+    loan_repayment: float = 0.0
+    other_deductions: float = 0.0
+    notes: Optional[str] = None
+
+
+class RunAdjustmentUpsertBody(BaseModel):
+    month: str  # YYYY-MM
+    adjustments: list[RunAdjustmentPayload]

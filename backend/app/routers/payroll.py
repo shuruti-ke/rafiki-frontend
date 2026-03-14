@@ -6,7 +6,7 @@ import uuid
 from datetime import date, datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Body
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -22,7 +22,7 @@ from app.dependencies import (
     require_can_parse_payroll,
     require_can_distribute_payroll,
 )
-from app.models.payroll import PayrollTemplate, PayrollBatch, Payslip
+from app.models.payroll import PayrollTemplate, PayrollBatch, Payslip, PayrollRunAdjustment
 from app.models.employee_document import EmployeeDocument
 from app.models.employee_profile import EmployeeProfile
 from app.models.user import User  # users_legacy
@@ -32,6 +32,7 @@ from app.schemas.payroll import (
     PayrollTemplateResponse,
     PayrollBatchResponse,
     PayslipResponse,
+    RunAdjustmentUpsertBody,
 )
 from app.services.file_storage import save_upload, save_bytes, get_download_url, delete_file
 from app.services.audit import log_action
@@ -64,6 +65,98 @@ _PRIVILEGED_ROLES = {"hr_admin", "super_admin"}
 def _require_payroll_processor(user: User | None) -> None:
     if not user or not bool(getattr(user, "can_process_payroll", False)):
         raise HTTPException(status_code=403, detail="Payroll processing permission required")
+
+
+def _build_run_rows(db: Session, org_id: uuid.UUID, year_i: int, month_i: int):
+    """
+    Build payroll rows for a period using employee profiles and any saved run adjustments.
+    Used for run-preview (pass-through validation) and for run_monthly_payroll.
+    Tax logic: gross = base + bonus; statutory from _calculate_kenya(gross, pension, insurance);
+    post-tax deductions (loan, other) reduce net only.
+    """
+    from app.routers import payroll_statutory
+
+    effective_on = date(year_i, month_i, 1)
+    cfg = payroll_statutory._get_config(db, org_id, effective_on=effective_on)
+
+    users = (
+        db.query(User)
+        .filter(User.org_id == org_id, User.is_active == True)
+        .all()
+    )
+    adjustments_by_user = {
+        a.user_id: a
+        for a in db.query(PayrollRunAdjustment).filter(
+            PayrollRunAdjustment.org_id == org_id,
+            PayrollRunAdjustment.period_year == year_i,
+            PayrollRunAdjustment.period_month == month_i,
+        ).all()
+    }
+
+    rows = []
+    for u in users:
+        profile = db.query(EmployeeProfile).filter(
+            EmployeeProfile.org_id == org_id,
+            EmployeeProfile.user_id == u.user_id,
+        ).first()
+        base_salary = float(profile.monthly_salary or 0) if profile else 0.0
+        adj = adjustments_by_user.get(u.user_id)
+
+        if adj:
+            if adj.base_salary_override is not None:
+                base_salary = float(adj.base_salary_override)
+            bonus = float(adj.bonus or 0)
+            pension_opt = float(adj.pension_optional or 0)
+            insurance_basis = float(adj.insurance_relief_basis or 0)
+            loan = float(adj.loan_repayment or 0)
+            other = float(adj.other_deductions or 0)
+            notes = adj.notes
+        else:
+            bonus = pension_opt = insurance_basis = loan = other = 0.0
+            notes = None
+
+        gross = base_salary + bonus
+        if gross <= 0:
+            continue
+
+        calc = payroll_statutory._calculate_kenya(
+            gross_pay=gross,
+            pension_contribution=pension_opt,
+            insurance_relief_basis=insurance_basis,
+            cfg=cfg,
+        )
+        statutory_total = calc["statutory_total"]
+        total_deductions = statutory_total + pension_opt + loan + other
+        net = round(gross - total_deductions, 2)
+
+        name = (u.name or u.email or "Unknown").strip() or "Unknown"
+        rows.append({
+            "user_id": u.user_id,
+            "employee_name": name,
+            "base_salary": round(base_salary, 2),
+            "bonus": round(bonus, 2),
+            "gross": round(gross, 2),
+            "paye": calc["paye"],
+            "nssf": calc["nssf"],
+            "shif": calc["shif"],
+            "ahl": calc["ahl"],
+            "statutory_total": statutory_total,
+            "pension_optional": round(pension_opt, 2),
+            "loan_repayment": round(loan, 2),
+            "other_deductions": round(other, 2),
+            "total_deductions": round(total_deductions, 2),
+            "net": net,
+            "adjustment": {
+                "base_salary_override": float(adj.base_salary_override) if adj and adj.base_salary_override is not None else None,
+                "bonus": float(adj.bonus) if adj else 0,
+                "pension_optional": float(adj.pension_optional) if adj else 0,
+                "insurance_relief_basis": float(adj.insurance_relief_basis) if adj else 0,
+                "loan_repayment": float(adj.loan_repayment) if adj else 0,
+                "other_deductions": float(adj.other_deductions) if adj else 0,
+                "notes": adj.notes if adj else None,
+            } if adj else None,
+        })
+    return rows
 
 
 def _get_or_create_system_template(db: Session, org_id: uuid.UUID, created_by_user_id: uuid.UUID) -> PayrollTemplate:
@@ -117,55 +210,24 @@ def run_monthly_payroll(
     except ValueError:
         raise HTTPException(status_code=400, detail="month must be in YYYY-MM format")
 
-    from app.routers import payroll_statutory
-
-    effective_on = date(year_i, month_i, 1)
-    cfg = payroll_statutory._get_config(db, org_id, effective_on=effective_on)
-
-    # Active employees with a positive monthly_salary (from profile or fallback)
-    users = (
-        db.query(User)
-        .filter(User.org_id == org_id, User.is_active == True)
-        .all()
-    )
-    rows = []
-    for u in users:
-        profile = db.query(EmployeeProfile).filter(
-            EmployeeProfile.org_id == org_id,
-            EmployeeProfile.user_id == u.user_id,
-        ).first()
-        salary = getattr(profile, "monthly_salary", None) if profile else None
-        if salary is None or float(salary) <= 0:
-            continue
-        gross = float(salary)
-        calc = payroll_statutory._calculate_kenya(
-            gross_pay=gross,
-            pension_contribution=0.0,
-            insurance_relief_basis=0.0,
-            cfg=cfg,
-        )
-        deductions = calc["statutory_total"]
-        net = calc["estimated_net_pay"]
-        name = (u.name or u.email or "Unknown").strip() or "Unknown"
-        rows.append({
-            "employee_name": name,
-            "gross_salary": gross,
-            "deductions": deductions,
-            "net_salary": net,
-        })
-
+    rows = _build_run_rows(db, org_id, year_i, month_i)
     if not rows:
         raise HTTPException(
             status_code=400,
             detail="No employees with monthly salary set. Add monthly_salary to employee profiles and try again.",
         )
 
-    # Build CSV
+    # Build CSV (same columns as before; run adjustments already applied in _build_run_rows)
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=["employee_name", "gross_salary", "deductions", "net_salary"])
     writer.writeheader()
     for r in rows:
-        writer.writerow({k: r[k] for k in writer.fieldnames})
+        writer.writerow({
+            "employee_name": r["employee_name"],
+            "gross_salary": r["gross"],
+            "deductions": r["total_deductions"],
+            "net_salary": r["net"],
+        })
     csv_bytes = buf.getvalue().encode("utf-8")
 
     # Upload generated CSV
@@ -269,6 +331,121 @@ def run_monthly_payroll(
         "requires_approval": True,
         "warning": None,
     }
+
+
+@router.get("/run-preview")
+def get_run_preview(
+    month: str = Query(..., pattern=r"^\d{4}-\d{2}$"),
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    current_user: User | None = Depends(get_current_user),
+):
+    """
+    For Thomas (can_process_payroll): preview payroll for a month with pass-through validation.
+    Returns per-employee rows with base, adjustments, and computed statutory (PAYE, NSSF, SHIF, AHL) and net.
+    """
+    _require_payroll_processor(current_user)
+    year, month_num = month.split("-")
+    year_i, month_i = int(year), int(month_num)
+    if not (1 <= month_i <= 12):
+        raise HTTPException(status_code=400, detail="month must be YYYY-MM")
+    rows = _build_run_rows(db, org_id, year_i, month_i)
+    return {"month": month, "rows": rows}
+
+
+@router.get("/run-adjustments")
+def list_run_adjustments(
+    month: str = Query(..., pattern=r"^\d{4}-\d{2}$"),
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    current_user: User | None = Depends(get_current_user),
+):
+    """List saved run adjustments for the given month (Thomas / can_process_payroll)."""
+    _require_payroll_processor(current_user)
+    year, month_num = month.split("-")
+    year_i, month_i = int(year), int(month_num)
+    if not (1 <= month_i <= 12):
+        raise HTTPException(status_code=400, detail="month must be YYYY-MM")
+    adjustments = (
+        db.query(PayrollRunAdjustment)
+        .filter(
+            PayrollRunAdjustment.org_id == org_id,
+            PayrollRunAdjustment.period_year == year_i,
+            PayrollRunAdjustment.period_month == month_i,
+        )
+        .all()
+    )
+    return {
+        "month": month,
+        "adjustments": [
+            {
+                "user_id": str(a.user_id),
+                "base_salary_override": float(a.base_salary_override) if a.base_salary_override is not None else None,
+                "bonus": float(a.bonus or 0),
+                "pension_optional": float(a.pension_optional or 0),
+                "insurance_relief_basis": float(a.insurance_relief_basis or 0),
+                "loan_repayment": float(a.loan_repayment or 0),
+                "other_deductions": float(a.other_deductions or 0),
+                "notes": a.notes,
+            }
+            for a in adjustments
+        ],
+    }
+
+
+@router.put("/run-adjustments")
+def upsert_run_adjustments(
+    body: RunAdjustmentUpsertBody = Body(...),
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    current_user: User | None = Depends(get_current_user),
+):
+    """
+    Upsert run adjustments for a month. Thomas can set per-employee bonus, deductions, pension, loans.
+    Pass-through uses the same statutory formula as run_monthly_payroll and batch validation.
+    """
+    _require_payroll_processor(current_user)
+    year, month_num = body.month.split("-")
+    year_i, month_i = int(year), int(month_num)
+    if not (1 <= month_i <= 12):
+        raise HTTPException(status_code=400, detail="month must be YYYY-MM")
+    for adj in body.adjustments:
+        rec = (
+            db.query(PayrollRunAdjustment)
+            .filter(
+                PayrollRunAdjustment.org_id == org_id,
+                PayrollRunAdjustment.period_year == year_i,
+                PayrollRunAdjustment.period_month == month_i,
+                PayrollRunAdjustment.user_id == adj.user_id,
+            )
+            .first()
+        )
+        if rec:
+            rec.base_salary_override = adj.base_salary_override
+            rec.bonus = adj.bonus
+            rec.pension_optional = adj.pension_optional
+            rec.insurance_relief_basis = adj.insurance_relief_basis
+            rec.loan_repayment = adj.loan_repayment
+            rec.other_deductions = adj.other_deductions
+            rec.notes = adj.notes
+        else:
+            db.add(
+                PayrollRunAdjustment(
+                    org_id=org_id,
+                    period_year=year_i,
+                    period_month=month_i,
+                    user_id=adj.user_id,
+                    base_salary_override=adj.base_salary_override,
+                    bonus=adj.bonus,
+                    pension_optional=adj.pension_optional,
+                    insurance_relief_basis=adj.insurance_relief_basis,
+                    loan_repayment=adj.loan_repayment,
+                    other_deductions=adj.other_deductions,
+                    notes=adj.notes,
+                )
+            )
+    db.commit()
+    return {"month": body.month, "saved": len(body.adjustments)}
 
 
 # -------------------------

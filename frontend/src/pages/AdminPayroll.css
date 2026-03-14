@@ -406,3 +406,47 @@
   border-color: var(--accent);
   color: var(--accent);
 }
+
+/* Prepare pay (run adjustments) */
+.ap-prepare-pay {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+  margin-bottom: 8px;
+}
+
+.ap-prepare-pay .ap-subtitle {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+
+.ap-preview-table-wrap {
+  overflow-x: auto;
+  margin-top: 12px;
+}
+
+.ap-preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.ap-preview-table th,
+.ap-preview-table td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.ap-preview-table th {
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.ap-input--small {
+  width: 72px;
+  padding: 4px 6px;
+  font-size: 13px;
+}

@@ -55,3 +55,27 @@ class Payslip(Base):
     net_pay = Column(Numeric, nullable=True)
     document_id = Column(UUID(as_uuid=True), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class PayrollRunAdjustment(Base):
+    """
+    Per-employee, per-period pay adjustments for the manager (Thomas) to edit before Run for Month.
+    Used for bonuses, deductions, loan repayments, extra pension, etc. Tax implications are
+    applied via _calculate_kenya (pension reduces taxable; loan/other are post-tax).
+    """
+    __tablename__ = "payroll_run_adjustments"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    org_id = Column(UUID(as_uuid=True), nullable=False)
+    period_year = Column(Integer, nullable=False)
+    period_month = Column(Integer, nullable=False)
+    user_id = Column(UUID(as_uuid=True), nullable=False)
+    base_salary_override = Column(Numeric(12, 2), nullable=True)
+    bonus = Column(Numeric(12, 2), nullable=False, server_default=text("0"))
+    pension_optional = Column(Numeric(12, 2), nullable=False, server_default=text("0"))
+    insurance_relief_basis = Column(Numeric(12, 2), nullable=False, server_default=text("0"))
+    loan_repayment = Column(Numeric(12, 2), nullable=False, server_default=text("0"))
+    other_deductions = Column(Numeric(12, 2), nullable=False, server_default=text("0"))
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
