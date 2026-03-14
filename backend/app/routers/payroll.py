@@ -1132,7 +1132,7 @@ def verify_payroll(
     batch_id: uuid.UUID,
     db: Session = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org_id),
-    _role: str = Depends(require_admin),
+    _user=Depends(require_payroll_access),
 ):
     batch = (
         db.query(PayrollBatch)
