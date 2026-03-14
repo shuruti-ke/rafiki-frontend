@@ -11,6 +11,7 @@ super_admin bypasses all scope checks.
 """
 
 import logging
+from typing import Optional
 from uuid import UUID
 from sqlalchemy.orm import Session
 
@@ -19,11 +20,16 @@ from app.models.toolkit import ManagerConfig
 logger = logging.getLogger(__name__)
 
 
-def _is_super_admin(db: Session, user_id: UUID) -> bool:
-    """Check if a user has super_admin role."""
+def _get_user_role(db: Session, user_id: UUID) -> Optional[str]:
+    """Return the user's role or None if not found."""
     from app.models.user import User
     user = db.query(User).filter(User.user_id == user_id).first()
-    return user is not None and str(user.role) == "super_admin"
+    return str(user.role) if user and getattr(user, "role", None) else None
+
+
+def _is_super_admin(db: Session, user_id: UUID) -> bool:
+    """Check if a user has super_admin role."""
+    return _get_user_role(db, user_id) == "super_admin"
 
 
 def get_manager_config(db: Session, user_id: UUID, org_id: UUID) -> ManagerConfig | None:
@@ -63,9 +69,18 @@ def validate_employee_access(
     org_id: UUID,
 ) -> bool:
     """Check if a manager has access to view a specific employee's data."""
+    from app.models.user import User
+
     # super_admin can access any employee
     if _is_super_admin(db, manager_user_id):
         return True
+
+    # hr_admin can access any employee in their org (same as /manager/team behaviour)
+    if _get_user_role(db, manager_user_id) == "hr_admin":
+        emp = db.query(User).filter(User.user_id == employee_user_id).first()
+        if emp and emp.org_id == org_id:
+            return True
+        return False
 
     config = get_manager_config(db, manager_user_id, org_id)
     if not config:
@@ -94,4 +109,8 @@ def get_allowed_features(db: Session, user_id: UUID, org_id: UUID) -> list[str]:
 
 
 def can_use_feature(db: Session, user_id: UUID, org_id: UUID, feature: str) -> bool:
+    # hr_admin and super_admin can use coaching_ai and toolkit without a ManagerConfig
+    role = _get_user_role(db, user_id)
+    if role in ("hr_admin", "super_admin") and feature in ("coaching_ai", "toolkit"):
+        return True
     return feature in get_allowed_features(db, user_id, org_id)
