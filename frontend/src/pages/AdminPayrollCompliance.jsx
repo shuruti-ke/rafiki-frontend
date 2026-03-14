@@ -17,7 +17,13 @@ function Section({ title, description, children }) {
   );
 }
 
+function canChangeStatutoryRates(user) {
+  if (!user) return false;
+  return user.role === "hr_admin" || user.role === "super_admin" || !!user.can_authorize_payroll;
+}
+
 export function PayrollCompliancePanel({ embedded = false }) {
+  const user = typeof localStorage !== "undefined" ? JSON.parse(localStorage.getItem("rafiki_user") || "{}") : {};
   const [cfg, setCfg] = useState(null);
   const [versions, setVersions] = useState([]);
   const [batches, setBatches] = useState([]);
@@ -30,6 +36,8 @@ export function PayrollCompliancePanel({ embedded = false }) {
   const [loading, setLoading] = useState(true);
   const [validating, setValidating] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [showEditRates, setShowEditRates] = useState(false);
+  const canChangeRates = canChangeStatutoryRates(user);
 
   async function load() {
     setLoading(true);
@@ -42,7 +50,12 @@ export function PayrollCompliancePanel({ embedded = false }) {
       ]);
       if (res.ok) {
         const data = await res.json();
-        setCfg(data.config);
+        setCfg(data.config ?? null);
+        setMsg("");
+      } else {
+        setCfg(null);
+        const err = await res.json().catch(() => ({}));
+        setMsg(err.detail || "Unable to load statutory config.");
       }
       if (versionRes.ok) {
         const data = await versionRes.json();
@@ -113,12 +126,13 @@ export function PayrollCompliancePanel({ embedded = false }) {
         authFetch(`${API}/api/v1/payroll/statutory/validate/batch/${batchId}`, { method: "POST" }),
         authFetch(`${API}/api/v1/payroll/statutory/reports/batch/${batchId}`),
       ]);
-      const validateData = await validateRes.json();
+      const validateData = await validateRes.json().catch(() => ({}));
       const reportData = reportRes.ok ? await reportRes.json() : null;
       if (validateRes.ok) {
         setValidation(validateData);
       } else {
-        setMsg(validateData.detail || "Validation failed");
+        const errMsg = typeof validateData.detail === "string" ? validateData.detail : "Validation failed";
+        setMsg(errMsg);
       }
       if (reportRes.ok) setReport(reportData);
     } catch {
@@ -158,98 +172,73 @@ export function PayrollCompliancePanel({ embedded = false }) {
       {/* 1. Statutory config */}
       <Section
         title="1. Statutory rates (PAYE, NSSF, SHIF, Housing)"
-        description="Rates and limits used for payroll. Save when you change rates (e.g. after a government update)."
+        description="Rates and limits used for payroll. Only finance managers (or HR admin) can change rates."
       >
         {cfg ? (
           <div style={{ display: "grid", gap: 16 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12 }}>
-              <label className="ap-form-row">
-                <span className="ap-label">Personal relief (KES)</span>
-                <input
-                  type="number"
-                  step="0.01"
-                  className="ap-input"
-                  value={cfg.personal_relief ?? ""}
-                  onChange={(e) => setCfg((c) => ({ ...c, personal_relief: Number(e.target.value) }))}
-                />
-              </label>
-              <label className="ap-form-row">
-                <span className="ap-label">SHIF rate %</span>
-                <input
-                  type="number"
-                  step="0.0001"
-                  className="ap-input"
-                  value={cfg.shif_rate ?? ""}
-                  onChange={(e) => setCfg((c) => ({ ...c, shif_rate: Number(e.target.value) }))}
-                />
-              </label>
-              <label className="ap-form-row">
-                <span className="ap-label">Housing levy (AHL) %</span>
-                <input
-                  type="number"
-                  step="0.0001"
-                  className="ap-input"
-                  value={cfg.ahl_rate ?? ""}
-                  onChange={(e) => setCfg((c) => ({ ...c, ahl_rate: Number(e.target.value) }))}
-                />
-              </label>
-              <label className="ap-form-row">
-                <span className="ap-label">NSSF lower limit</span>
-                <input
-                  type="number"
-                  step="0.01"
-                  className="ap-input"
-                  value={cfg.nssf_lower_limit ?? ""}
-                  onChange={(e) => setCfg((c) => ({ ...c, nssf_lower_limit: Number(e.target.value) }))}
-                />
-              </label>
-              <label className="ap-form-row">
-                <span className="ap-label">NSSF upper limit</span>
-                <input
-                  type="number"
-                  step="0.01"
-                  className="ap-input"
-                  value={cfg.nssf_upper_limit ?? ""}
-                  onChange={(e) => setCfg((c) => ({ ...c, nssf_upper_limit: Number(e.target.value) }))}
-                />
-              </label>
-              <label className="ap-form-row">
-                <span className="ap-label">NSSF tier 1 rate %</span>
-                <input
-                  type="number"
-                  step="0.0001"
-                  className="ap-input"
-                  value={cfg.nssf_rate_tier1 ?? ""}
-                  onChange={(e) => setCfg((c) => ({ ...c, nssf_rate_tier1: Number(e.target.value) }))}
-                />
-              </label>
-              <label className="ap-form-row">
-                <span className="ap-label">NSSF tier 2 rate %</span>
-                <input
-                  type="number"
-                  step="0.0001"
-                  className="ap-input"
-                  value={cfg.nssf_rate_tier2 ?? ""}
-                  onChange={(e) => setCfg((c) => ({ ...c, nssf_rate_tier2: Number(e.target.value) }))}
-                />
-              </label>
+            <div className="ap-stats-row" style={{ flexWrap: "wrap", gap: 10, padding: 12, background: "var(--panel)", borderRadius: 8, border: "1px solid var(--border)" }}>
+              <div className="ap-batch-row" style={{ padding: "6px 10px" }}><span className="ap-label">Personal relief</span><strong>{fmt(cfg.personal_relief)} KES</strong></div>
+              <div className="ap-batch-row" style={{ padding: "6px 10px" }}><span className="ap-label">SHIF</span><strong>{(Number(cfg.shif_rate) * 100).toFixed(2)}%</strong></div>
+              <div className="ap-batch-row" style={{ padding: "6px 10px" }}><span className="ap-label">NSSF tier 1</span><strong>{(Number(cfg.nssf_rate_tier1) * 100).toFixed(2)}%</strong></div>
+              <div className="ap-batch-row" style={{ padding: "6px 10px" }}><span className="ap-label">NSSF tier 2</span><strong>{(Number(cfg.nssf_rate_tier2) * 100).toFixed(2)}%</strong></div>
+              <div className="ap-batch-row" style={{ padding: "6px 10px" }}><span className="ap-label">Housing (AHL)</span><strong>{(Number(cfg.ahl_rate) * 100).toFixed(2)}%</strong></div>
+              <div className="ap-batch-row" style={{ padding: "6px 10px" }}><span className="ap-label">NSSF limits</span><strong>{fmt(cfg.nssf_lower_limit)} – {fmt(cfg.nssf_upper_limit)}</strong></div>
             </div>
-            <label className="ap-form-row">
-              <span className="ap-label">Notes (e.g. rate change reason)</span>
-              <input
-                type="text"
-                className="ap-input"
-                value={cfg.notes || ""}
-                onChange={(e) => setCfg((c) => ({ ...c, notes: e.target.value }))}
-                placeholder="Optional"
-              />
-            </label>
-            <button type="button" className="ap-btn ap-btn-primary" onClick={saveConfig} disabled={saving}>
-              {saving ? "Saving…" : "Save statutory config"}
-            </button>
+            {canChangeRates && (
+              <>
+                {!showEditRates ? (
+                  <button type="button" className="ap-btn ap-btn-secondary" onClick={() => setShowEditRates(true)}>
+                    Change rates
+                  </button>
+                ) : (
+                  <div style={{ display: "grid", gap: 16, paddingTop: 8, borderTop: "1px solid var(--border)" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12 }}>
+                      <label className="ap-form-row">
+                        <span className="ap-label">Personal relief (KES)</span>
+                        <input type="number" step="0.01" className="ap-input" value={cfg.personal_relief ?? ""} onChange={(e) => setCfg((c) => ({ ...c, personal_relief: Number(e.target.value) }))} />
+                      </label>
+                      <label className="ap-form-row">
+                        <span className="ap-label">SHIF rate %</span>
+                        <input type="number" step="0.0001" className="ap-input" value={cfg.shif_rate ?? ""} onChange={(e) => setCfg((c) => ({ ...c, shif_rate: Number(e.target.value) }))} />
+                      </label>
+                      <label className="ap-form-row">
+                        <span className="ap-label">Housing levy (AHL) %</span>
+                        <input type="number" step="0.0001" className="ap-input" value={cfg.ahl_rate ?? ""} onChange={(e) => setCfg((c) => ({ ...c, ahl_rate: Number(e.target.value) }))} />
+                      </label>
+                      <label className="ap-form-row">
+                        <span className="ap-label">NSSF lower limit</span>
+                        <input type="number" step="0.01" className="ap-input" value={cfg.nssf_lower_limit ?? ""} onChange={(e) => setCfg((c) => ({ ...c, nssf_lower_limit: Number(e.target.value) }))} />
+                      </label>
+                      <label className="ap-form-row">
+                        <span className="ap-label">NSSF upper limit</span>
+                        <input type="number" step="0.01" className="ap-input" value={cfg.nssf_upper_limit ?? ""} onChange={(e) => setCfg((c) => ({ ...c, nssf_upper_limit: Number(e.target.value) }))} />
+                      </label>
+                      <label className="ap-form-row">
+                        <span className="ap-label">NSSF tier 1 rate %</span>
+                        <input type="number" step="0.0001" className="ap-input" value={cfg.nssf_rate_tier1 ?? ""} onChange={(e) => setCfg((c) => ({ ...c, nssf_rate_tier1: Number(e.target.value) }))} />
+                      </label>
+                      <label className="ap-form-row">
+                        <span className="ap-label">NSSF tier 2 rate %</span>
+                        <input type="number" step="0.0001" className="ap-input" value={cfg.nssf_rate_tier2 ?? ""} onChange={(e) => setCfg((c) => ({ ...c, nssf_rate_tier2: Number(e.target.value) }))} />
+                      </label>
+                    </div>
+                    <label className="ap-form-row">
+                      <span className="ap-label">Notes (e.g. rate change reason)</span>
+                      <input type="text" className="ap-input" value={cfg.notes || ""} onChange={(e) => setCfg((c) => ({ ...c, notes: e.target.value }))} placeholder="Optional" />
+                    </label>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button type="button" className="ap-btn ap-btn-primary" onClick={saveConfig} disabled={saving}>
+                        {saving ? "Saving…" : "Save statutory config"}
+                      </button>
+                      <button type="button" className="ap-btn ap-btn-ghost" onClick={() => setShowEditRates(false)}>Cancel</button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         ) : (
-          <p className="ap-hint">Unable to load config.</p>
+          <p className="ap-hint">Unable to load config. Ensure you have payroll access.</p>
         )}
       </Section>
 

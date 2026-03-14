@@ -8,7 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_current_org_id, get_current_user_id, require_admin, require_manager
+from app.dependencies import get_current_org_id, get_current_user_id, require_can_change_statutory_config, require_payroll_access
 from app.services.file_storage import R2_BUCKET, _get_s3
 from app.services.payroll_parser import parse_payroll_file
 
@@ -279,7 +279,7 @@ def get_statutory_config(
     effective_on: date | None = Query(default=None),
     db: Session = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org_id),
-    _role: str = Depends(require_manager),
+    _user=Depends(require_payroll_access),
 ):
     return {"config": _get_config(db, org_id, effective_on=effective_on)}
 
@@ -288,7 +288,7 @@ def get_statutory_config(
 def list_statutory_config_versions(
     db: Session = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org_id),
-    _role: str = Depends(require_manager),
+    _user=Depends(require_payroll_access),
 ):
     rows = db.execute(
         text(
@@ -358,7 +358,7 @@ def calculate_statutory(
     body: StatutoryCalcIn,
     db: Session = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org_id),
-    _role: str = Depends(require_manager),
+    _user=Depends(require_payroll_access),
 ):
     cfg = _get_config(db, org_id)
     result = _calculate_kenya(
@@ -390,7 +390,7 @@ def validate_payroll_batch_statutory(
     batch_id: uuid.UUID,
     db: Session = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org_id),
-    _role: str = Depends(require_manager),
+    _user=Depends(require_payroll_access),
 ):
     batch, result = _load_batch_parse_result(db, org_id, batch_id)
     effective_on = date(int(batch["period_year"]), int(batch["period_month"]), 1)
@@ -413,7 +413,7 @@ def statutory_batch_report(
     batch_id: uuid.UUID,
     db: Session = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org_id),
-    _role: str = Depends(require_manager),
+    _user=Depends(require_payroll_access),
 ):
     batch, result = _load_batch_parse_result(db, org_id, batch_id)
     effective_on = date(int(batch["period_year"]), int(batch["period_month"]), 1)

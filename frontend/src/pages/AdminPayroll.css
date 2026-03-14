@@ -280,6 +280,17 @@
   gap: 4px;
 }
 
+.ap-batch-list-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ap-batch-list-item .ap-batch-detail {
+  margin-left: 4px;
+  margin-right: 4px;
+}
+
 .ap-batch-row {
   display: flex;
   align-items: center;

@@ -169,6 +169,20 @@ def require_payroll_access(
     raise HTTPException(status_code=403, detail="Payroll access required")
 
 
+def require_can_change_statutory_config(
+    user: Optional[User] = Depends(get_current_user),
+) -> User:
+    """Require finance manager (can_authorize_payroll) or hr_admin/super_admin to change statutory rates."""
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    role = str(getattr(user, "role", "") or "")
+    if role in ("hr_admin", "super_admin"):
+        return user
+    if bool(getattr(user, "can_authorize_payroll", False)):
+        return user
+    raise HTTPException(status_code=403, detail="Only finance managers or HR admin can change statutory rates")
+
+
 def require_it_admin(
     authorization: Optional[str] = Header(default=None),
     x_user_role: Optional[str] = Header(default=None),

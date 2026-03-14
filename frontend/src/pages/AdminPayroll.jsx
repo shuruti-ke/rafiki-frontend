@@ -8,7 +8,6 @@ const TAB_LABELS = {
   approve: "Approve Payroll",
   upload: "Payroll Run",
   batches: "Batch History",
-  templates: "Templates",
   compliance: "Compliance & Filing",
 };
 
@@ -19,7 +18,7 @@ function getTabsAndDefault() {
   const tabs = [];
   if (hasApprove) tabs.push("approve");
   tabs.push("batches");
-  if (hasProcess) tabs.push("upload", "templates");
+  if (hasProcess) tabs.push("upload");
   tabs.push("compliance");
   const defaultTab = hasApprove ? "approve" : hasProcess ? "upload" : "batches";
   return { tabs, defaultTab };
@@ -70,7 +69,6 @@ export default function AdminPayroll() {
         {tab === "approve" && <ApproveTab />}
         {tab === "upload" && <UploadTab />}
         {tab === "batches" && <BatchesTab />}
-        {tab === "templates" && <TemplatesTab />}
         {tab === "compliance" && <PayrollCompliancePanel embedded />}
       </div>
     </div>
@@ -679,25 +677,23 @@ function BatchesTab() {
     <div className="ap-section">
       <div className="ap-batches-list">
         {batches.map((b) => (
-          <div
-            key={b.batch_id}
-            className={`ap-batch-row ${selected === b.batch_id ? "selected" : ""}`}
-            onClick={() => loadDetail(b)}
-          >
-            <div className="ap-batch-month">
-              {b.period_year}-{String(b.period_month).padStart(2, "0")}
+          <div key={b.batch_id} className="ap-batch-list-item" style={{ marginBottom: selected === b.batch_id ? 0 : undefined }}>
+            <div
+              className={`ap-batch-row ${selected === b.batch_id ? "selected" : ""}`}
+              onClick={() => loadDetail(b)}
+            >
+              <div className="ap-batch-month">
+                {b.period_year}-{String(b.period_month).padStart(2, "0")}
+              </div>
+              <span className="ap-badge" data-status={b.status}>{b.status.replace(/_/g, " ")}</span>
+              {b.computed_total != null && (
+                <span className="ap-batch-total">Net: {fmt(b.computed_total)}</span>
+              )}
+              <span className="ap-batch-date">{new Date(b.created_at).toLocaleDateString()}</span>
             </div>
-            <span className="ap-badge" data-status={b.status}>{b.status.replace(/_/g, " ")}</span>
-            {b.computed_total != null && (
-              <span className="ap-batch-total">Net: {fmt(b.computed_total)}</span>
-            )}
-            <span className="ap-batch-date">{new Date(b.created_at).toLocaleDateString()}</span>
-          </div>
-        ))}
-      </div>
 
-      {selected && selectedBatch && (
-        <div className="ap-batch-detail">
+            {selected === b.batch_id && selectedBatch && (
+              <div className="ap-batch-detail" style={{ marginTop: 0 }}>
           <div className="ap-batch-detail-header">
             <span className="ap-badge" data-status={selectedBatch.status}>
               {selectedBatch.status.replace(/_/g, " ")}
@@ -936,8 +932,11 @@ function BatchesTab() {
               Detailed breakdown available after parsing.
             </div>
           )}
-        </div>
-      )}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
