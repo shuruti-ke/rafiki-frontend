@@ -68,11 +68,27 @@ def generate_payslip_pdf(
     Income Tax → Personal Relief → P.A.Y.E → Pay After Tax → Net Pay.
     Falls back to a simple text layout if reportlab is unavailable.
     """
+    # When reportlab is unavailable or we want to guarantee the standard format, use fallback with full breakdown
+    use_standard_format = (
+        taxable_pay is not None
+        and income_tax_before_relief is not None
+        and personal_relief is not None
+    )
     if not REPORTLAB_OK:
         return _fallback_text_pdf(
-            org_name=org_name, employee_name=employee_name,
-            month=month, gross_salary=gross_salary,
-            total_deductions=total_deductions, net_salary=net_salary,
+            org_name=org_name,
+            employee_name=employee_name,
+            month=month,
+            gross_salary=gross_salary,
+            total_deductions=total_deductions,
+            net_salary=net_salary,
+            taxable_pay=taxable_pay,
+            income_tax_before_relief=income_tax_before_relief,
+            personal_relief=personal_relief,
+            nssf=nssf,
+            shif=shif,
+            housing_levy=housing_levy if housing_levy is not None else nhdf,
+            paye=paye,
         )
 
     # Parse month display string
@@ -282,27 +298,95 @@ def generate_payslip_pdf(
         small,
     ))
 
-    doc.build(story)
-    return buf.getvalue()
+    try:
+        doc.build(story)
+        return buf.getvalue()
+    except Exception as e:
+        logger.warning("reportlab build failed, using fallback PDF: %s", e)
+        return _fallback_text_pdf(
+            org_name=org_name,
+            employee_name=employee_name,
+            month=month,
+            gross_salary=gross_salary,
+            total_deductions=total_deductions_calc if not use_standard_format else (nssf + shif + (housing_levy_val or nhdf) + paye),
+            net_salary=net_salary,
+            taxable_pay=taxable_pay if use_standard_format else None,
+            income_tax_before_relief=income_tax_before_relief if use_standard_format else None,
+            personal_relief=personal_relief if use_standard_format else None,
+            nssf=nssf or None,
+            shif=shif or None,
+            housing_levy=housing_levy_val or nhdf or None,
+            paye=paye or None,
+        )
 
 
-def _fallback_text_pdf(*, org_name, employee_name, month, gross_salary, total_deductions, net_salary) -> bytes:
-    """Minimal plain-text PDF if reportlab is not installed."""
+def _fallback_text_pdf(
+    *,
+    org_name: str,
+    employee_name: str,
+    month: str,
+    gross_salary: float,
+    total_deductions: float,
+    net_salary: float,
+    taxable_pay: Optional[float] = None,
+    income_tax_before_relief: Optional[float] = None,
+    personal_relief: Optional[float] = None,
+    nssf: Optional[float] = None,
+    shif: Optional[float] = None,
+    housing_levy: Optional[float] = None,
+    paye: Optional[float] = None,
+) -> bytes:
+    """Plain-text PDF when reportlab is not installed. Uses standard format when breakdown is provided."""
+    lines_parts = [
+        f"{org_name}",
+        f"PAYSLIP - {month}",
+        f"Employee: {employee_name}",
+        "",
+        f"BASIC PAY: {gross_salary:,.2f}",
+    ]
+    if (
+        taxable_pay is not None
+        and income_tax_before_relief is not None
+        and personal_relief is not None
+        and paye is not None
+    ):
+        lines_parts.append("Deductions before Taxable Pay:")
+        if nssf:
+            lines_parts.append(f"  NSSF: {nssf:,.2f}")
+        if shif:
+            lines_parts.append(f"  SHIF: {shif:,.2f}")
+        if housing_levy:
+            lines_parts.append(f"  Housing Levy: {housing_levy:,.2f}")
+        lines_parts.append(f"TAXABLE PAY: {taxable_pay:,.2f}")
+        lines_parts.append("Tax Calculation:")
+        lines_parts.append(f"  Income Tax: {income_tax_before_relief:,.2f}")
+        lines_parts.append(f"  Personal Relief: -{personal_relief:,.2f}")
+        lines_parts.append(f"  P.A.Y.E: {paye:,.2f}")
+        pay_after_tax = taxable_pay - paye
+        lines_parts.append(f"PAY AFTER TAX: {pay_after_tax:,.2f}")
+    else:
+        lines_parts.append(f"Total Deductions: {total_deductions:,.2f}")
+    lines_parts.append(f"NET PAY: {net_salary:,.2f}")
+    text_content = "\n".join(lines_parts)
+
+    # Build minimal PDF with the text (escape parens for PDF strings)
+    def pdf_str(s: str) -> str:
+        return "(" + s.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\))") + ")"
+
+    text = ""
+    y = 800
+    for line in text_content.split("\n"):
+        if y < 80:
+            y = 700  # new column / page continuation if needed
+        text += f"BT /F1 12 Tf 50 {y} Td {pdf_str(line[:80])} Tj ET\n"
+        y -= 14
+    text = text.rstrip()
+
     lines = [
-        f"%PDF-1.4",
+        "%PDF-1.4",
         "1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj",
         "2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj",
         "3 0 obj<</Type/Page/MediaBox[0 0 595 842]/Parent 2 0 R/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>endobj",
-    ]
-    text = (
-        f"BT /F1 14 Tf 50 800 Td ({org_name}) Tj\n"
-        f"0 -25 Td (PAYSLIP - {month}) Tj\n"
-        f"0 -30 Td (Employee: {employee_name}) Tj\n"
-        f"0 -20 Td (Gross Salary: {gross_salary:,.2f}) Tj\n"
-        f"0 -20 Td (Total Deductions: {total_deductions:,.2f}) Tj\n"
-        f"0 -20 Td (Net Salary: {net_salary:,.2f}) Tj ET"
-    )
-    lines += [
         f"4 0 obj<</Length {len(text)}>>\nstream\n{text}\nendstream\nendobj",
         "5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj",
         "xref\n0 6",
