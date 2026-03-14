@@ -1,111 +1,17 @@
 import { useEffect, useState } from "react";
 import { API, authFetch } from "../api.js";
+import "./AdminPayroll.css";
 
-const CONFIG_FIELDS = [
-  {
-    key: "effective_from",
-    label: "Effective From",
-    help: "The date this statutory configuration starts applying to payroll runs.",
-    type: "date",
-  },
-  {
-    key: "effective_to",
-    label: "Effective To",
-    help: "Optional end date. Leave blank if this is the active open-ended config.",
-    type: "date",
-  },
-  {
-    key: "personal_relief",
-    label: "PAYE Personal Relief",
-    help: "Monthly personal tax relief subtracted from PAYE before final tax is charged.",
-    type: "number",
-    step: "0.01",
-  },
-  {
-    key: "shif_rate",
-    label: "SHIF Rate",
-    help: "Percentage applied to gross pay for the Social Health Insurance Fund.",
-    type: "number",
-    step: "0.0001",
-  },
-  {
-    key: "ahl_rate",
-    label: "Affordable Housing Levy Rate",
-    help: "Percentage charged on gross pay for the housing levy.",
-    type: "number",
-    step: "0.0001",
-  },
-  {
-    key: "nssf_lower_limit",
-    label: "NSSF Lower Earnings Limit",
-    help: "Upper earnings cap used for the first NSSF contribution tier.",
-    type: "number",
-    step: "0.01",
-  },
-  {
-    key: "nssf_upper_limit",
-    label: "NSSF Upper Earnings Limit",
-    help: "Maximum pensionable earnings considered when calculating NSSF tier contributions.",
-    type: "number",
-    step: "0.01",
-  },
-  {
-    key: "nssf_rate_tier1",
-    label: "NSSF Tier 1 Rate",
-    help: "Contribution rate applied to earnings up to the lower NSSF limit.",
-    type: "number",
-    step: "0.0001",
-  },
-  {
-    key: "nssf_rate_tier2",
-    label: "NSSF Tier 2 Rate",
-    help: "Contribution rate applied to earnings between the lower and upper NSSF limits.",
-    type: "number",
-    step: "0.0001",
-  },
-];
-
-const CALCULATOR_FIELDS = [
-  {
-    key: "gross_pay",
-    label: "Gross Pay",
-    help: "Total monthly earnings before statutory deductions and voluntary deductions.",
-    type: "number",
-    step: "0.01",
-  },
-  {
-    key: "pension_contribution",
-    label: "Employee Pension Contribution",
-    help: "Any employee pension amount that should reduce taxable pay before PAYE.",
-    type: "number",
-    step: "0.01",
-  },
-  {
-    key: "insurance_relief_basis",
-    label: "Insurance Relief Basis",
-    help: "Monthly qualifying insurance premium used to compute insurance tax relief.",
-    type: "number",
-    step: "0.01",
-  },
-];
-
-function FieldCard({ label, help, children }) {
-  return (
-    <div style={{ border: "1px solid var(--border)", borderRadius: 12, padding: 12, background: "#fff" }}>
-      <div style={{ fontWeight: 700, marginBottom: 4 }}>{label}</div>
-      <div style={{ color: "var(--muted)", fontSize: 12, marginBottom: 10 }}>{help}</div>
-      {children}
-    </div>
-  );
+function fmt(num) {
+  if (num == null || Number.isNaN(num)) return "—";
+  return Number(num).toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function SectionShell({ title, description, children }) {
+function Section({ title, description, children }) {
   return (
-    <div style={{ display: "grid", gap: 12, border: "1px solid var(--border)", borderRadius: 12, padding: 16, background: "var(--panel)" }}>
-      <div>
-        <h3 style={{ margin: 0 }}>{title}</h3>
-        {description ? <p style={{ color: "var(--muted)", margin: "6px 0 0" }}>{description}</p> : null}
-      </div>
+    <div className="ap-step" style={{ marginBottom: 24 }}>
+      <h3 className="ap-step-title">{title}</h3>
+      {description && <p className="ap-hint" style={{ marginTop: 4, marginBottom: 12 }}>{description}</p>}
       {children}
     </div>
   );
@@ -121,24 +27,35 @@ export function PayrollCompliancePanel({ embedded = false }) {
   const [validation, setValidation] = useState(null);
   const [report, setReport] = useState(null);
   const [msg, setMsg] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [validating, setValidating] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   async function load() {
-    const [res, versionRes, batchRes] = await Promise.all([
-      authFetch(`${API}/api/v1/payroll/statutory/config`),
-      authFetch(`${API}/api/v1/payroll/statutory/config/versions`),
-      authFetch(`${API}/api/v1/payroll/batches`),
-    ]);
-    if (res.ok) {
-      const data = await res.json();
-      setCfg(data.config);
-    }
-    if (versionRes.ok) {
-      const data = await versionRes.json();
-      setVersions(data.versions || []);
-    }
-    if (batchRes.ok) {
-      const data = await batchRes.json();
-      setBatches(Array.isArray(data) ? data : []);
+    setLoading(true);
+    setMsg("");
+    try {
+      const [res, versionRes, batchRes] = await Promise.all([
+        authFetch(`${API}/api/v1/payroll/statutory/config`),
+        authFetch(`${API}/api/v1/payroll/statutory/config/versions`),
+        authFetch(`${API}/api/v1/payroll/batches`),
+      ]);
+      if (res.ok) {
+        const data = await res.json();
+        setCfg(data.config);
+      }
+      if (versionRes.ok) {
+        const data = await versionRes.json();
+        setVersions(data.versions || []);
+      }
+      if (batchRes.ok) {
+        const data = await batchRes.json();
+        setBatches(Array.isArray(data) ? data : []);
+      }
+    } catch {
+      setMsg("Failed to load compliance data.");
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -148,213 +65,338 @@ export function PayrollCompliancePanel({ embedded = false }) {
 
   const saveConfig = async () => {
     if (!cfg) return;
-    const res = await authFetch(`${API}/api/v1/payroll/statutory/config`, {
-      method: "PUT",
-      body: JSON.stringify(cfg),
-    });
-    const data = await res.json();
-    setMsg(res.ok ? "Statutory config saved." : (data.detail || "Failed to save config"));
-    if (res.ok) {
-      setCfg(data.config);
-      load();
+    setSaving(true);
+    setMsg("");
+    try {
+      const res = await authFetch(`${API}/api/v1/payroll/statutory/config`, {
+        method: "PUT",
+        body: JSON.stringify(cfg),
+      });
+      const data = await res.json();
+      setMsg(res.ok ? "Config saved." : (data.detail || "Failed to save"));
+      if (res.ok) load();
+    } catch {
+      setMsg("Failed to save.");
+    } finally {
+      setSaving(false);
     }
   };
 
   const runCalc = async () => {
-    const res = await authFetch(`${API}/api/v1/payroll/statutory/calculate`, {
-      method: "POST",
-      body: JSON.stringify(calc),
-    });
-    const data = await res.json();
-    if (res.ok) {
-      setResult(data.result);
-      setMsg("");
-    } else {
-      setMsg(data.detail || "Calculation failed");
+    setMsg("");
+    try {
+      const res = await authFetch(`${API}/api/v1/payroll/statutory/calculate`, {
+        method: "POST",
+        body: JSON.stringify(calc),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setResult(data.result);
+      } else {
+        setMsg(data.detail || "Calculation failed");
+        setResult(null);
+      }
+    } catch {
+      setMsg("Calculation failed");
+      setResult(null);
     }
   };
 
   const loadValidation = async () => {
     if (!batchId) return;
-    const [validateRes, reportRes] = await Promise.all([
-      authFetch(`${API}/api/v1/payroll/statutory/validate/batch/${batchId}`, { method: "POST" }),
-      authFetch(`${API}/api/v1/payroll/statutory/reports/batch/${batchId}`),
-    ]);
-    const validateData = await validateRes.json();
-    const reportData = await reportRes.json();
-    if (validateRes.ok) {
-      setValidation(validateData);
-      setMsg("");
-    } else {
-      setMsg(validateData.detail || "Failed to validate payroll batch");
+    setValidating(true);
+    setValidation(null);
+    setReport(null);
+    setMsg("");
+    try {
+      const [validateRes, reportRes] = await Promise.all([
+        authFetch(`${API}/api/v1/payroll/statutory/validate/batch/${batchId}`, { method: "POST" }),
+        authFetch(`${API}/api/v1/payroll/statutory/reports/batch/${batchId}`),
+      ]);
+      const validateData = await validateRes.json();
+      const reportData = reportRes.ok ? await reportRes.json() : null;
+      if (validateRes.ok) {
+        setValidation(validateData);
+      } else {
+        setMsg(validateData.detail || "Validation failed");
+      }
+      if (reportRes.ok) setReport(reportData);
+    } catch {
+      setMsg("Failed to load validation or report.");
+    } finally {
+      setValidating(false);
     }
-    if (reportRes.ok) setReport(reportData);
   };
 
+  const parsedBatches = batches.filter((b) => b.status === "parsed" || b.status === "distributed");
+
+  if (loading) {
+    return (
+      <div className="ap-section">
+        <div className="ap-loading">Loading compliance…</div>
+      </div>
+    );
+  }
+
   return (
-    <div style={{ maxWidth: 1200 }}>
+    <div className="ap-section" style={{ maxWidth: 900 }}>
       {!embedded && (
         <>
-          <h1>Payroll Statutory Compliance (Kenya)</h1>
-          <p style={{ color: "var(--muted)" }}>
-            Version your statutory rules, validate parsed payroll batches against them, and generate filing-ready summaries for PAYE, NSSF, SHIF, and AHL.
+          <h2 className="ap-section-title" style={{ fontSize: 18, marginBottom: 4 }}>Compliance &amp; Filing</h2>
+          <p className="ap-hint" style={{ marginBottom: 20 }}>
+            Manage statutory rates (Kenya), run a quick deduction estimate, and validate a payroll batch before filing.
           </p>
         </>
       )}
-      {msg && <div style={{ marginBottom: 12 }}>{msg}</div>}
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(320px, 420px) 1fr", gap: 20, alignItems: "start" }}>
-        <div style={{ display: "grid", gap: 16 }}>
-          {cfg && (
-            <SectionShell
-              title="Effective-Dated Statutory Config"
-              description="Keep historical payroll rules intact by saving dated versions whenever rates or tax relief rules change."
-            >
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                {CONFIG_FIELDS.map((field) => (
-                  <FieldCard key={field.key} label={field.label} help={field.help}>
-                    <input
-                      className="search"
-                      type={field.type}
-                      step={field.step}
-                      value={cfg[field.key] ?? ""}
-                      onChange={(e) =>
-                        setCfg((current) => ({
-                          ...current,
-                          [field.key]:
-                            field.type === "number"
-                              ? Number(e.target.value)
-                              : e.target.value,
-                        }))
-                      }
-                      placeholder={field.label}
-                      style={{ width: "100%", boxSizing: "border-box" }}
-                    />
-                  </FieldCard>
-                ))}
-              </div>
-              <FieldCard
-                label="Version Notes"
-                help="Document why this config exists, for example a government rate change or a new compliance period."
-              >
+      {msg && (
+        <div className={msg.includes("Failed") || msg.includes("error") ? "ap-error" : "ap-notice ap-notice--success"} style={{ marginBottom: 12 }}>
+          {msg}
+        </div>
+      )}
+
+      {/* 1. Statutory config */}
+      <Section
+        title="1. Statutory rates (PAYE, NSSF, SHIF, Housing)"
+        description="Rates and limits used for payroll. Save when you change rates (e.g. after a government update)."
+      >
+        {cfg ? (
+          <div style={{ display: "grid", gap: 16 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12 }}>
+              <label className="ap-form-row">
+                <span className="ap-label">Personal relief (KES)</span>
                 <input
-                  className="search"
-                  value={cfg.notes || ""}
-                  onChange={(e) => setCfg((current) => ({ ...current, notes: e.target.value }))}
-                  placeholder="Notes for this version"
-                  style={{ width: "100%", boxSizing: "border-box" }}
+                  type="number"
+                  step="0.01"
+                  className="ap-input"
+                  value={cfg.personal_relief ?? ""}
+                  onChange={(e) => setCfg((c) => ({ ...c, personal_relief: Number(e.target.value) }))}
                 />
-              </FieldCard>
-              <button className="btn btnPrimary" onClick={saveConfig}>Save Compliance Config</button>
-            </SectionShell>
-          )}
+              </label>
+              <label className="ap-form-row">
+                <span className="ap-label">SHIF rate %</span>
+                <input
+                  type="number"
+                  step="0.0001"
+                  className="ap-input"
+                  value={cfg.shif_rate ?? ""}
+                  onChange={(e) => setCfg((c) => ({ ...c, shif_rate: Number(e.target.value) }))}
+                />
+              </label>
+              <label className="ap-form-row">
+                <span className="ap-label">Housing levy (AHL) %</span>
+                <input
+                  type="number"
+                  step="0.0001"
+                  className="ap-input"
+                  value={cfg.ahl_rate ?? ""}
+                  onChange={(e) => setCfg((c) => ({ ...c, ahl_rate: Number(e.target.value) }))}
+                />
+              </label>
+              <label className="ap-form-row">
+                <span className="ap-label">NSSF lower limit</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  className="ap-input"
+                  value={cfg.nssf_lower_limit ?? ""}
+                  onChange={(e) => setCfg((c) => ({ ...c, nssf_lower_limit: Number(e.target.value) }))}
+                />
+              </label>
+              <label className="ap-form-row">
+                <span className="ap-label">NSSF upper limit</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  className="ap-input"
+                  value={cfg.nssf_upper_limit ?? ""}
+                  onChange={(e) => setCfg((c) => ({ ...c, nssf_upper_limit: Number(e.target.value) }))}
+                />
+              </label>
+              <label className="ap-form-row">
+                <span className="ap-label">NSSF tier 1 rate %</span>
+                <input
+                  type="number"
+                  step="0.0001"
+                  className="ap-input"
+                  value={cfg.nssf_rate_tier1 ?? ""}
+                  onChange={(e) => setCfg((c) => ({ ...c, nssf_rate_tier1: Number(e.target.value) }))}
+                />
+              </label>
+              <label className="ap-form-row">
+                <span className="ap-label">NSSF tier 2 rate %</span>
+                <input
+                  type="number"
+                  step="0.0001"
+                  className="ap-input"
+                  value={cfg.nssf_rate_tier2 ?? ""}
+                  onChange={(e) => setCfg((c) => ({ ...c, nssf_rate_tier2: Number(e.target.value) }))}
+                />
+              </label>
+            </div>
+            <label className="ap-form-row">
+              <span className="ap-label">Notes (e.g. rate change reason)</span>
+              <input
+                type="text"
+                className="ap-input"
+                value={cfg.notes || ""}
+                onChange={(e) => setCfg((c) => ({ ...c, notes: e.target.value }))}
+                placeholder="Optional"
+              />
+            </label>
+            <button type="button" className="ap-btn ap-btn-primary" onClick={saveConfig} disabled={saving}>
+              {saving ? "Saving…" : "Save statutory config"}
+            </button>
+          </div>
+        ) : (
+          <p className="ap-hint">Unable to load config.</p>
+        )}
+      </Section>
 
-          <SectionShell
-            title="Statutory Calculator"
-            description="Use this quick estimator to understand how a single employee's gross pay flows into statutory deductions and estimated net pay."
+      {/* 2. Quick calculator */}
+      <Section
+        title="2. Quick deduction estimate"
+        description="Enter a gross pay to see estimated PAYE, NSSF, SHIF, housing and net pay."
+      >
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end" }}>
+          <label className="ap-form-row" style={{ marginBottom: 0 }}>
+            <span className="ap-label">Gross pay (KES)</span>
+            <input
+              type="number"
+              step="0.01"
+              className="ap-input"
+              style={{ width: 140 }}
+              value={calc.gross_pay}
+              onChange={(e) => setCalc((c) => ({ ...c, gross_pay: Number(e.target.value) }))}
+            />
+          </label>
+          <button type="button" className="ap-btn ap-btn-primary" onClick={runCalc}>
+            Calculate
+          </button>
+        </div>
+        {result && (
+          <div className="ap-stats-row" style={{ marginTop: 16, flexWrap: "wrap" }}>
+            <div className="ap-batch-detail" style={{ padding: 12, borderRadius: 8, background: "var(--panel)", border: "1px solid var(--border)" }}>
+              <div style={{ display: "grid", gap: 6 }}>
+                <div><strong>Taxable pay</strong> {fmt(result.taxable_pay)}</div>
+                <div><strong>PAYE</strong> {fmt(result.paye)}</div>
+                <div><strong>NSSF</strong> {fmt(result.nssf)}</div>
+                <div><strong>SHIF</strong> {fmt(result.shif)}</div>
+                <div><strong>AHL (housing)</strong> {fmt(result.ahl)}</div>
+                <div style={{ marginTop: 6, paddingTop: 8, borderTop: "1px solid var(--border)" }}>
+                  <strong>Est. net pay</strong> {fmt(result.estimated_net_pay)}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </Section>
+
+      {/* 3. Batch validation & filing */}
+      <Section
+        title="3. Validate batch &amp; filing summary"
+        description="Select a parsed or distributed batch to check it matches statutory rules and view the filing summary."
+      >
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+          <select
+            className="ap-input"
+            value={batchId}
+            onChange={(e) => { setBatchId(e.target.value); setValidation(null); setReport(null); }}
+            style={{ minWidth: 200 }}
           >
-            <div style={{ display: "grid", gap: 10 }}>
-              {CALCULATOR_FIELDS.map((field) => (
-                <FieldCard key={field.key} label={field.label} help={field.help}>
-                  <input
-                    className="search"
-                    type={field.type}
-                    step={field.step}
-                    value={calc[field.key]}
-                    onChange={(e) => setCalc((current) => ({ ...current, [field.key]: Number(e.target.value) }))}
-                    placeholder={field.label}
-                    style={{ width: "100%", boxSizing: "border-box" }}
-                  />
-                </FieldCard>
+            <option value="">Select payroll batch</option>
+            {parsedBatches.map((batch) => (
+              <option key={batch.batch_id} value={batch.batch_id}>
+                {batch.period_year}-{String(batch.period_month).padStart(2, "0")} — {batch.status}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="ap-btn ap-btn-primary"
+            onClick={loadValidation}
+            disabled={!batchId || validating}
+          >
+            {validating ? "Loading…" : "Validate &amp; load report"}
+          </button>
+        </div>
+
+        {validation?.summary && (
+          <div className="ap-stats-row" style={{ marginTop: 16, flexWrap: "wrap" }}>
+            <div className="ap-batch-row" style={{ padding: "10px 14px" }}>
+              <span className="ap-label">Within tolerance</span>
+              <strong>{validation.summary.within_tolerance_count}</strong>
+            </div>
+            <div className="ap-batch-row" style={{ padding: "10px 14px" }}>
+              <span className="ap-label">Needs review</span>
+              <strong className={validation.summary.needs_review_count > 0 ? "ap-error" : ""}>
+                {validation.summary.needs_review_count}
+              </strong>
+            </div>
+            <div className="ap-batch-row" style={{ padding: "10px 14px" }}>
+              <span className="ap-label">Declared statutory</span>
+              <strong>{fmt(validation.summary.declared_statutory)}</strong>
+            </div>
+            <div className="ap-batch-row" style={{ padding: "10px 14px" }}>
+              <span className="ap-label">Expected statutory</span>
+              <strong>{fmt(validation.summary.expected_statutory)}</strong>
+            </div>
+          </div>
+        )}
+
+        {(validation?.formula_note || report?.formula_note) && (
+          <p className="ap-hint" style={{ marginTop: 12, marginBottom: 0, fontSize: 12 }}>
+            {validation?.formula_note || report?.formula_note}
+          </p>
+        )}
+
+        {report?.filing_summary && (
+          <div style={{ marginTop: 16 }}>
+            <h4 style={{ margin: "0 0 8px", fontSize: 14 }}>Filing summary</h4>
+            <div className="ap-stats-row" style={{ flexWrap: "wrap", gap: 10 }}>
+              {Object.entries(report.filing_summary).map(([key, value]) => (
+                <div key={key} className="ap-batch-row" style={{ padding: "8px 12px" }}>
+                  <span className="ap-label" style={{ textTransform: "uppercase", fontSize: 11 }}>{key}</span>
+                  <strong>{fmt(value)}</strong>
+                </div>
               ))}
             </div>
-            <button className="btn btnPrimary" onClick={runCalc}>Calculate</button>
-            {result && (
-              <div style={{ display: "grid", gap: 6 }}>
-                {Object.entries(result).map(([key, value]) => (
-                  <div key={key} className="btn" style={{ justifyContent: "space-between" }}>{key}: {String(value)}</div>
+          </div>
+        )}
+
+        {validation?.rows?.length > 0 && (
+          <div style={{ marginTop: 16, overflowX: "auto" }}>
+            <h4 style={{ margin: "0 0 8px", fontSize: 14 }}>Per-employee validation</h4>
+            <table className="ap-entries-table" style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: "left", padding: "8px 10px", borderBottom: "1px solid var(--border)" }}>Employee</th>
+                  <th style={{ textAlign: "right", padding: "8px 10px", borderBottom: "1px solid var(--border)" }}>Declared</th>
+                  <th style={{ textAlign: "right", padding: "8px 10px", borderBottom: "1px solid var(--border)" }}>Expected</th>
+                  <th style={{ textAlign: "right", padding: "8px 10px", borderBottom: "1px solid var(--border)" }}>Variance</th>
+                  <th style={{ textAlign: "left", padding: "8px 10px", borderBottom: "1px solid var(--border)" }}>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {validation.rows.slice(0, 20).map((row, i) => (
+                  <tr key={i} className={row.status === "review" ? "ap-row-unmatched" : ""}>
+                    <td style={{ padding: "8px 10px", borderBottom: "1px solid var(--border)" }}>{row.employee_name}</td>
+                    <td style={{ textAlign: "right", padding: "8px 10px", borderBottom: "1px solid var(--border)" }}>{fmt(row.declared?.statutory_total)}</td>
+                    <td style={{ textAlign: "right", padding: "8px 10px", borderBottom: "1px solid var(--border)" }}>{fmt(row.expected?.statutory_total)}</td>
+                    <td style={{ textAlign: "right", padding: "8px 10px", borderBottom: "1px solid var(--border)" }}>{fmt(row.variance)}</td>
+                    <td style={{ padding: "8px 10px", borderBottom: "1px solid var(--border)" }}>
+                      <span className="ap-badge" data-status={row.status}>{row.status}</span>
+                    </td>
+                  </tr>
                 ))}
-              </div>
+              </tbody>
+            </table>
+            {validation.rows.length > 20 && (
+              <p className="ap-hint" style={{ marginTop: 8 }}>Showing first 20 of {validation.rows.length} rows.</p>
             )}
-          </SectionShell>
-
-          <SectionShell
-            title="Config Versions"
-            description="Review the dated versions saved for this organization so payroll teams can audit which rates applied to which period."
-          >
-            {versions.map((version) => (
-              <div key={version.id || `${version.effective_from}-${version.updated_at || "default"}`} className="btn" style={{ textAlign: "left" }}>
-                <strong>{version.effective_from || "Default"}{version.is_active ? " · Active" : ""}</strong>
-                <div style={{ color: "var(--muted)", fontSize: 12 }}>
-                  {version.notes || "No notes"} · SHIF {version.shif_rate} · AHL {version.ahl_rate}
-                </div>
-              </div>
-            ))}
-          </SectionShell>
-        </div>
-
-        <div style={{ display: "grid", gap: 16 }}>
-          <SectionShell
-            title="Batch Validation & Filing Pack"
-            description="Validate a parsed payroll batch against the active statutory config, then review the filing summary before final payroll sign-off."
-          >
-            <div style={{ display: "flex", gap: 8 }}>
-              <select className="search" value={batchId} onChange={(e) => setBatchId(e.target.value)}>
-                <option value="">Select payroll batch</option>
-                {batches.map((batch) => (
-                  <option key={batch.batch_id} value={batch.batch_id}>
-                    {batch.period_year}-{String(batch.period_month).padStart(2, "0")} · {batch.status}
-                  </option>
-                ))}
-              </select>
-              <button className="btn btnPrimary" onClick={loadValidation} disabled={!batchId}>Validate</button>
-            </div>
-
-            {validation && (
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <div className="btn">Within tolerance: {validation.summary?.within_tolerance_count}</div>
-                <div className="btn">Needs review: {validation.summary?.needs_review_count}</div>
-                <div className="btn">Declared statutory: {validation.summary?.declared_statutory}</div>
-                <div className="btn">Expected statutory: {validation.summary?.expected_statutory}</div>
-              </div>
-            )}
-
-            {report && (
-              <>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 8 }}>
-                  {Object.entries(report.filing_summary || {}).map(([key, value]) => (
-                    <div key={key} className="btn">{key}: {value}</div>
-                  ))}
-                </div>
-                <div style={{ overflow: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead>
-                      <tr>
-                        <th style={{ textAlign: "left", padding: "10px 8px", borderBottom: "1px solid var(--border)" }}>Employee</th>
-                        <th style={{ textAlign: "left", padding: "10px 8px", borderBottom: "1px solid var(--border)" }}>Declared</th>
-                        <th style={{ textAlign: "left", padding: "10px 8px", borderBottom: "1px solid var(--border)" }}>Expected</th>
-                        <th style={{ textAlign: "left", padding: "10px 8px", borderBottom: "1px solid var(--border)" }}>Variance</th>
-                        <th style={{ textAlign: "left", padding: "10px 8px", borderBottom: "1px solid var(--border)" }}>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(report.rows || []).slice(0, 12).map((row) => (
-                        <tr key={row.employee_name}>
-                          <td style={{ padding: "10px 8px", borderBottom: "1px solid var(--border)" }}>{row.employee_name}</td>
-                          <td style={{ padding: "10px 8px", borderBottom: "1px solid var(--border)" }}>{row.declared?.statutory_total}</td>
-                          <td style={{ padding: "10px 8px", borderBottom: "1px solid var(--border)" }}>{row.expected?.statutory_total}</td>
-                          <td style={{ padding: "10px 8px", borderBottom: "1px solid var(--border)" }}>{row.variance}</td>
-                          <td style={{ padding: "10px 8px", borderBottom: "1px solid var(--border)" }}>{row.status}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </>
-            )}
-          </SectionShell>
-        </div>
-      </div>
+          </div>
+        )}
+      </Section>
     </div>
   );
 }

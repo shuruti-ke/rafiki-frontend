@@ -127,6 +127,14 @@ def _load_batch_parse_result(db: Session, org_id: uuid.UUID, batch_id: uuid.UUID
 
 
 def _build_batch_validation(result: dict, cfg: dict) -> dict:
+    """
+    Compare declared statutory amounts (from parsed file) to expected amounts.
+    Expected uses the same formula as payslips and run_monthly:
+    - NSSF, SHIF, AHL from gross (basic) first.
+    - Taxable = gross - pension - nssf - shif - ahl.
+    - PAYE = tax on taxable - personal relief - insurance relief.
+    Optional: if the file has pension or insurance columns, use them for expected.
+    """
     rows = []
     totals = {
         "gross_pay": 0.0,
@@ -149,10 +157,14 @@ def _build_batch_validation(result: dict, cfg: dict) -> dict:
         declared_shif = _extract_detail_amount(details, "shif", "nhif")
         declared_ahl = _extract_detail_amount(details, "ahl", "housing")
         declared_total = round(declared_paye + declared_nssf + declared_shif + declared_ahl, 2)
+        # Use same formula as payslips: NSSF/SHIF/AHL from gross, then taxable, then PAYE
+        gross = float(entry.get("gross_salary") or 0)
+        pension = _extract_detail_amount(details, "pension", "voluntary_pension")
+        insurance_basis = _extract_detail_amount(details, "insurance", "relief_basis")
         expected = _calculate_kenya(
-            gross_pay=float(entry.get("gross_salary") or 0),
-            pension_contribution=0.0,
-            insurance_relief_basis=0.0,
+            gross_pay=gross,
+            pension_contribution=pension,
+            insurance_relief_basis=insurance_basis,
             cfg=cfg,
         )
         variance = round(declared_total - expected["statutory_total"], 2)
@@ -388,6 +400,10 @@ def validate_payroll_batch_statutory(
         "batch_id": str(batch_id),
         "period": f'{batch["period_year"]}-{int(batch["period_month"]):02d}',
         "config_effective_from": cfg.get("effective_from"),
+        "formula_note": (
+            "Expected amounts use: Basic pay → NSSF, SHIF, Housing levy (from gross) → "
+            "Taxable pay = Gross − NSSF − SHIF − AHL → PAYE = Tax on taxable − Personal relief."
+        ),
         **validation,
     }
 
@@ -407,19 +423,23 @@ def statutory_batch_report(
     return {
         "batch_id": str(batch_id),
         "period": f'{batch["period_year"]}-{int(batch["period_month"]):02d}',
+        "formula_note": (
+            "Expected amounts use: Basic pay → NSSF, SHIF, Housing levy (from gross) → "
+            "Taxable pay = Gross − NSSF − SHIF − AHL → PAYE = Tax on taxable − Personal relief."
+        ),
         "filing_summary": {
-            "paye": summary["declared_paye"],
-            "nssf": summary["declared_nssf"],
-            "shif": summary["declared_shif"],
-            "ahl": summary["declared_ahl"],
-            "total_statutory": summary["declared_statutory"],
+            "paye": round(summary["declared_paye"], 2),
+            "nssf": round(summary["declared_nssf"], 2),
+            "shif": round(summary["declared_shif"], 2),
+            "ahl": round(summary["declared_ahl"], 2),
+            "total_statutory": round(summary["declared_statutory"], 2),
         },
         "expected_summary": {
-            "paye": summary["expected_paye"],
-            "nssf": summary["expected_nssf"],
-            "shif": summary["expected_shif"],
-            "ahl": summary["expected_ahl"],
-            "total_statutory": summary["expected_statutory"],
+            "paye": round(summary["expected_paye"], 2),
+            "nssf": round(summary["expected_nssf"], 2),
+            "shif": round(summary["expected_shif"], 2),
+            "ahl": round(summary["expected_ahl"], 2),
+            "total_statutory": round(summary["expected_statutory"], 2),
         },
         "review_status": "ready" if summary["needs_review_count"] == 0 else "review_required",
         "rows": validation["rows"],

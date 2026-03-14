@@ -15,10 +15,13 @@ const TAB_LABELS = {
 function getTabsAndDefault() {
   const user = JSON.parse(localStorage.getItem("rafiki_user") || "{}");
   const hasApprove = !!(user.can_approve_payroll || user.role === "hr_admin" || user.role === "super_admin");
-  const tabs = hasApprove
-    ? ["approve", "batches", "upload", "templates", "compliance"]
-    : ["upload", "batches", "templates", "compliance"];
-  const defaultTab = hasApprove ? "approve" : "upload";
+  const hasProcess = !!(user.can_process_payroll || user.role === "super_admin");
+  const tabs = [];
+  if (hasApprove) tabs.push("approve");
+  tabs.push("batches");
+  if (hasProcess) tabs.push("upload", "templates");
+  tabs.push("compliance");
+  const defaultTab = hasApprove ? "approve" : hasProcess ? "upload" : "batches";
   return { tabs, defaultTab };
 }
 
@@ -385,76 +388,12 @@ function UploadTab() {
               </button>
             </div>
             <p className="ap-hint">
-              Choose the month to process. Upload and parse the payroll file to complete the run.
+              Choose the month to process. After running, complete the flow in Batch History (approve → parse → distribute).
             </p>
             {runMsg && <div className="ap-notice ap-notice--success">{runMsg}</div>}
             {runErr && <div className="ap-notice ap-notice--error">{runErr}</div>}
           </div>
         </div>
-        <div className="ap-form-row">
-          <label className="ap-label">Month</label>
-          <input
-            type="month"
-            className="ap-input"
-            value={month}
-            onChange={(e) => setMonth(e.target.value)}
-            required
-          />
-        </div>
-
-        <div className="ap-form-row">
-          <label className="ap-label">Template</label>
-          {templates.length === 0 ? (
-            <p className="ap-hint">No templates yet — create one in the Templates tab first.</p>
-          ) : (
-            <select
-              className="ap-input"
-              value={templateId}
-              onChange={(e) => setTemplateId(e.target.value)}
-              required
-            >
-              {templates.map((t) => (
-                <option key={t.template_id} value={t.template_id}>
-                  {t.title}
-                </option>
-              ))}
-            </select>
-          )}
-        </div>
-
-        <div className="ap-form-row">
-          <label className="ap-label">Payroll File</label>
-          <input
-            type="file"
-            className="ap-input"
-            accept=".csv,.xlsx,.xls,.pdf,.docx"
-            onChange={(e) => setFile(e.target.files[0] || null)}
-            required
-          />
-          <span className="ap-hint">CSV, Excel (.xlsx/.xls), PDF, or Word</span>
-        </div>
-
-        <div className="ap-form-row ap-checkbox-row">
-          <input
-            type="checkbox"
-            id="force"
-            checked={force}
-            onChange={(e) => setForce(e.target.checked)}
-          />
-          <label htmlFor="force" className="ap-hint">
-            Force replace if this month already has a distributed payroll
-          </label>
-        </div>
-
-        {error && <div className="ap-error">{error}</div>}
-
-        <button
-          type="submit"
-          className="ap-btn ap-btn-primary"
-          disabled={uploading || !file || !templateId || templates.length === 0}
-        >
-          {uploading ? "Uploading…" : "Upload Payroll File"}
-        </button>
       </form>
 
       {batch && (
