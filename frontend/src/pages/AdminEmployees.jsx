@@ -2,11 +2,14 @@ import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { API, authFetch } from "../api.js";
 import { normalizeEmployeeRecord } from "../utils/employeeRecord.js";
+import "./AdminEmployees.css";
 
 export default function AdminEmployees() {
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [employees, setEmployees] = useState([]);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [statusLoadingId, setStatusLoadingId] = useState(null);
   const [addForm, setAddForm] = useState({
     name: "",
     email: "",
@@ -118,175 +121,181 @@ export default function AdminEmployees() {
     }
   };
 
+  const handleToggleActive = async (userId, currentlyActive) => {
+    const action = currentlyActive ? "deactivate" : "activate";
+    if (!confirm(currentlyActive ? "Deactivate this employee? They will not be able to log in." : "Activate this employee?")) return;
+    setStatusLoadingId(userId);
+    try {
+      const res = await authFetch(`${API}/api/v1/employees/${userId}/${action}`, { method: "POST" });
+      if (res.ok) fetchEmployees({ search });
+    } catch { /* ignore */ }
+    setStatusLoadingId(null);
+  };
+
   const list = employees;
 
   return (
-    <div style={{ maxWidth: 700 }}>
-      <h1 style={{ fontWeight: 800, fontSize: 22, marginBottom: 8 }}>Employee Management</h1>
-      <p style={{ color: "var(--muted)", fontSize: 14, marginBottom: 16 }}>
-        View and manage employee documents, evaluations, and disciplinary records.
+    <div className="admin-emp-page">
+      <h1 className="admin-emp-title">Employee Management</h1>
+      <p className="admin-emp-sub">
+        View and manage employee records, documents, and evaluations. Layout matches the Manager team view for consistency.
       </p>
 
-      {/* Action buttons */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-        <button className="btn btnPrimary" onClick={() => { setShowAddForm(f => !f); setAddMsg(null); }}>
-          {showAddForm ? "Cancel" : "Add Employee"}
-        </button>
-        <button
-          className="btn btnGhost"
-          disabled={batchLoading}
-          onClick={() => fileRef.current?.click()}
-        >
-          {batchLoading ? "Uploading..." : "Batch Upload"}
-        </button>
+      <div className="admin-emp-toolbar">
         <input
-          ref={fileRef}
-          type="file"
-          accept=".csv,.xlsx,.xls"
-          style={{ display: "none" }}
-          onChange={handleBatchUpload}
+          className="admin-emp-search"
+          placeholder="Search by name or email..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
         />
+        <div className="admin-emp-actions-top">
+          <button className="btn btnPrimary" onClick={() => { setShowAddForm(f => !f); setAddMsg(null); }}>
+            {showAddForm ? "Cancel" : "Add Employee"}
+          </button>
+          <button
+            className="btn btnGhost"
+            disabled={batchLoading}
+            onClick={() => fileRef.current?.click()}
+          >
+            {batchLoading ? "Uploading…" : "Batch Upload"}
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".csv,.xlsx,.xls"
+            style={{ display: "none" }}
+            onChange={handleBatchUpload}
+          />
+        </div>
       </div>
 
-      {/* Feedback messages */}
       {addMsg && (
-        <div style={{ padding: "8px 12px", borderRadius: 6, marginBottom: 12, fontSize: 13, background: addMsg.type === "ok" ? "rgba(52,211,153,0.12)" : "rgba(248,113,113,0.12)", color: addMsg.type === "ok" ? "#34d399" : "#f87171" }}>
+        <div className={`admin-emp-msg ${addMsg.type === "ok" ? "admin-emp-msg--ok" : "admin-emp-msg--err"}`}>
           {addMsg.text}
         </div>
       )}
       {batchMsg && (
-        <div style={{ padding: "8px 12px", borderRadius: 6, marginBottom: 12, fontSize: 13, background: batchMsg.type === "ok" ? "rgba(52,211,153,0.12)" : "rgba(248,113,113,0.12)", color: batchMsg.type === "ok" ? "#34d399" : "#f87171" }}>
+        <div className={`admin-emp-msg ${batchMsg.type === "ok" ? "admin-emp-msg--ok" : "admin-emp-msg--err"}`}>
           {batchMsg.text}
         </div>
       )}
 
-      {/* Inline add form */}
       {showAddForm && (
-        <form onSubmit={handleAddSubmit} style={{ background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 8, padding: 16, marginBottom: 16, display: "grid", gap: 10 }}>
+        <form onSubmit={handleAddSubmit} className="admin-emp-add-form">
           <input
-            className="search"
+            className="search admin-emp-add-full"
             placeholder="Full name"
             value={addForm.name}
             onChange={e => setAddForm(f => ({ ...f, name: e.target.value }))}
-            style={{ width: "100%", boxSizing: "border-box" }}
           />
           <input
-            className="search"
+            className="search admin-emp-add-full"
             placeholder="Email *"
             type="email"
             required
             value={addForm.email}
             onChange={e => setAddForm(f => ({ ...f, email: e.target.value }))}
-            style={{ width: "100%", boxSizing: "border-box" }}
           />
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <select
-              className="search"
-              value={addForm.role}
-              onChange={e => setAddForm(f => ({ ...f, role: e.target.value }))}
-              style={{ width: "100%", boxSizing: "border-box" }}
-            >
-              {(formOptions.roles?.length ? formOptions.roles : ["user", "manager", "hr_admin", "super_admin"]).map(role => (
-                <option key={role} value={role}>
-                  {role === "user" ? "Employee" : role.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
-                </option>
-              ))}
-            </select>
-            <select
-              className="search"
-              value={addForm.department}
-              onChange={e => setAddForm(f => ({ ...f, department: e.target.value }))}
-              style={{ width: "100%", boxSizing: "border-box" }}
-            >
-              <option value="">Select department</option>
-              {(formOptions.departments || []).map(dep => (
-                <option key={dep} value={dep}>{dep}</option>
-              ))}
-            </select>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <select
-              className="search"
-              value={addForm.employment_type}
-              onChange={e => setAddForm(f => ({ ...f, employment_type: e.target.value }))}
-              style={{ width: "100%", boxSizing: "border-box" }}
-            >
-              <option value="">Employment type</option>
-              {(formOptions.employment_types || []).map(t => (
-                <option key={t} value={t}>{t}</option>
-              ))}
-            </select>
-            <select
-              className="search"
-              value={addForm.work_location}
-              onChange={e => setAddForm(f => ({ ...f, work_location: e.target.value }))}
-              style={{ width: "100%", boxSizing: "border-box" }}
-            >
-              <option value="">Work location</option>
-              {(formOptions.work_locations || []).map(loc => (
-                <option key={loc} value={loc}>{loc}</option>
-              ))}
-            </select>
-          </div>
-          <select
-            className="search"
-            value={addForm.manager_id}
-            onChange={e => setAddForm(f => ({ ...f, manager_id: e.target.value }))}
-            style={{ width: "100%", boxSizing: "border-box" }}
-          >
+          <select className="search" value={addForm.role} onChange={e => setAddForm(f => ({ ...f, role: e.target.value }))}>
+            {(formOptions.roles?.length ? formOptions.roles : ["user", "manager", "hr_admin", "super_admin"]).map(role => (
+              <option key={role} value={role}>
+                {role === "user" ? "Employee" : role.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
+              </option>
+            ))}
+          </select>
+          <select className="search" value={addForm.department} onChange={e => setAddForm(f => ({ ...f, department: e.target.value }))}>
+            <option value="">Department</option>
+            {(formOptions.departments || []).map(dep => (
+              <option key={dep} value={dep}>{dep}</option>
+            ))}
+          </select>
+          <select className="search" value={addForm.employment_type} onChange={e => setAddForm(f => ({ ...f, employment_type: e.target.value }))}>
+            <option value="">Employment type</option>
+            {(formOptions.employment_types || []).map(t => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+          <select className="search" value={addForm.work_location} onChange={e => setAddForm(f => ({ ...f, work_location: e.target.value }))}>
+            <option value="">Work location</option>
+            {(formOptions.work_locations || []).map(loc => (
+              <option key={loc} value={loc}>{loc}</option>
+            ))}
+          </select>
+          <select className="search admin-emp-add-full" value={addForm.manager_id} onChange={e => setAddForm(f => ({ ...f, manager_id: e.target.value }))}>
             <option value="">No manager</option>
             {managers.map(m => (
               <option key={m.user_id} value={m.user_id}>{m.name || m.email}</option>
             ))}
           </select>
           <button className="btn btnPrimary" type="submit" disabled={addLoading} style={{ justifySelf: "start" }}>
-            {addLoading ? "Creating..." : "Create Employee"}
+            {addLoading ? "Creating…" : "Create Employee"}
           </button>
         </form>
       )}
 
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
-        <input
-          className="search"
-          placeholder="Search by name, email, or ID..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{ flex: 1, minWidth: 220, boxSizing: "border-box" }}
-        />
-      </div>
-
-      {list.length === 0 && (
-        <p style={{ color: "var(--muted)", fontSize: 13 }}>
-          {employees.length === 0 ? "No employees found." : "No matches."}
-        </p>
+      {list.length === 0 ? (
+        <div className="admin-emp-empty">
+          {employees.length === 0 ? "No employees found." : "No matches for your search."}
+        </div>
+      ) : (
+        <div className="admin-emp-grid">
+          {list.map((e) => {
+            const u = e.user || {};
+            const profile = e.profile || {};
+            const isInactive = u.is_active === false;
+            const name = u.name || u.email || "Unknown";
+            const jobTitle = profile.job_title || u.job_title;
+            const dept = u.department || profile.department;
+            const roleLabel = (u.role || "user").replace(/_/g, " ");
+            return (
+              <div
+                key={u.user_id}
+                className={`admin-emp-card ${isInactive ? "admin-emp-card-inactive" : ""}`}
+              >
+                <div className="admin-emp-card-header">
+                  <div className="admin-emp-card-avatar">
+                    {name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="admin-emp-card-info">
+                    <p className="admin-emp-card-name">
+                      {name}
+                      {isInactive && (
+                        <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 600, color: "#dc2626" }}>Inactive</span>
+                      )}
+                    </p>
+                    <p className="admin-emp-card-meta">
+                      {jobTitle || "—"}{dept ? ` · ${dept}` : ""}
+                    </p>
+                  </div>
+                  <span className="admin-emp-card-role">{roleLabel}</span>
+                </div>
+                <div className="admin-emp-card-actions">
+                  <Link
+                    to={`/admin/employees/${u.user_id}`}
+                    className="admin-emp-card-btn admin-emp-card-btn--view"
+                  >
+                    View profile
+                  </Link>
+                  <Link
+                    to={`/admin/employees/${u.user_id}`}
+                    className="admin-emp-card-btn admin-emp-card-btn--edit"
+                  >
+                    Edit
+                  </Link>
+                  <button
+                    type="button"
+                    className={`admin-emp-card-btn ${isInactive ? "admin-emp-card-btn--activate" : "admin-emp-card-btn--deactivate"}`}
+                    onClick={() => handleToggleActive(u.user_id, !isInactive)}
+                    disabled={statusLoadingId === u.user_id}
+                  >
+                    {statusLoadingId === u.user_id ? "…" : isInactive ? "Activate" : "Deactivate"}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       )}
-
-      <div style={{ display: "grid", gap: 8 }}>
-        {list.map((e) => {
-          const u = e.user || {};
-          const isInactive = u.is_active === false;
-          return (
-            <Link
-              key={u.user_id}
-              to={`/admin/employees/${u.user_id}`}
-              className="btn"
-              style={{ textAlign: "left", textDecoration: "none", display: "flex", justifyContent: "space-between", alignItems: "center" }}
-            >
-              <span>
-                {u.name || u.email || "Unknown"}
-                {isInactive && (
-                  <span style={{ marginLeft: 8, fontSize: 11, padding: "2px 6px", borderRadius: 999, background: "rgba(248,113,113,0.12)", color: "#f87171" }}>
-                    Inactive
-                  </span>
-                )}
-              </span>
-              <span style={{ color: "var(--muted)", fontSize: 12 }}>
-                {u.role || ""} {u.department ? `· ${u.department}` : ""}
-              </span>
-            </Link>
-          );
-        })}
-      </div>
     </div>
   );
 }
