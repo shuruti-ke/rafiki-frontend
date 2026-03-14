@@ -118,6 +118,7 @@ from app.routers.performance_reviews import router as performance_reviews_router
 from app.routers.workflows import router as workflows_router
 from app.routers.custom_reports import router as custom_reports_router
 from app.routers.payroll_statutory import router as payroll_statutory_router
+from app.routers.kiosk import router as kiosk_router
 
 app.include_router(auth_router)
 app.include_router(kb_router)
@@ -142,6 +143,7 @@ app.include_router(meetings_router)
 app.include_router(usage_router)
 app.include_router(wellbeing_router)
 app.include_router(attendance_router)
+app.include_router(kiosk_router)
 app.include_router(notifications_router)
 app.include_router(shifts_router)
 app.include_router(performance_reviews_router)

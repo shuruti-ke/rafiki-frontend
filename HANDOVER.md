@@ -141,6 +141,10 @@ cd backend && python -m pytest tests/test_payroll_statutory.py -v
 - **Change who sees what in nav:** `ManagerLayout.jsx`, `AdminLayout.jsx`, `EmployeeLayout.jsx` and their payroll notification logic.
 - **Add a new payroll action:** Add route in `payroll.py`, then button/handler in `AdminPayroll.jsx` (and BatchesTab if batch-detail action).
 - **Employee profile sections (dependents, work experience, education, assets, documents):** Backend models in `backend/app/models/employee_extended.py` and `employee_profile.py` (marital_status, number_of_dependents); API in `backend/app/routers/employee_profile_sections.py` and `employee_docs.py`; UI in `frontend/src/pages/AdminEmployeeDetail.jsx`.
+- **Non-digital employee access:**
+  - **Manager proxy:** Managers/HR can submit leave and clock attendance on behalf of employees. Backend: `POST /api/v1/leave/apply-on-behalf`, `POST /api/v1/attendance/clock-in-on-behalf`, `clock-out-on-behalf`; permission helper `require_can_act_for_employee` in `dependencies.py`. Frontend: Manager portal → **On behalf** (`/manager/on-behalf`), `ManagerOnBehalf.jsx`.
+  - **Kiosk mode:** Shared device clock-in/out without login. Backend: `POST /api/v1/kiosk/clock-in`, `clock-out` (body: `org_code`, `employee_identifier` = email or employment number); `GET /api/v1/kiosk/org-check?org_code=`. Frontend: public `/kiosk`, `KioskPage.jsx`.
+  - **USSD/SMS:** Not implemented; would require telecom provider integration (e.g. Africa's Talking, Twilio) for leave requests and attendance via SMS/USSD.
 
 ---
 

@@ -15,7 +15,10 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_current_user_id, get_current_org_id, require_manager
+from app.dependencies import (
+    get_current_user_id, get_current_org_id, require_manager,
+    get_current_user, require_can_act_for_employee,
+)
 from app.models.attendance import AttendanceLog
 from app.models.user import User
 
@@ -35,6 +38,14 @@ class ClockInRequest(BaseModel):
 
 
 class ClockOutRequest(BaseModel):
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    accuracy: Optional[int] = None
+
+
+class OnBehalfRequest(BaseModel):
+    """Request body for clock-in/out on behalf of an employee."""
+    employee_id: uuid.UUID
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     accuracy: Optional[int] = None
@@ -225,6 +236,97 @@ def list_my_logs(
             pass
     logs = q.order_by(AttendanceLog.work_date.desc(), AttendanceLog.check_in.desc()).limit(limit).all()
     return [_to_dict(l) for l in logs]
+
+
+@router.post("/clock-in-on-behalf")
+def clock_in_on_behalf(
+    request: Request,
+    body: OnBehalfRequest,
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    current_user: Optional[User] = Depends(get_current_user),
+    _role: str = Depends(require_manager),
+):
+    """Manager or admin clocks in on behalf of an employee (proxy for non-digital staff)."""
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    require_can_act_for_employee(db, current_user, body.employee_id)
+    employee_id = body.employee_id
+
+    now = datetime.now(timezone.utc)
+    today = now.date()
+
+    active = db.query(AttendanceLog).filter(
+        AttendanceLog.user_id == employee_id,
+        AttendanceLog.org_id == org_id,
+        AttendanceLog.check_out.is_(None),
+    ).first()
+
+    if active:
+        raise HTTPException(
+            status_code=400,
+            detail="Employee is already clocked in. Please clock out first.",
+        )
+
+    log = AttendanceLog(
+        user_id=employee_id,
+        org_id=org_id,
+        work_date=today,
+        check_in=now,
+        check_in_lat=body.latitude,
+        check_in_long=body.longitude,
+        check_in_accuracy=body.accuracy,
+        check_in_ip_address=_client_ip(request),
+    )
+    db.add(log)
+    db.commit()
+    db.refresh(log)
+    return {"ok": True, "message": "Clocked in on behalf of employee", "log": _to_dict(log)}
+
+
+@router.post("/clock-out-on-behalf")
+def clock_out_on_behalf(
+    request: Request,
+    body: OnBehalfRequest,
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    current_user: Optional[User] = Depends(get_current_user),
+    _role: str = Depends(require_manager),
+):
+    """Manager or admin clocks out on behalf of an employee (proxy for non-digital staff)."""
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    require_can_act_for_employee(db, current_user, body.employee_id)
+    employee_id = body.employee_id
+
+    now = datetime.now(timezone.utc)
+
+    active = db.query(AttendanceLog).filter(
+        AttendanceLog.user_id == employee_id,
+        AttendanceLog.org_id == org_id,
+        AttendanceLog.check_out.is_(None),
+    ).order_by(AttendanceLog.check_in.desc()).first()
+
+    if not active:
+        raise HTTPException(
+            status_code=400,
+            detail="No active session for this employee. Please clock in first.",
+        )
+
+    active.check_out = now
+    active.check_out_lat = body.latitude
+    active.check_out_long = body.longitude
+    active.check_out_accuracy = body.accuracy
+    active.check_out_ip_address = _client_ip(request)
+
+    if active.check_in:
+        ci = active.check_in
+        ci_utc = ci.replace(tzinfo=timezone.utc) if ci.tzinfo is None else ci
+        active.total_seconds = int((now - ci_utc).total_seconds())
+
+    db.commit()
+    db.refresh(active)
+    return {"ok": True, "message": "Clocked out on behalf of employee", "log": _to_dict(active)}
 
 
 @router.get("/team")

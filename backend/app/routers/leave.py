@@ -14,7 +14,8 @@ from sqlalchemy import text, func
 from app.database import get_db
 from app.dependencies import (
     get_current_user_id, get_current_org_id, get_current_role,
-    require_admin, get_current_user
+    require_admin, require_manager, get_current_user,
+    require_can_act_for_employee,
 )
 from app.routers.notifications import _insert_notification
 
@@ -153,6 +154,17 @@ class LeaveApplicationIn(BaseModel):
     reason: Optional[str] = None
     half_day: bool = False
     half_day_period: Optional[str] = None  # 'morning' | 'afternoon'
+
+
+class LeaveApplyOnBehalfIn(BaseModel):
+    """Manager/admin submits leave on behalf of an employee (non-digital access)."""
+    employee_id: uuid.UUID
+    leave_type: str
+    start_date: date
+    end_date: date
+    reason: Optional[str] = None
+    half_day: bool = False
+    half_day_period: Optional[str] = None
 
 
 class LeaveReviewIn(BaseModel):
@@ -469,6 +481,91 @@ def apply_for_leave(
         "application_id": app_id,
         "working_days": working,
         "status": "pending"
+    }
+
+
+@router.post("/apply-on-behalf")
+def apply_for_leave_on_behalf(
+    data: LeaveApplyOnBehalfIn,
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    current_user: Optional["User"] = Depends(get_current_user),
+    _role: str = Depends(require_manager),
+):
+    """Manager or HR admin submits a leave application on behalf of an employee (proxy for non-digital staff)."""
+    from app.models.user import User as _User
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    require_can_act_for_employee(db, current_user, data.employee_id)
+    employee_id = data.employee_id
+
+    if data.end_date < data.start_date:
+        raise HTTPException(status_code=400, detail="End date must be on or after start date")
+
+    working = _working_days(data.start_date, data.end_date)
+    if data.half_day:
+        working = 0.5
+
+    if working <= 0:
+        raise HTTPException(status_code=400, detail="No working days in selected range")
+
+    policy = _get_policy(db, org_id) or DEFAULT_POLICY
+    yr = data.start_date.year
+    entitled = _entitled_for_type(policy, data.leave_type)
+    bal = _get_or_create_balance(db, employee_id, org_id, yr, data.leave_type, entitled, policy)
+    available = float(bal["entitled_days"]) + float(bal["carried_over_days"]) - float(bal["used_days"])
+    if bal.get("carry_over_expiry") and date.today() > bal["carry_over_expiry"]:
+        available = float(bal["entitled_days"]) - float(bal["used_days"])
+
+    if working > available:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Insufficient leave balance. Employee has {max(0, available):.1f} days available, but requested {working:.1f} days."
+        )
+
+    overlap = db.execute(
+        text("""SELECT id FROM leave_applications
+                WHERE user_id = :uid AND status IN ('pending','approved')
+                AND NOT (end_date < :start OR start_date > :end)"""),
+        {"uid": str(employee_id), "start": data.start_date, "end": data.end_date}
+    ).first()
+    if overlap:
+        raise HTTPException(status_code=400, detail="Employee already has a leave application covering these dates")
+
+    app_id = str(uuid.uuid4())
+    db.execute(
+        text("""INSERT INTO leave_applications
+                (id, org_id, user_id, leave_type, start_date, end_date, working_days,
+                 reason, half_day, half_day_period)
+                VALUES (:id, :org, :uid, :lt, :sd, :ed, :wd, :reason, :hd, :hdp)"""),
+        {"id": app_id, "org": str(org_id), "uid": str(employee_id),
+         "lt": data.leave_type, "sd": data.start_date, "ed": data.end_date,
+         "wd": working, "reason": data.reason or "Submitted on behalf by manager/supervisor",
+         "hd": data.half_day, "hdp": data.half_day_period}
+    )
+    db.commit()
+
+    try:
+        managers = db.query(_User.user_id).filter(
+            _User.org_id == org_id,
+            _User.role.in_(["hr_admin", "super_admin"]),
+            _User.is_active == True,
+        ).all()
+        for (mgr_id,) in managers:
+            _insert_notification(db, user_id=mgr_id, org_id=org_id,
+                kind="leave_pending",
+                title=f"Leave request (on behalf): {data.leave_type} ({data.start_date} → {data.end_date})",
+                body=f"{working:.0f} working day(s) · Submitted by manager/supervisor",
+                link="/admin/leave")
+        db.commit()
+    except Exception as _e:
+        logger.warning(f"Leave on-behalf notification failed (non-fatal): %s", _e)
+
+    return {
+        "message": "Leave application submitted on behalf of employee.",
+        "application_id": app_id,
+        "working_days": working,
+        "status": "pending",
     }
 
 

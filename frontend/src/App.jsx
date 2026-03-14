@@ -40,6 +40,8 @@ import ManagerDashboard from "./pages/ManagerDashboard.jsx";
 import ManagerTeam from "./pages/ManagerTeam.jsx";
 import ManagerCoaching from "./pages/ManagerCoaching.jsx";
 import ManagerToolkit from "./pages/ManagerToolkit.jsx";
+import ManagerOnBehalf from "./pages/ManagerOnBehalf.jsx";
+import KioskPage from "./pages/KioskPage.jsx";
 import DemoEmployeePage from "./pages/DemoEmployeePage.jsx";
 import DemoHRPage from "./pages/DemoHRPage.jsx";
 import DemoManagerPage from "./pages/DemoManagerPage.jsx";
@@ -68,6 +70,9 @@ export default function App() {
 
         {/* Landing page */}
         <Route path="/" element={<LandingPage />} />
+
+        {/* Kiosk — public, no auth (shared device clock-in/out) */}
+        <Route path="/kiosk" element={<KioskPage />} />
 
         {/* Employee pages */}
         <Route element={<EmployeeLayout />}>
@@ -108,6 +113,7 @@ export default function App() {
         }>
           <Route index element={<ManagerDashboard />} />
           <Route path="team" element={<ManagerTeam />} />
+          <Route path="on-behalf" element={<ManagerOnBehalf />} />
           <Route path="coaching" element={<ManagerCoaching />} />
           <Route path="toolkit" element={<ManagerToolkit />} />
           <Route path="calendar" element={<CalendarPage />} />

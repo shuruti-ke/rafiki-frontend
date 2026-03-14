@@ -74,6 +74,9 @@ export default function ManagerLayout() {
           <NavLink to="/manager/team" className={({ isActive }) => `mgr-nav-link ${isActive ? "active" : ""}`}>
             My Team
           </NavLink>
+          <NavLink to="/manager/on-behalf" className={({ isActive }) => `mgr-nav-link ${isActive ? "active" : ""}`} title="Submit leave and clock attendance on behalf of staff without system access">
+            On behalf
+          </NavLink>
           <NavLink to="/manager/coaching" className={({ isActive }) => `mgr-nav-link ${isActive ? "active" : ""}`}>
             Coaching Assistant
           </NavLink>

@@ -243,3 +243,37 @@ def require_super_admin(
     if role != "super_admin":
         raise HTTPException(status_code=403, detail="Super admin access required")
     return role
+
+
+def require_can_act_for_employee(
+    db: Session,
+    current_user: Optional[User],
+    employee_id: uuid.UUID,
+) -> uuid.UUID:
+    """
+    Check that the current user can act on behalf of the given employee
+    (manager proxy / non-digital employee access). Raises HTTPException if not.
+    Allowed: employee's manager (manager_id), hr_admin, super_admin, or manager_scope access.
+    Returns employee_id if allowed.
+    """
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    if current_user.user_id == employee_id:
+        return employee_id  # acting for self is always allowed
+    role = str(getattr(current_user, "role", "") or "")
+    if role in ("hr_admin", "super_admin"):
+        emp = db.query(User).filter(User.user_id == employee_id, User.org_id == current_user.org_id).first()
+        if not emp:
+            raise HTTPException(status_code=404, detail="Employee not found in your organization")
+        return employee_id
+    if role == "manager":
+        emp = db.query(User).filter(User.user_id == employee_id).first()
+        if not emp or emp.org_id != current_user.org_id:
+            raise HTTPException(status_code=404, detail="Employee not found")
+        if getattr(emp, "manager_id", None) == current_user.user_id:
+            return employee_id
+        from app.services.manager_scope import validate_employee_access
+        if validate_employee_access(db, current_user.user_id, employee_id, current_user.org_id):
+            return employee_id
+        raise HTTPException(status_code=403, detail="You can only act on behalf of your direct reports or team members")
+    raise HTTPException(status_code=403, detail="Manager or admin access required to act on behalf of an employee")

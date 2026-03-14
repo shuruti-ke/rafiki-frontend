@@ -1,0 +1,38 @@
+.mgr-ob-page { max-width: 560px; margin: 0 auto; padding: 24px; }
+.mgr-ob-title { font-size: 1.35rem; font-weight: 700; color: #1e1b4b; margin: 0 0 8px; }
+.mgr-ob-desc { font-size: 0.9rem; color: #64748b; margin: 0 0 24px; line-height: 1.45; }
+.mgr-ob-loading { color: #64748b; padding: 24px; }
+.mgr-ob-select-section { margin-bottom: 20px; }
+.mgr-ob-label { display: block; font-size: 0.85rem; font-weight: 600; color: #374151; margin-bottom: 6px; }
+.mgr-ob-select {
+  width: 100%; max-width: 400px; padding: 10px 12px; border: 1.5px solid #e2e8f0;
+  border-radius: 8px; font-size: 0.95rem; background: #fff;
+}
+.mgr-ob-hint { font-size: 0.88rem; color: #64748b; margin: 0 0 20px; }
+.mgr-ob-msg { padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; font-size: 0.9rem; }
+.mgr-ob-msg--success { background: #f0fdf4; border: 1px solid #86efac; color: #166534; }
+.mgr-ob-msg--error { background: #fef2f2; border: 1px solid #fca5a5; color: #b91c1c; }
+.mgr-ob-card {
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+  padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+.mgr-ob-card-title { font-size: 1rem; font-weight: 700; color: #1e1b4b; margin: 0 0 14px; }
+.mgr-ob-muted { font-size: 0.88rem; color: #64748b; margin: 0; }
+.mgr-ob-attendance { display: flex; flex-direction: column; gap: 12px; }
+.mgr-ob-status { font-size: 0.95rem; color: #374151; margin: 0; }
+.mgr-ob-attendance-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.mgr-ob-btn {
+  padding: 10px 20px; border-radius: 8px; font-size: 0.9rem; font-weight: 600;
+  cursor: pointer; border: none; transition: opacity 0.2s;
+}
+.mgr-ob-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.mgr-ob-btn--in { background: #10b981; color: #fff; }
+.mgr-ob-btn--out { background: #f59e0b; color: #fff; }
+.mgr-ob-btn--primary { background: #7b2fbe; color: #fff; }
+.mgr-ob-leave-form { display: flex; flex-direction: column; gap: 14px; }
+.mgr-ob-field label { display: block; font-size: 0.85rem; font-weight: 600; color: #374151; margin-bottom: 4px; }
+.mgr-ob-field input[type="text"],
+.mgr-ob-field input[type="date"],
+.mgr-ob-field select { width: 100%; padding: 8px 10px; border: 1.5px solid #e2e8f0; border-radius: 6px; font-size: 0.9rem; }
+.mgr-ob-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.mgr-ob-empty { padding: 20px; background: #f8fafc; border-radius: 10px; color: #64748b; font-size: 0.9rem; }

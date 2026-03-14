@@ -1,0 +1,31 @@
+.kiosk-page {
+  min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 24px; background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4c1d95 100%);
+}
+.kiosk-card {
+  width: 100%; max-width: 420px; background: #fff; border-radius: 16px;
+  padding: 32px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+.kiosk-title { font-size: 1.5rem; font-weight: 800; color: #1e1b4b; margin: 0 0 8px; text-align: center; }
+.kiosk-desc { font-size: 0.9rem; color: #64748b; margin: 0 0 24px; text-align: center; line-height: 1.45; }
+.kiosk-form { display: flex; flex-direction: column; gap: 16px; }
+.kiosk-field label { display: block; font-size: 0.85rem; font-weight: 600; color: #374151; margin-bottom: 6px; }
+.kiosk-field input {
+  width: 100%; padding: 14px 16px; border: 2px solid #e2e8f0; border-radius: 10px;
+  font-size: 1.1rem; box-sizing: border-box;
+}
+.kiosk-field input:focus { outline: none; border-color: #7b2fbe; }
+.kiosk-org-name { font-size: 0.95rem; color: #7b2fbe; font-weight: 600; margin: -4px 0 0; }
+.kiosk-msg { padding: 12px 16px; border-radius: 10px; font-size: 0.95rem; text-align: center; }
+.kiosk-msg--success { background: #d1fae5; color: #065f46; }
+.kiosk-msg--error { background: #fee2e2; color: #b91c1c; }
+.kiosk-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
+.kiosk-btn {
+  padding: 18px 20px; border: none; border-radius: 12px; font-size: 1.1rem; font-weight: 700;
+  cursor: pointer; transition: transform 0.1s, opacity 0.2s;
+}
+.kiosk-btn:active { transform: scale(0.98); }
+.kiosk-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.kiosk-btn--in { background: #10b981; color: #fff; }
+.kiosk-btn--out { background: #f59e0b; color: #fff; }
+.kiosk-footer { margin-top: 24px; font-size: 0.8rem; color: rgba(255,255,255,0.7); text-align: center; }
