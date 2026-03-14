@@ -106,16 +106,18 @@ def _build_summary(entries: list[dict]) -> dict:
 def _normalize_header(h) -> str:
     if h is None:
         return ""
-    return str(h).strip().lower().replace(" ", "_")
+    return str(h).strip().lower().replace(" ", "_").replace(".", "_")
 
 
 def _row_to_entry(normed: dict) -> Optional[dict]:
     """
     Convert a normalized row dict to a payroll entry.
-    Expected columns (case-insensitive):
-      employee_name (or name), gross_salary (or gross), deductions, net_salary (or net)
+    Expected columns (case-insensitive, spaces/dots normalized to _):
+      employee_name (or name, employee), gross_salary (or gross, gross_sal), deductions (or deduction), net_salary (or net)
     """
-    name = normed.get("employee_name") or normed.get("name") or ""
+    name = (
+        normed.get("employee_name") or normed.get("name") or normed.get("employee") or ""
+    )
     if isinstance(name, (int, float)):
         name = str(name)
     name = str(name).strip()
@@ -123,11 +125,18 @@ def _row_to_entry(normed: dict) -> Optional[dict]:
         return None
 
     gross = _parse_number(
-        normed.get("gross_salary") or normed.get("gross") or normed.get("gross_pay") or 0
+        normed.get("gross_salary")
+        or normed.get("gross")
+        or normed.get("gross_pay")
+        or normed.get("gross_sal")
+        or normed.get("gross_sal_")
+        or 0
     )
-    # Sum individual deduction columns if a single "deductions" column isn't present
-    if normed.get("deductions"):
+    # Single total deduction column (deductions or deduction) or sum of statutory columns
+    if normed.get("deductions") not in (None, ""):
         deductions = _parse_number(normed["deductions"])
+    elif normed.get("deduction") not in (None, ""):
+        deductions = _parse_number(normed["deduction"])
     else:
         deduction_keys = {"paye", "nssf", "shif", "nhdf", "nhif", "levy", "loan", "deduction"}
         deductions = sum(
@@ -139,7 +148,12 @@ def _row_to_entry(normed: dict) -> Optional[dict]:
         normed.get("net_salary") or normed.get("net") or normed.get("net_pay") or 0
     )
 
-    known_keys = {"employee_name", "name", "gross_salary", "gross", "deductions", "net_salary", "net"}
+    known_keys = {
+        "employee_name", "name", "employee",
+        "gross_salary", "gross", "gross_pay", "gross_sal", "gross_sal_",
+        "deductions", "deduction",
+        "net_salary", "net", "net_pay",
+    }
     details = {k: (str(v).strip() if v is not None else "") for k, v in normed.items() if k not in known_keys}
     details = {k: v for k, v in details.items() if v}
 

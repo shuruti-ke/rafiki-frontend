@@ -758,6 +758,9 @@ function BatchesTab() {
               {filingReport?.filing_summary && (
                 <div style={{ marginTop: 14, display: "grid", gap: 8 }}>
                   <div className="ap-step-title">Filing Summary</div>
+                  {filingReport.filing_note && (
+                    <p className="ap-hint" style={{ fontSize: 12, margin: 0 }}>{filingReport.filing_note}</p>
+                  )}
                   <div className="ap-stats-row">
                     {Object.entries(filingReport.filing_summary).map(([key, value]) => (
                       <Stat key={key} label={key.toUpperCase()} value={fmt(value)} />

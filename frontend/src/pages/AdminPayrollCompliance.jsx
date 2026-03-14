@@ -342,6 +342,9 @@ export function PayrollCompliancePanel({ embedded = false }) {
         {report?.filing_summary && (
           <div style={{ marginTop: 16 }}>
             <h4 style={{ margin: "0 0 8px", fontSize: 14 }}>Filing summary</h4>
+            {report.filing_note && (
+              <p className="ap-hint" style={{ marginBottom: 8, fontSize: 12 }}>{report.filing_note}</p>
+            )}
             <div className="ap-stats-row" style={{ flexWrap: "wrap", gap: 10 }}>
               {Object.entries(report.filing_summary).map(([key, value]) => (
                 <div key={key} className="ap-batch-row" style={{ padding: "8px 12px" }}>

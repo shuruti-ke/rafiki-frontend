@@ -198,15 +198,43 @@ def _build_batch_validation(result: dict, cfg: dict) -> dict:
         totals["expected_shif"] += expected["shif"]
         totals["declared_ahl"] += declared_ahl
         totals["expected_ahl"] += expected["ahl"]
-    return {
-        "summary": {
-            "employee_count": len(rows),
-            "within_tolerance_count": within_tolerance,
-            "needs_review_count": len(rows) - within_tolerance,
-            **{k: round(v, 2) for k, v in totals.items()},
-        },
-        "rows": rows,
+
+    # When the file has no statutory columns (declared all zero), use expected for filing summary
+    # so the UI shows correct PAYE/NSSF/SHIF/AHL totals instead of 0.00
+    summary = {
+        "employee_count": len(rows),
+        "within_tolerance_count": within_tolerance,
+        "needs_review_count": len(rows) - within_tolerance,
+        **{k: round(v, 2) for k, v in totals.items()},
     }
+    rows_out = rows
+    filing_from_calculated = False
+    if totals["declared_statutory"] < 0.01 and totals["expected_statutory"] > 0:
+        filing_from_calculated = True
+        summary["declared_statutory"] = round(totals["expected_statutory"], 2)
+        summary["declared_paye"] = round(totals["expected_paye"], 2)
+        summary["declared_nssf"] = round(totals["expected_nssf"], 2)
+        summary["declared_shif"] = round(totals["expected_shif"], 2)
+        summary["declared_ahl"] = round(totals["expected_ahl"], 2)
+        summary["within_tolerance_count"] = len(rows)
+        summary["needs_review_count"] = 0
+        rows_out = [
+            {
+                **r,
+                "declared": {
+                    "paye": round(r["expected"]["paye"], 2),
+                    "nssf": round(r["expected"]["nssf"], 2),
+                    "shif": round(r["expected"]["shif"], 2),
+                    "ahl": round(r["expected"]["ahl"], 2),
+                    "statutory_total": round(r["expected"]["statutory_total"], 2),
+                },
+                "variance": 0.0,
+                "status": "ok",
+            }
+            for r in rows
+        ]
+    summary["filing_from_calculated"] = filing_from_calculated
+    return {"summary": summary, "rows": rows_out}
 
 
 def _calculate_kenya(gross_pay: float, pension_contribution: float, insurance_relief_basis: float, cfg: dict) -> dict:
@@ -420,6 +448,10 @@ def statutory_batch_report(
     cfg = _get_config(db, org_id, effective_on=effective_on)
     validation = _build_batch_validation(result, cfg)
     summary = validation["summary"]
+    # When file had no statutory columns, summary["declared_*"] were set to expected in _build_batch_validation
+    filing_note = None
+    if summary.get("filing_from_calculated"):
+        filing_note = "Filing summary from calculated statutory (uploaded file had no PAYE/NSSF/SHIF/AHL columns)."
     return {
         "batch_id": str(batch_id),
         "period": f'{batch["period_year"]}-{int(batch["period_month"]):02d}',
@@ -427,6 +459,7 @@ def statutory_batch_report(
             "Expected amounts use: Basic pay → NSSF, SHIF, Housing levy (from gross) → "
             "Taxable pay = Gross − NSSF − SHIF − AHL → PAYE = Tax on taxable − Personal relief."
         ),
+        "filing_note": filing_note,
         "filing_summary": {
             "paye": round(summary["declared_paye"], 2),
             "nssf": round(summary["declared_nssf"], 2),

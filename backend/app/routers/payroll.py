@@ -502,7 +502,7 @@ def upload_template(
 def list_templates(
     db: Session = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org_id),
-    _role: str = Depends(require_admin),
+    _user=Depends(require_payroll_access),
 ):
     return (
         db.query(PayrollTemplate)
@@ -543,7 +543,7 @@ def delete_template(
 def list_payroll_approvers(
     db: Session = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org_id),
-    _role: str = Depends(require_admin),
+    _user=Depends(require_payroll_access),
 ):
     """
     For the HR Admin dropdown.
