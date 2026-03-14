@@ -19,6 +19,7 @@ from app.dependencies import (
     get_current_role,
     require_admin,
     require_payroll_access,
+    require_can_approve_payroll,
     require_can_parse_payroll,
     require_can_distribute_payroll,
 )
@@ -58,8 +59,7 @@ PAYROLL_MIME_TYPES = {
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 }
 
-# Roles who can approve payroll
-_PRIVILEGED_ROLES = {"hr_admin", "super_admin"}
+# Flow: Thomas (creator) → Finance manager (can_authorize_payroll) approves → HR admin parses/verifies/distributes
 
 
 def _require_payroll_processor(user: User | None) -> None:
@@ -533,22 +533,26 @@ def _auto_send_payroll_approval_request(
 ) -> None:
     """
     After run_monthly or upload creates a batch in uploaded_needs_approval,
-    find an approver (can_approve_payroll or hr_admin/super_admin) and send them a DM.
+    send approval request to finance manager(s) (can_authorize_payroll). They approve; then HR admin parses/verifies/distributes.
     """
     approvers = (
         db.query(User)
         .filter(User.org_id == org_id, User.is_active == True)  # noqa: E712
         .all()
     )
-    # Prefer users with can_approve_payroll; fallback to hr_admin/super_admin
+    # Finance managers (can_authorize_payroll) are the approvers
     candidates = [
         u for u in approvers
         if u.user_id != requested_by_user_id
-        and (
-            bool(getattr(u, "can_approve_payroll", False))
-            or str(getattr(u, "role", "") or "") in _PRIVILEGED_ROLES
-        )
+        and bool(getattr(u, "can_authorize_payroll", False))
     ]
+    if not candidates:
+        # Fallback to super_admin if no finance manager
+        candidates = [
+            u for u in approvers
+            if u.user_id != requested_by_user_id
+            and str(getattr(u, "role", "") or "") == "super_admin"
+        ]
     candidates.sort(key=lambda u: (getattr(u, "name", None) or getattr(u, "email", "") or "").lower())
     if not candidates:
         return
@@ -563,21 +567,15 @@ def _auto_send_payroll_approval_request(
         recipient_id=approver.user_id,
         batch=batch,
     )
-    # Notify finance managers (can_authorize_payroll) that payroll is awaiting HR approval
+    # Notify other finance managers that payroll is awaiting their (or a colleague's) approval
     month_str = _month_str(batch)
-    authorizers = [
-        u for u in approvers
-        if u.user_id != requested_by_user_id
-        and u.user_id != approver.user_id
-        and bool(getattr(u, "can_authorize_payroll", False))
-    ]
-    for auth_user in authorizers:
+    for u in candidates[1:]:
         _send_simple_dm(
             db,
             org_id=org_id,
             sender_id=requested_by_user_id,
-            recipient_id=auth_user.user_id,
-            text=f"📋 Payroll for {month_str} has been submitted and is **awaiting HR Admin approval**. You will be notified when it is approved.",
+            recipient_id=u.user_id,
+            text=f"📋 Payroll for {month_str} has been submitted and is **awaiting finance manager approval**.",
         )
     db.commit()
 
@@ -727,20 +725,16 @@ def list_payroll_approvers(
     org_id: uuid.UUID = Depends(get_current_org_id),
     _user=Depends(require_payroll_access),
 ):
-    """
-    For the HR Admin dropdown.
-    Keep current behavior: only hr_admin or super_admin are approvers.
-    """
+    """Return finance managers (can_authorize_payroll) and super_admin as approvers."""
     users = (
         db.query(User)
         .filter(User.org_id == org_id, User.is_active == True)  # noqa: E712
         .all()
     )
-
     approvers = []
     for u in users:
         role_val = str(getattr(u, "role", "") or "")
-        if role_val in _PRIVILEGED_ROLES:
+        if role_val == "super_admin" or bool(getattr(u, "can_authorize_payroll", False)):
             approvers.append(
                 {
                     "user_id": str(u.user_id),
@@ -749,7 +743,6 @@ def list_payroll_approvers(
                     "role": role_val,
                 }
             )
-
     approvers.sort(key=lambda x: ((x.get("name") or "") + (x.get("email") or "")).lower())
     return {"approvers": approvers}
 
@@ -790,8 +783,8 @@ def request_payroll_approval(
         raise HTTPException(status_code=404, detail="Approver not found in this organization")
 
     approver_role = str(getattr(approver, "role", "") or "")
-    if approver_role not in _PRIVILEGED_ROLES:
-        raise HTTPException(status_code=400, detail="Selected user is not allowed to approve payroll")
+    if approver_role != "super_admin" and not bool(getattr(approver, "can_authorize_payroll", False)):
+        raise HTTPException(status_code=400, detail="Selected user must be a finance manager to approve payroll")
 
     # mark pending approval
     batch.status = "uploaded_needs_approval"
@@ -865,12 +858,10 @@ def approve_batch(
     db: Session = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org_id),
     current_user_id: uuid.UUID = Depends(get_current_user_id),
-    role: str = Depends(get_current_role),
+    _user=Depends(require_can_approve_payroll),
 ):
     """
-    Approver approves.
-    - If approval_requested_to exists, only that user (or privileged) can approve.
-    - status becomes 'uploaded' so HR Admin can parse.
+    Finance manager approves. Status becomes 'uploaded' so HR Admin can parse, verify and distribute.
     """
     batch = (
         db.query(PayrollBatch)
@@ -882,10 +873,6 @@ def approve_batch(
 
     _require_pending_approval(batch)
 
-    requested_to = _get_if_attr(batch, "approval_requested_to", None)
-    if requested_to and requested_to != current_user_id and str(role) not in _PRIVILEGED_ROLES:
-        raise HTTPException(status_code=403, detail="Not authorized to approve this payroll batch")
-
     batch.approved_by_user_id = current_user_id
     batch.approved_at = _now_utc()
 
@@ -894,15 +881,32 @@ def approve_batch(
 
     batch.status = "uploaded"
 
-    requested_by = _get_if_attr(batch, "approval_requested_by", None)
-    if requested_by:
+    month_str = _month_str(batch)
+    # Notify HR admins that they can now parse, verify and distribute
+    hr_admins = (
+        db.query(User)
+        .filter(User.org_id == org_id, User.is_active == True, User.user_id != current_user_id)  # noqa: E712
+        .all()
+    )
+    hr_admins = [u for u in hr_admins if str(getattr(u, "role", "") or "") in ("hr_admin", "super_admin")]
+    for hr in hr_admins:
         _send_simple_dm(
             db,
             org_id=org_id,
             sender_id=current_user_id,
-            recipient_id=requested_by,
-            text=f"✅ Payroll approved for {_month_str(batch)}. You can now parse the payroll.",
+            recipient_id=hr.user_id,
+            text=f"✅ Payroll approved for {month_str}. You can now parse, verify and distribute.",
         )
+    if not hr_admins:
+        requested_by = _get_if_attr(batch, "approval_requested_by", None)
+        if requested_by and requested_by != current_user_id:
+            _send_simple_dm(
+                db,
+                org_id=org_id,
+                sender_id=current_user_id,
+                recipient_id=requested_by,
+                text=f"✅ Payroll approved for {month_str}. HR Admin can parse, verify and distribute.",
+            )
 
     db.commit()
     db.refresh(batch)
@@ -940,7 +944,7 @@ def reject_batch(
     is_designated_approver = requested_to and str(requested_to) == str(current_user_id)
     can_reject = (
         is_designated_approver
-        or role in _PRIVILEGED_ROLES
+        or role in ("hr_admin", "super_admin")
         or bool(getattr(current_user, "can_authorize_payroll", False))
     )
     if not can_reject:

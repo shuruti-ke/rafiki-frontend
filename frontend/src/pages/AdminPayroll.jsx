@@ -13,7 +13,7 @@ const TAB_LABELS = {
 
 function getTabsAndDefault() {
   const user = JSON.parse(localStorage.getItem("rafiki_user") || "{}");
-  const hasApprove = !!(user.can_approve_payroll || user.role === "hr_admin" || user.role === "super_admin");
+  const hasApprove = !!(user.can_authorize_payroll || user.role === "super_admin");
   const hasProcess = !!(user.can_process_payroll || user.role === "super_admin");
   const tabs = [];
   if (hasApprove) tabs.push("approve");
@@ -76,7 +76,7 @@ export default function AdminPayroll() {
 }
 
 // ─────────────────────────────────────────────
-// Approve Tab — batches pending approval (for HR Admin / can_approve_payroll)
+// Approve Tab — batches pending approval (Finance Manager only: can_authorize_payroll)
 // ─────────────────────────────────────────────
 function ApproveTab() {
   const [batches, setBatches] = useState([]);
@@ -439,7 +439,7 @@ function UploadTab() {
 
   const user = JSON.parse(localStorage.getItem("rafiki_user") || "{}");
   const canProcessPayroll = !!(user.can_process_payroll || user.role === "super_admin");
-  const canParsePayroll = (user.role === "manager" || user.role === "super_admin" || !!user.can_process_payroll) && user.role !== "hr_admin";
+  const canParsePayroll = user.role === "hr_admin" || user.role === "super_admin";
   const canDistributePayroll = user.role === "hr_admin" || user.role === "super_admin";
   const canParse = batch && batch.status === "uploaded";
   const canDistribute = batch && batch.status === "parsed" && parseResult && parseResult.reconciled;
@@ -721,7 +721,7 @@ function UploadTab() {
                     </button>
                   </>
                 ) : (
-                  <p className="ap-hint">Only HR Admin can distribute and issue payslips. Complete this step in Batch History.</p>
+                  <p className="ap-hint">Only HR Admin can parse, verify and distribute. Complete this step in Batch History.</p>
                 )}
               </div>
             </div>
@@ -889,9 +889,9 @@ function BatchesTab() {
   }
 
   const user = JSON.parse(localStorage.getItem("rafiki_user") || "{}");
-  const canParsePayroll = (user.role === "manager" || user.role === "super_admin" || !!user.can_process_payroll) && user.role !== "hr_admin";
+  const canParsePayroll = user.role === "hr_admin" || user.role === "super_admin";
   const canDistributePayroll = user.role === "hr_admin" || user.role === "super_admin";
-  const canApprovePayroll = !!(user.can_approve_payroll || user.role === "hr_admin" || user.role === "super_admin");
+  const canApprovePayroll = !!(user.can_authorize_payroll || user.role === "super_admin");
   const canRejectPayroll = !!(user.can_approve_payroll || user.can_authorize_payroll || user.role === "hr_admin" || user.role === "super_admin");
 
   if (loading) return <div className="ap-loading">Loading…</div>;

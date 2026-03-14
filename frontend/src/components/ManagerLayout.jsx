@@ -10,7 +10,7 @@ export default function ManagerLayout() {
   const [user, setUser] = useState(() => JSON.parse(localStorage.getItem("rafiki_user") || "{}"));
   const [pendingPayrollApprovals, setPendingPayrollApprovals] = useState(0);
   const hasPayrollAccess = !!(user.can_process_payroll || user.can_approve_payroll || user.can_authorize_payroll);
-  const needsPayrollAction = !!(user.can_approve_payroll || user.can_authorize_payroll);
+  const needsPayrollAction = !!(user.can_authorize_payroll || user.role === "super_admin");
 
   useEffect(() => {
     const token = localStorage.getItem("rafiki_token");

@@ -183,20 +183,30 @@ def require_can_change_statutory_config(
     raise HTTPException(status_code=403, detail="Only finance managers or HR admin can change statutory rates")
 
 
-def require_can_parse_payroll(
+def require_can_approve_payroll(
     user: Optional[User] = Depends(get_current_user),
 ) -> User:
-    """Require manager or can_process_payroll; HR admin cannot parse (only distribute)."""
+    """Require finance manager (can_authorize_payroll) or super_admin to approve payroll."""
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required")
     role = str(getattr(user, "role", "") or "")
-    if role == "hr_admin":
-        raise HTTPException(status_code=403, detail="Only managers (or users with parse permission) can parse and verify payroll")
-    if role in ("manager", "super_admin"):
+    if role == "super_admin":
         return user
-    if bool(getattr(user, "can_process_payroll", False)):
+    if bool(getattr(user, "can_authorize_payroll", False)):
         return user
-    raise HTTPException(status_code=403, detail="Parse and verify permission required")
+    raise HTTPException(status_code=403, detail="Only finance managers can approve payroll")
+
+
+def require_can_parse_payroll(
+    user: Optional[User] = Depends(get_current_user),
+) -> User:
+    """Require HR admin or super_admin to parse and verify payroll."""
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    role = str(getattr(user, "role", "") or "")
+    if role in ("hr_admin", "super_admin"):
+        return user
+    raise HTTPException(status_code=403, detail="Only HR Admin can parse and verify payroll")
 
 
 def require_can_distribute_payroll(
