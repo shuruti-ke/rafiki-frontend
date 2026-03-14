@@ -5,7 +5,6 @@ import { normalizeEmployeeRecord } from "../utils/employeeRecord.js";
 import "./AdminEmployees.css";
 
 export default function AdminEmployees() {
-  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [employees, setEmployees] = useState([]);
   const [showAddForm, setShowAddForm] = useState(false);
