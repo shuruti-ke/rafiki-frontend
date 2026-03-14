@@ -8,8 +8,11 @@ crisis events, stress ratings). The firewall is architectural, not just policy.
 import os
 import json
 import logging
-import httpx
 import uuid
+from datetime import date, datetime
+from uuid import UUID
+
+import httpx
 from sqlalchemy.orm import Session
 from app.models.performance import PerformanceEvaluation
 from app.models.org_profile import OrgProfile, RoleProfile
@@ -117,6 +120,19 @@ def assemble_manager_context(
     return context
 
 
+def _to_json_serializable(obj):
+    """Recursively convert UUID/datetime to JSON-serializable types for JSONB columns."""
+    if isinstance(obj, UUID):
+        return str(obj)
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    if isinstance(obj, dict):
+        return {k: _to_json_serializable(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_to_json_serializable(v) for v in obj]
+    return obj
+
+
 def _build_coaching_prompt(context: dict, concern: str) -> str:
     """Build the user prompt from assembled context and manager's concern."""
     parts = [f"MANAGER'S CONCERN: {concern}\n"]
@@ -211,16 +227,16 @@ def generate_coaching_plan(
         structured = _generate_fallback_plan(concern, context)
         ai_response_text = json.dumps(structured)
 
-    # 4. Log the session
+    # 4. Log the session (context_used must be JSON-serializable for JSONB)
     session = CoachingSession(
         manager_id=manager_id,
         org_id=org_id,
         employee_member_id=employee_user_id,
         employee_name=employee_name,
         concern=concern,
-        context_used=context,
+        context_used=_to_json_serializable(context),
         ai_response=ai_response_text,
-        structured_response=structured,
+        structured_response=_to_json_serializable(structured),
     )
     db.add(session)
     db.commit()
