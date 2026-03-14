@@ -198,16 +198,30 @@ def _build_batch_validation(result: dict, cfg: dict) -> dict:
 
 
 def _calculate_kenya(gross_pay: float, pension_contribution: float, insurance_relief_basis: float, cfg: dict) -> dict:
-    taxable = max(0.0, gross_pay - pension_contribution)
+    """
+    Kenya statutory: NSSF, SHIF and housing levy (AHL) are deducted from basic salary
+    before PAYE. Taxable income for PAYE = gross - pension - nssf - shif - ahl.
+    """
+    gross = max(0.0, gross_pay)
+    pension = max(0.0, pension_contribution)
 
-    # NSSF two-tier
+    # 1. NSSF (from gross / basic salary)
     lower = float(cfg["nssf_lower_limit"])
     upper = float(cfg["nssf_upper_limit"])
-    tier1_base = min(taxable, lower)
-    tier2_base = max(0.0, min(taxable, upper) - lower)
+    tier1_base = min(gross, lower)
+    tier2_base = max(0.0, min(gross, upper) - lower)
     nssf = round(tier1_base * float(cfg["nssf_rate_tier1"]) + tier2_base * float(cfg["nssf_rate_tier2"]), 2)
 
-    # Tax bands
+    # 2. SHIF (from gross)
+    shif = round(gross * float(cfg["shif_rate"]), 2)
+
+    # 3. Housing levy AHL (from gross)
+    ahl = round(gross * float(cfg["ahl_rate"]), 2)
+
+    # 4. Taxable income for PAYE = gross minus pension and these statutory deductions
+    taxable = max(0.0, gross - pension - nssf - shif - ahl)
+
+    # 5. Tax bands on taxable income
     tax_due = 0.0
     remaining = taxable
     for band in cfg["tax_bands"]:
@@ -222,21 +236,23 @@ def _calculate_kenya(gross_pay: float, pension_contribution: float, insurance_re
         if remaining <= 0:
             break
 
+    personal_relief = float(cfg["personal_relief"])
     insurance_relief = min(
         float(cfg["insurance_relief_cap"]),
         max(0.0, insurance_relief_basis) * float(cfg["insurance_relief_rate"]),
     )
-    paye = max(0.0, tax_due - float(cfg["personal_relief"]) - insurance_relief)
+    paye = max(0.0, tax_due - personal_relief - insurance_relief)
     paye = round(paye, 2)
+    income_tax_before_relief = round(tax_due, 2)
 
-    shif = round(max(0.0, gross_pay) * float(cfg["shif_rate"]), 2)
-    ahl = round(max(0.0, gross_pay) * float(cfg["ahl_rate"]), 2)
     statutory_total = round(paye + nssf + shif + ahl, 2)
     net_pay = round(gross_pay - statutory_total - pension_contribution, 2)
 
     return {
         "gross_pay": round(gross_pay, 2),
         "taxable_pay": round(taxable, 2),
+        "income_tax_before_relief": income_tax_before_relief,
+        "personal_relief": personal_relief,
         "paye": paye,
         "nssf": nssf,
         "shif": shif,

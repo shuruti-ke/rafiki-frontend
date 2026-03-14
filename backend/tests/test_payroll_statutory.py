@@ -12,7 +12,9 @@ def test_calculate_kenya_returns_expected_totals():
     )
 
     assert result["gross_pay"] == 100000
-    assert result["taxable_pay"] == 100000
+    # Taxable for PAYE = gross - nssf - shif - ahl (deducted before PAYE)
+    assert result["taxable_pay"] < 100000
+    assert result["taxable_pay"] == round(100000 - result["nssf"] - result["shif"] - result["ahl"], 2)
     assert result["statutory_total"] == round(result["paye"] + result["nssf"] + result["shif"] + result["ahl"], 2)
     assert result["estimated_net_pay"] == round(100000 - result["statutory_total"], 2)
 

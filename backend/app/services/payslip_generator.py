@@ -56,9 +56,16 @@ def generate_payslip_pdf(
     net_salary: float = 0,
     logo_bytes: Optional[bytes] = None,
     details: Optional[dict] = None,
+    # Statutory breakdown (for standard format: deductions before tax, then PAYE from taxable)
+    taxable_pay: Optional[float] = None,
+    income_tax_before_relief: Optional[float] = None,
+    personal_relief: Optional[float] = None,
+    housing_levy: Optional[float] = None,  # AHL; use nhdf if not provided
 ) -> bytes:
     """
     Generate a payslip PDF and return the raw bytes.
+    Format: Basic Pay → NSSF, SHIF, Housing Levy (before tax) → Taxable Pay →
+    Income Tax → Personal Relief → P.A.Y.E → Pay After Tax → Net Pay.
     Falls back to a simple text layout if reportlab is unavailable.
     """
     if not REPORTLAB_OK:
@@ -86,8 +93,17 @@ def generate_payslip_pdf(
         other_deductions = abs(float(details.get("other_deductions", other_deductions) or 0))
         other_additions = float(details.get("other_additions", other_additions) or 0)
 
-    taxable_salary = gross_salary + housing + transport
-    total_deductions_calc = nssf + paye + shif + nhdf + other_deductions
+    housing_levy_val = (housing_levy if housing_levy is not None else nhdf) or 0
+    use_standard_format = (
+        taxable_pay is not None
+        and income_tax_before_relief is not None
+        and personal_relief is not None
+    )
+    if use_standard_format:
+        pay_after_tax = (taxable_pay or 0) - paye
+    else:
+        taxable_salary = gross_salary + housing + transport
+    total_deductions_calc = nssf + paye + shif + (housing_levy_val or nhdf) + other_deductions
 
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -158,64 +174,72 @@ def generate_payslip_pdf(
     net_bg = colors.HexColor("#1a3d28")
 
     rows = [
-        # Header
         [Paragraph("<font color='white'><b>Description</b></font>", bold),
          Paragraph("<font color='white'><b>Amount (KES)</b></font>", right_bold)],
-        # Earnings section
-        [Paragraph("<b>EARNINGS</b>", bold), ""],
-        [Paragraph("Gross Salary", normal), Paragraph(_fmt(gross_salary), right)],
     ]
 
-    if housing:
-        rows.append([Paragraph("Housing Allowance", normal), Paragraph(_fmt(housing), right)])
-    if transport:
-        rows.append([Paragraph("Transport Allowance", normal), Paragraph(_fmt(transport), right)])
-    if other_additions:
-        rows.append([Paragraph("Other Additions", normal), Paragraph(_fmt(other_additions), right)])
-
-    rows.append([Paragraph("<b>Taxable Salary</b>", bold), Paragraph(f"<b>{_fmt(taxable_salary)}</b>", right_bold)])
-
-    # Deductions section
-    rows.append([Paragraph("<b>DEDUCTIONS</b>", bold), ""])
-    if nssf:
-        rows.append([Paragraph("NSSF Deduction", normal), Paragraph(_fmt(nssf), right)])
-    if paye:
-        rows.append([Paragraph("PAYE", normal), Paragraph(_fmt(paye), right)])
-    if shif:
-        rows.append([Paragraph("SHIF", normal), Paragraph(_fmt(shif), right)])
-    if nhdf:
-        rows.append([Paragraph("NHDF", normal), Paragraph(_fmt(nhdf), right)])
-    if other_deductions:
-        rows.append([Paragraph("Other Deductions", normal), Paragraph(_fmt(other_deductions), right)])
-
-    rows.append([Paragraph("<b>Total Deductions</b>", bold),
-                 Paragraph(f"<b>{_fmt(total_deductions_calc or total_deductions)}</b>", right_bold)])
-
-    # Net salary row
-    rows.append([
-        Paragraph("<font color='white'><b>NET MONTHLY SALARY</b></font>", bold),
-        Paragraph(f"<font color='white'><b>{_fmt(net_salary)}</b></font>", right_bold),
-    ])
+    if use_standard_format:
+        # Standard format: Basic Pay → deductions before tax → Taxable Pay → Income Tax → Personal Relief → P.A.Y.E → Pay After Tax → Net Pay
+        rows.append([Paragraph("<b>BASIC PAY</b>", bold), Paragraph(f"<b>{_fmt(gross_salary)}</b>", right_bold)])
+        rows.append([Paragraph("<b>Deductions before Taxable Pay</b>", bold), ""])
+        if nssf:
+            rows.append([Paragraph("NSSF", normal), Paragraph(_fmt(nssf), right)])
+        if shif:
+            rows.append([Paragraph("SHIF", normal), Paragraph(_fmt(shif), right)])
+        if housing_levy_val or nhdf:
+            rows.append([Paragraph("Housing Levy", normal), Paragraph(_fmt(housing_levy_val or nhdf), right)])
+        rows.append([Paragraph("<b>TAXABLE PAY</b>", bold), Paragraph(f"<b>{_fmt(taxable_pay)}</b>", right_bold)])
+        rows.append([Paragraph("<b>Tax Calculation</b>", bold), ""])
+        rows.append([Paragraph("Income Tax", normal), Paragraph(_fmt(income_tax_before_relief), right)])
+        rows.append([Paragraph("Personal Relief", normal), Paragraph(f"-{_fmt(personal_relief)}", right)])
+        rows.append([Paragraph("<b>P.A.Y.E</b>", bold), Paragraph(f"<b>{_fmt(paye)}</b>", right_bold)])
+        rows.append([Paragraph("<b>PAY AFTER TAX</b>", bold), Paragraph(f"<b>{_fmt(pay_after_tax)}</b>", right_bold)])
+        rows.append([
+            Paragraph("<font color='white'><b>NET PAY</b></font>", bold),
+            Paragraph(f"<font color='white'><b>{_fmt(net_salary)}</b></font>", right_bold),
+        ])
+    else:
+        # Legacy layout
+        rows.append([Paragraph("<b>EARNINGS</b>", bold), ""])
+        rows.append([Paragraph("Gross Salary", normal), Paragraph(_fmt(gross_salary), right)])
+        if housing:
+            rows.append([Paragraph("Housing Allowance", normal), Paragraph(_fmt(housing), right)])
+        if transport:
+            rows.append([Paragraph("Transport Allowance", normal), Paragraph(_fmt(transport), right)])
+        if other_additions:
+            rows.append([Paragraph("Other Additions", normal), Paragraph(_fmt(other_additions), right)])
+        rows.append([Paragraph("<b>Taxable Salary</b>", bold), Paragraph(f"<b>{_fmt(taxable_salary)}</b>", right_bold)])
+        rows.append([Paragraph("<b>DEDUCTIONS</b>", bold), ""])
+        if nssf:
+            rows.append([Paragraph("NSSF Deduction", normal), Paragraph(_fmt(nssf), right)])
+        if paye:
+            rows.append([Paragraph("PAYE", normal), Paragraph(_fmt(paye), right)])
+        if shif:
+            rows.append([Paragraph("SHIF", normal), Paragraph(_fmt(shif), right)])
+        if nhdf:
+            rows.append([Paragraph("NHDF", normal), Paragraph(_fmt(nhdf), right)])
+        if other_deductions:
+            rows.append([Paragraph("Other Deductions", normal), Paragraph(_fmt(other_deductions), right)])
+        rows.append([Paragraph("<b>Total Deductions</b>", bold),
+                     Paragraph(f"<b>{_fmt(total_deductions_calc or total_deductions)}</b>", right_bold)])
+        rows.append([
+            Paragraph("<font color='white'><b>NET MONTHLY SALARY</b></font>", bold),
+            Paragraph(f"<font color='white'><b>{_fmt(net_salary)}</b></font>", right_bold),
+        ])
 
     tbl = Table(rows, colWidths=[col1, col2])
 
-    # Build style commands
     n = len(rows)
-    earnings_header_idx = 1
-    def _find_row_idx(rows, keyword):
-        for i, r in enumerate(rows):
-            if hasattr(r[0], 'text') and keyword in r[0].text:
+    net_idx = n - 1
+
+    def _find_row_idx(rows_list, keyword):
+        for i, r in enumerate(rows_list):
+            if hasattr(r[0], "text") and keyword in r[0].text:
                 return i
         return None
 
-    taxable_idx = _find_row_idx(rows, "Taxable")
-    deductions_header_idx = _find_row_idx(rows, "DEDUCTIONS")
-    total_idx = _find_row_idx(rows, "Total Deductions")
-    net_idx = n - 1
-
     style_cmds = [
         ("BACKGROUND", (0, 0), (1, 0), header_bg),
-        ("BACKGROUND", (0, earnings_header_idx), (1, earnings_header_idx), section_bg),
         ("BACKGROUND", (0, net_idx), (1, net_idx), net_bg),
         ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cccccc")),
         ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#dddddd")),
@@ -223,15 +247,30 @@ def generate_payslip_pdf(
         ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
         ("LEFTPADDING", (0, 0), (-1, -1), 8),
         ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-        ("SPAN", (0, earnings_header_idx), (1, earnings_header_idx)),
     ]
-    if deductions_header_idx is not None:
+    if use_standard_format:
+        for label in ("Deductions before", "Tax Calculation"):
+            idx = _find_row_idx(rows, label)
+            if idx is not None:
+                style_cmds += [
+                    ("BACKGROUND", (0, idx), (1, idx), section_bg),
+                    ("SPAN", (0, idx), (1, idx)),
+                ]
+    else:
+        earnings_header_idx = 1
+        deductions_header_idx = _find_row_idx(rows, "DEDUCTIONS")
+        total_idx = _find_row_idx(rows, "Total Deductions")
         style_cmds += [
-            ("BACKGROUND", (0, deductions_header_idx), (1, deductions_header_idx), section_bg),
-            ("SPAN", (0, deductions_header_idx), (1, deductions_header_idx)),
+            ("BACKGROUND", (0, earnings_header_idx), (1, earnings_header_idx), section_bg),
+            ("SPAN", (0, earnings_header_idx), (1, earnings_header_idx)),
         ]
-    if total_idx is not None:
-        style_cmds.append(("BACKGROUND", (0, total_idx), (1, total_idx), colors.HexColor("#fce8b2")))
+        if deductions_header_idx is not None:
+            style_cmds += [
+                ("BACKGROUND", (0, deductions_header_idx), (1, deductions_header_idx), section_bg),
+                ("SPAN", (0, deductions_header_idx), (1, deductions_header_idx)),
+            ]
+        if total_idx is not None:
+            style_cmds.append(("BACKGROUND", (0, total_idx), (1, total_idx), colors.HexColor("#fce8b2")))
 
     tbl.setStyle(TableStyle(style_cmds))
     story.append(tbl)

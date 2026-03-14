@@ -1236,6 +1236,12 @@ def distribute_payslips(
         except Exception:
             logo_bytes = None
 
+    # Statutory config for batch period (for payslip breakdown: NSSF, SHIF, housing, PAYE)
+    from datetime import date as date_type
+    from app.routers import payroll_statutory
+    effective_on = date_type(batch.period_year, batch.period_month, 1)
+    statutory_cfg = payroll_statutory._get_config(db, org_id, effective_on=effective_on)
+
     # Delete any orphaned payslips from previous failed/partial distribute attempts
     db.query(Payslip).filter(Payslip.batch_id == batch.batch_id).delete()
     db.flush()
@@ -1247,23 +1253,40 @@ def distribute_payslips(
                 continue
 
             user_id = uuid.UUID(user_id_str)
+            gross = float(entry.get("gross_salary") or 0)
 
             # Fetch employment number from profile
             from app.models.employee_profile import EmployeeProfile
             profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == user_id).first()
             emp_number = profile.employment_number if profile else None
 
-            # Generate individual payslip PDF
+            # Statutory breakdown for standard payslip format (NSSF, SHIF, housing before tax; then PAYE)
+            calc = payroll_statutory._calculate_kenya(gross, 0.0, 0.0, statutory_cfg)
+            total_deductions = float(entry.get("deductions") or 0)
+            net_salary = float(entry.get("net_salary") or 0)
+            if calc["statutory_total"] and (total_deductions == 0 or abs(total_deductions - calc["statutory_total"]) < 0.02):
+                total_deductions = calc["statutory_total"]
+                net_salary = calc["estimated_net_pay"]
+
+            # Generate individual payslip PDF (standard format: Basic → deductions before tax → Taxable → Income Tax → Personal Relief → P.A.Y.E → Pay After Tax → Net Pay)
             pdf_bytes = generate_payslip_pdf(
                 org_name=org_name,
                 employee_name=entry.get("employee_name", ""),
                 employment_number=emp_number,
                 month=month_str,
-                gross_salary=float(entry.get("gross_salary") or 0),
-                total_deductions=float(entry.get("deductions") or 0),
-                net_salary=float(entry.get("net_salary") or 0),
+                gross_salary=gross,
+                nssf=calc["nssf"],
+                shif=calc["shif"],
+                paye=calc["paye"],
+                nhdf=calc["ahl"],
+                total_deductions=total_deductions,
+                net_salary=net_salary,
                 logo_bytes=logo_bytes,
                 details=entry.get("details"),
+                taxable_pay=calc["taxable_pay"],
+                income_tax_before_relief=calc["income_tax_before_relief"],
+                personal_relief=calc["personal_relief"],
+                housing_levy=calc["ahl"],
             )
 
             # Upload PDF to R2
