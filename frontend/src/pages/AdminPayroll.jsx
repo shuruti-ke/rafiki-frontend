@@ -563,8 +563,10 @@ function BatchesTab() {
   const [distributeResult, setDistributeResult] = useState(null);
   const [validation, setValidation] = useState(null);
   const [filingReport, setFilingReport] = useState(null);
+  const [approvalTrail, setApprovalTrail] = useState(null);
   const [approving, setApproving] = useState(false);
   const [rejecting, setRejecting] = useState(false);
+  const [exportingCsv, setExportingCsv] = useState(false);
 
   useEffect(() => {
     authFetch(`${API}/api/v1/payroll/batches`)
@@ -583,16 +585,22 @@ function BatchesTab() {
     setDistributeResult(null);
     setValidation(null);
     setFilingReport(null);
+    setApprovalTrail(null);
     if (batch.status === "distributed" || batch.status === "parsed") {
       try {
-        const [r, validationRes, reportRes] = await Promise.all([
+        const fetches = [
           authFetch(`${API}/api/v1/payroll/batches/${batch.batch_id}/verify`),
           authFetch(`${API}/api/v1/payroll/statutory/validate/batch/${batch.batch_id}`, { method: "POST" }),
           authFetch(`${API}/api/v1/payroll/statutory/reports/batch/${batch.batch_id}`),
-        ]);
-        if (r.ok) setDetail(await r.json());
-        if (validationRes.ok) setValidation(await validationRes.json());
-        if (reportRes.ok) setFilingReport(await reportRes.json());
+        ];
+        if (batch.status === "distributed") {
+          fetches.push(authFetch(`${API}/api/v1/payroll/batches/${batch.batch_id}/approval-trail`));
+        }
+        const results = await Promise.all(fetches);
+        if (results[0].ok) setDetail(await results[0].json());
+        if (results[1].ok) setValidation(await results[1].json());
+        if (results[2].ok) setFilingReport(await results[2].json());
+        if (batch.status === "distributed" && results[3]?.ok) setApprovalTrail(await results[3].json());
       } catch {}
     } else if (batch.status === "uploaded_needs_approval" || batch.status === "uploaded") {
       try {
@@ -665,6 +673,25 @@ function BatchesTab() {
     setDownloading(false);
   }
 
+  async function handleExportCsv(batchId) {
+    setExportingCsv(true);
+    try {
+      const r = await authFetch(`${API}/api/v1/payroll/batches/${batchId}/export-csv`);
+      if (!r.ok) return;
+      const blob = await r.blob();
+      const disp = r.headers.get("Content-Disposition");
+      const match = disp && disp.match(/filename="?([^";]+)"?/);
+      const filename = match ? match[1] : `payroll_batch_${batchId}_with_summary.csv`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {}
+    setExportingCsv(false);
+  }
+
   const user = JSON.parse(localStorage.getItem("rafiki_user") || "{}");
   const canParsePayroll = (user.role === "manager" || user.role === "super_admin" || !!user.can_process_payroll) && user.role !== "hr_admin";
   const canDistributePayroll = user.role === "hr_admin" || user.role === "super_admin";
@@ -701,13 +728,24 @@ function BatchesTab() {
             <span className="ap-badge" data-status={selectedBatch.status}>
               {selectedBatch.status.replace(/_/g, " ")}
             </span>
-            <button
-              className="ap-btn ap-btn-ghost"
-              onClick={() => handleDownload(selected)}
-              disabled={downloading}
-            >
-              {downloading ? "…" : "Download File"}
-            </button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                className="ap-btn ap-btn-ghost"
+                onClick={() => handleDownload(selected)}
+                disabled={downloading}
+              >
+                {downloading ? "…" : "Download File"}
+              </button>
+              {(selectedBatch.status === "parsed" || selectedBatch.status === "distributed") && (
+                <button
+                  className="ap-btn ap-btn-ghost"
+                  onClick={() => handleExportCsv(selected)}
+                  disabled={exportingCsv}
+                >
+                  {exportingCsv ? "…" : "Download CSV with summary"}
+                </button>
+              )}
+            </div>
           </div>
 
           {loadingDetail && <div className="ap-loading">Loading detail…</div>}
@@ -768,6 +806,32 @@ function BatchesTab() {
                     {Object.entries(filingReport.filing_summary).map(([key, value]) => (
                       <Stat key={key} label={key.toUpperCase()} value={fmt(value)} />
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {approvalTrail && selectedBatch.status === "distributed" && (
+                <div className="ap-step" style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)" }}>
+                  <h3 className="ap-step-title">Approval trail</h3>
+                  <div style={{ display: "grid", gap: 8, maxWidth: 520 }}>
+                    <div>
+                      <span className="ap-label">{approvalTrail.requested_by?.role_label}: </span>
+                      <strong>{approvalTrail.requested_by?.name || "—"}</strong>
+                    </div>
+                    <div>
+                      <span className="ap-label">{approvalTrail.approved_by?.role_label}: </span>
+                      <strong>{approvalTrail.approved_by?.name || "—"}</strong>
+                      {approvalTrail.approved_by?.at && (
+                        <span className="ap-hint" style={{ marginLeft: 8, fontSize: 12 }}>({new Date(approvalTrail.approved_by.at).toLocaleString()})</span>
+                      )}
+                    </div>
+                    <div>
+                      <span className="ap-label">{approvalTrail.distributed_by?.role_label}: </span>
+                      <strong>{approvalTrail.distributed_by?.name || "—"}</strong>
+                      {approvalTrail.distributed_by?.at && (
+                        <span className="ap-hint" style={{ marginLeft: 8, fontSize: 12 }}>({new Date(approvalTrail.distributed_by.at).toLocaleString()})</span>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}

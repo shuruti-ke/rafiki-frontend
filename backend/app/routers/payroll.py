@@ -7,7 +7,9 @@ from datetime import date, datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 from app.database import get_db
 from app.dependencies import (
@@ -24,6 +26,7 @@ from app.models.payroll import PayrollTemplate, PayrollBatch, Payslip
 from app.models.employee_document import EmployeeDocument
 from app.models.employee_profile import EmployeeProfile
 from app.models.user import User  # users_legacy
+from app.models.audit_log import AuditLog
 from app.models.message import DmConversation, DmMessage, ConversationParticipant
 from app.schemas.payroll import (
     PayrollTemplateResponse,
@@ -981,6 +984,150 @@ def download_batch_file(
         raise HTTPException(status_code=404, detail="No file attached to this batch")
     url = get_download_url(batch.upload_storage_key)
     return {"url": url, "filename": batch.upload_original_filename}
+
+
+def _user_display_name(db: Session, user_id: uuid.UUID | None) -> str:
+    if not user_id:
+        return ""
+    u = db.query(User).filter(User.user_id == user_id).first()
+    if not u:
+        return str(user_id)
+    return (getattr(u, "name", None) or getattr(u, "email", None) or str(user_id)) or ""
+
+
+def _get_approval_trail(db: Session, org_id: uuid.UUID, batch: PayrollBatch) -> dict:
+    created_by = getattr(batch, "created_by_user_id", None)
+    approved_by = getattr(batch, "approved_by_user_id", None)
+    approved_at = getattr(batch, "approved_at", None)
+    distributed_at = getattr(batch, "distributed_at", None)
+    distributed_by = None
+    distributed_at_from_audit = None
+    if batch.status == "distributed":
+        last_distribute = (
+            db.query(AuditLog)
+            .filter(
+                AuditLog.org_id == org_id,
+                AuditLog.resource_type == "payroll_batch",
+                AuditLog.resource_id == str(batch.batch_id),
+                AuditLog.action == "distribute",
+            )
+            .order_by(AuditLog.created_at.desc())
+            .first()
+        )
+        if last_distribute:
+            distributed_by = last_distribute.user_id
+            distributed_at_from_audit = last_distribute.created_at
+    return {
+        "requested_by": {
+            "user_id": str(created_by) if created_by else None,
+            "name": _user_display_name(db, created_by),
+            "role_label": "Requested / Created by",
+        },
+        "approved_by": {
+            "user_id": str(approved_by) if approved_by else None,
+            "name": _user_display_name(db, approved_by),
+            "at": approved_at.isoformat() if approved_at else None,
+            "role_label": "Approved by",
+        },
+        "distributed_by": {
+            "user_id": str(distributed_by) if distributed_by else None,
+            "name": _user_display_name(db, distributed_by),
+            "at": (distributed_at_from_audit or distributed_at).isoformat() if (distributed_at_from_audit or distributed_at) else None,
+            "role_label": "Distributed by",
+        },
+    }
+
+
+@router.get("/batches/{batch_id}/approval-trail")
+def get_batch_approval_trail(
+    batch_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    _user: User = Depends(require_payroll_access),
+):
+    """Return the 3 people involved: requested/created by, approved by, distributed by (with names and dates)."""
+    batch = (
+        db.query(PayrollBatch)
+        .filter(PayrollBatch.batch_id == batch_id, PayrollBatch.org_id == org_id)
+        .first()
+    )
+    if not batch:
+        raise HTTPException(status_code=404, detail="Payroll batch not found")
+    return _get_approval_trail(db, org_id, batch)
+
+
+@router.get("/batches/{batch_id}/export-csv")
+def export_batch_csv_with_summary(
+    batch_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    _user: User = Depends(require_payroll_access),
+):
+    """Download CSV of payroll data plus per-employee PAYE/NSSF/SHIF/AHL, statutory validation, filing summary, and signature lines."""
+    from app.routers.payroll_statutory import _load_batch_parse_result, _get_config, _build_batch_validation, _calculate_kenya, _extract_detail_amount
+    from datetime import date as date_type
+
+    batch_dict, result = _load_batch_parse_result(db, org_id, batch_id)
+    effective_on = date_type(int(batch_dict["period_year"]), int(batch_dict["period_month"]), 1)
+    cfg = _get_config(db, org_id, effective_on=effective_on)
+    validation = _build_batch_validation(result, cfg)
+    summary = validation["summary"]
+    entries = result.get("entries", [])
+
+    batch_orm = db.query(PayrollBatch).filter(PayrollBatch.batch_id == batch_id, PayrollBatch.org_id == org_id).first()
+    trail = _get_approval_trail(db, org_id, batch_orm) if batch_orm else {}
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+
+    writer.writerow(["employee_name", "gross_salary", "deductions", "net_salary", "paye", "nssf", "shif", "ahl", "total_statutory"])
+    for e in entries:
+        gross = float(e.get("gross_salary") or 0)
+        details = e.get("details") or {}
+        pension = _extract_detail_amount(details, "pension", "voluntary_pension")
+        insurance_basis = _extract_detail_amount(details, "insurance", "relief_basis")
+        statutory = _calculate_kenya(gross, pension, insurance_basis, cfg)
+        writer.writerow([
+            e.get("employee_name", ""),
+            gross,
+            e.get("deductions", 0),
+            e.get("net_salary", 0),
+            round(statutory.get("paye", 0), 2),
+            round(statutory.get("nssf", 0), 2),
+            round(statutory.get("shif", 0), 2),
+            round(statutory.get("ahl", 0), 2),
+            round(statutory.get("statutory_total", 0), 2),
+        ])
+    writer.writerow([])
+
+    writer.writerow(["Statutory Validation"])
+    writer.writerow(["Within Tolerance", summary.get("within_tolerance_count", 0)])
+    writer.writerow(["Needs Review", summary.get("needs_review_count", 0)])
+    writer.writerow(["Declared Statutory", summary.get("declared_statutory", 0)])
+    writer.writerow(["Expected Statutory", summary.get("expected_statutory", 0)])
+    writer.writerow([])
+
+    writer.writerow(["Filing Summary"])
+    writer.writerow(["PAYE", summary.get("declared_paye", 0)])
+    writer.writerow(["NSSF", summary.get("declared_nssf", 0)])
+    writer.writerow(["SHIF", summary.get("declared_shif", 0)])
+    writer.writerow(["AHL", summary.get("declared_ahl", 0)])
+    writer.writerow(["TOTAL_STATUTORY", summary.get("declared_statutory", 0)])
+    writer.writerow([])
+
+    writer.writerow(["Signatures"])
+    writer.writerow([trail["requested_by"]["role_label"], trail["requested_by"]["name"], "Signature: _________________________"])
+    writer.writerow([trail["approved_by"]["role_label"], trail["approved_by"]["name"], "Signature: _________________________"])
+    writer.writerow([trail["distributed_by"]["role_label"], trail["distributed_by"]["name"], "Signature: _________________________"])
+
+    buf.seek(0)
+    period = f'{batch_dict["period_year"]}-{int(batch_dict["period_month"]):02d}'
+    filename = f"payroll_batch_{period}_with_summary.csv"
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/batches/{batch_id}/parse")
