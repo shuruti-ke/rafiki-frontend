@@ -104,6 +104,7 @@ from app.routers.messages import router as msg_router
 from app.routers.org_members import router as org_members_router
 from app.routers.payroll import router as payroll_router
 from app.routers.employees import router as employees_router
+from app.routers.employee_profile_sections import router as employee_profile_sections_router
 from app.routers.timesheets import router as ts_router
 from app.routers.chat_sessions import router as chat_sessions_router
 from app.routers.leave import router as leave_router
@@ -134,6 +135,7 @@ app.include_router(org_members_router)
 app.include_router(leave_router)
 app.include_router(payroll_router)
 app.include_router(employees_router)
+app.include_router(employee_profile_sections_router)
 app.include_router(ts_router)
 app.include_router(chat_sessions_router)
 app.include_router(meetings_router)

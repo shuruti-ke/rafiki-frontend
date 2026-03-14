@@ -16,6 +16,7 @@ class EmployeeDocType(str, enum.Enum):
     letter = "letter"
     payslip = "payslip"
     objective_attachment = "objective_attachment"
+    nda = "nda"
     other = "other"
 
 

@@ -146,6 +146,8 @@ def _profile_dict(p: Optional[EmployeeProfile]) -> Optional[dict]:
 
         "notes": p.notes,
         "gender": getattr(p, "gender", None),
+        "marital_status": getattr(p, "marital_status", None),
+        "number_of_dependents": getattr(p, "number_of_dependents", None),
 
         "created_at": p.created_at.isoformat() if p.created_at else None,
         "updated_at": p.updated_at.isoformat() if p.updated_at else None,
@@ -273,6 +275,8 @@ class EmployeeUpdateRequest(BaseModel):
     emergency_contact_relationship: Optional[str] = None
 
     notes: Optional[str] = None
+    marital_status: Optional[str] = None
+    number_of_dependents: Optional[int] = None
 
 
 # ---------- endpoints ----------
@@ -798,6 +802,7 @@ def update_employee(
         "address_line1", "address_line2", "city", "state", "postal_code", "country",
         "emergency_contact_name", "emergency_contact_phone", "emergency_contact_relationship",
         "notes", "gender", "employment_type", "work_location",
+        "marital_status", "number_of_dependents",
     ]:
         val = getattr(body, field, None)
         if val is not None:

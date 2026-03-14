@@ -89,6 +89,10 @@ class EmployeeProfile(Base):
     emergency_contact = Column(String, nullable=True)
     gender = Column(String, nullable=True)
 
+    # Dependent/Personal details
+    marital_status = Column(String(50), nullable=True)
+    number_of_dependents = Column(Integer, nullable=True)
+
     # ------------------------------------------------------------------
     # HR lifecycle fields
     # ------------------------------------------------------------------

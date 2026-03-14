@@ -151,6 +151,50 @@
 .emp-carry { color: var(--teal); font-weight: 600; }
 .emp-carry-expired { color: #ef4444; font-weight: 600; }
 
+/* Profile sections (dependents, work experience, education, assets, documents) */
+.emp-section-desc { font-size: 0.85rem; color: var(--gray); margin: -8px 0 12px; }
+.emp-muted { font-size: 0.88rem; color: var(--gray); margin: 8px 0; }
+.emp-section-list { list-style: none; padding: 0; margin: 0 0 12px; }
+.emp-section-item {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px;
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px;
+  margin-bottom: 8px; font-size: 0.9rem; color: var(--navy);
+}
+.emp-section-item-type {
+  font-size: 0.78rem; font-weight: 600; text-transform: capitalize;
+  color: var(--purple); background: #EDE9FE; padding: 2px 8px; border-radius: 6px;
+}
+.emp-section-item-actions { margin-left: auto; display: flex; gap: 8px; }
+.emp-link-btn {
+  background: none; border: none; color: var(--purple); font-size: 0.82rem;
+  font-weight: 600; cursor: pointer; padding: 0; text-decoration: underline;
+}
+.emp-link-btn:hover { opacity: 0.8; }
+.emp-link-btn--danger { color: #dc2626; }
+.emp-badge-current { font-size: 0.72rem; background: #D1FAE5; color: #065F46; padding: 2px 8px; border-radius: 6px; font-weight: 600; }
+.emp-returned { color: var(--gray); font-size: 0.85rem; }
+.emp-inline-form {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+  padding: 14px; background: var(--light-bg); border: 1px solid var(--border); border-radius: 10px; margin-top: 8px;
+}
+.emp-inline-form input[type="text"],
+.emp-inline-form input[type="number"],
+.emp-inline-form input[type="date"],
+.emp-inline-form select,
+.emp-inline-form textarea {
+  padding: 8px 10px; border: 1.5px solid var(--border); border-radius: 6px;
+  font-size: 0.88rem; font-family: inherit;
+}
+.emp-inline-form textarea { min-width: 200px; resize: vertical; }
+.emp-inline-form-actions { display: flex; gap: 8px; }
+.emp-inline-form-actions button {
+  padding: 8px 16px; border-radius: 6px; font-size: 0.85rem; font-weight: 600;
+  cursor: pointer; border: 1.5px solid var(--purple); background: var(--purple); color: white;
+}
+.emp-inline-form-actions button[type="button"] { background: white; color: var(--gray); border-color: var(--border); }
+.emp-doc-upload-form { align-items: flex-end; }
+.emp-doc-upload-label { font-size: 0.85rem; font-weight: 600; color: var(--navy); margin-right: 4px; }
+
 @media (max-width: 640px) {
   .emp-form-grid { grid-template-columns: 1fr; }
   .emp-detail-title-row { flex-wrap: wrap; }
