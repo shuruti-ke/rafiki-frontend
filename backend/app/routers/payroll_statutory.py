@@ -307,7 +307,7 @@ def upsert_statutory_config(
     db: Session = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org_id),
     user_id: uuid.UUID = Depends(get_current_user_id),
-    _role: str = Depends(require_admin),
+    _user=Depends(require_can_change_statutory_config),
 ):
     payload = body.model_dump()
     effective_from = payload.pop("effective_from") or date.today()
@@ -375,7 +375,7 @@ def calculate_statutory_batch(
     rows: list[StatutoryCalcIn],
     db: Session = Depends(get_db),
     org_id: uuid.UUID = Depends(get_current_org_id),
-    _role: str = Depends(require_manager),
+    _user=Depends(require_payroll_access),
 ):
     cfg = _get_config(db, org_id)
     results = [
