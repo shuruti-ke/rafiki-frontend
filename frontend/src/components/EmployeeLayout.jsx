@@ -501,8 +501,11 @@ export default function EmployeeLayout() {
   const isManager = role === "manager" || role === "hr_admin" || role === "super_admin";
   const isAdmin = role === "hr_admin" || role === "super_admin";
   const hasPayrollAccess = !!(user.can_process_payroll || user.can_approve_payroll || user.can_authorize_payroll);
-  const needsPayrollAction = !!(user.can_approve_payroll || user.can_authorize_payroll);
+  const needsPayrollAction = !!(user.can_authorize_payroll || role === "super_admin");
   const [pendingPayrollApprovals, setPendingPayrollApprovals] = useState(0);
+  const [payrollMessage, setPayrollMessage] = useState("");
+  const isHrAdmin = role === "hr_admin" || role === "super_admin";
+  const isFinanceApprover = !!(user.can_authorize_payroll || role === "super_admin");
   const isFlush = location.pathname === "/chat";
 
   const pageTitle = PAGE_TITLES[location.pathname] || "Rafiki";
@@ -533,15 +536,24 @@ export default function EmployeeLayout() {
   }, []);
 
   useEffect(() => {
-    if (!needsPayrollAction) return;
-    authFetch(`${API}/api/v1/payroll/batches`)
-      .then((r) => r.ok ? r.json() : [])
-      .then((batches) => {
-        const count = Array.isArray(batches) ? batches.filter((b) => b.status === "uploaded_needs_approval").length : 0;
-        setPendingPayrollApprovals(count);
+    if (!hasPayrollAccess) return;
+    authFetch(`${API}/api/v1/payroll/notifications`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (!data) return;
+        const a = data.awaiting_approval || 0;
+        const p = data.ready_to_parse || 0;
+        const d = data.ready_to_distribute || 0;
+        setPendingPayrollApprovals(a);
+        const parts = [];
+        if (isFinanceApprover && a > 0) parts.push(`${a} awaiting your approval`);
+        if (isHrAdmin && p > 0) parts.push(`${p} to parse`);
+        if (isHrAdmin && d > 0) parts.push(`${d} to distribute`);
+        if (!isFinanceApprover && !isHrAdmin && a > 0) parts.push(`${a} awaiting finance approval`);
+        setPayrollMessage(parts.length ? parts.join(" · ") : "");
       })
       .catch(() => {});
-  }, [needsPayrollAction]);
+  }, [hasPayrollAccess, isFinanceApprover, isHrAdmin]);
 
   return (
     <div className="emp-layout">
@@ -578,12 +590,12 @@ export default function EmployeeLayout() {
               <div key={group.label} className="emp-nav-section">
                 <div className="emp-nav-section-label">{group.label}</div>
                 {links.map(link => (
-                  <NavLink key={link.to} to={link.to} className={({ isActive }) => `emp-nav-link${isActive ? " active" : ""}`}>
+                  <NavLink key={link.to} to={link.to} className={({ isActive }) => `emp-nav-link${isActive ? " active" : ""}`} title={link.to === "/payroll" && payrollMessage ? payrollMessage : undefined}>
                     <span className="emp-nav-icon">{link.icon}</span>
                     <span className="emp-nav-label">{link.label}</span>
                     {link.to === "/chat" && unreadCount > 0 && <span className="emp-nav-badge">{unreadCount}</span>}
                     {link.to === "/payroll" && pendingPayrollApprovals > 0 && (
-                      <span className="emp-nav-badge emp-nav-badge--action" title="Action required">{pendingPayrollApprovals}</span>
+                      <span className="emp-nav-badge emp-nav-badge--action" title={payrollMessage || "Action required"}>{pendingPayrollApprovals}</span>
                     )}
                     <span className="emp-nav-tooltip">{link.label}</span>
                   </NavLink>

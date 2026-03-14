@@ -9,8 +9,11 @@ export default function ManagerLayout() {
   const isAdmin = ["hr_admin", "super_admin"].includes(userRole);
   const [user, setUser] = useState(() => JSON.parse(localStorage.getItem("rafiki_user") || "{}"));
   const [pendingPayrollApprovals, setPendingPayrollApprovals] = useState(0);
+  const [payrollMessage, setPayrollMessage] = useState("");
   const hasPayrollAccess = !!(user.can_process_payroll || user.can_approve_payroll || user.can_authorize_payroll);
   const needsPayrollAction = !!(user.can_authorize_payroll || user.role === "super_admin");
+  const isHrAdmin = user.role === "hr_admin" || user.role === "super_admin";
+  const isFinanceApprover = !!(user.can_authorize_payroll || user.role === "super_admin");
 
   useEffect(() => {
     const token = localStorage.getItem("rafiki_token");
@@ -27,15 +30,24 @@ export default function ManagerLayout() {
   }, []);
 
   useEffect(() => {
-    if (!needsPayrollAction) return;
-    authFetch(`${API}/api/v1/payroll/batches`)
-      .then((r) => r.ok ? r.json() : [])
-      .then((batches) => {
-        const count = Array.isArray(batches) ? batches.filter((b) => b.status === "uploaded_needs_approval").length : 0;
-        setPendingPayrollApprovals(count);
+    if (!hasPayrollAccess) return;
+    authFetch(`${API}/api/v1/payroll/notifications`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (!data) return;
+        const a = data.awaiting_approval || 0;
+        const p = data.ready_to_parse || 0;
+        const d = data.ready_to_distribute || 0;
+        setPendingPayrollApprovals(a);
+        const parts = [];
+        if (isFinanceApprover && a > 0) parts.push(`${a} awaiting your approval`);
+        if (isHrAdmin && p > 0) parts.push(`${p} to parse`);
+        if (isHrAdmin && d > 0) parts.push(`${d} to distribute`);
+        if (!isFinanceApprover && !isHrAdmin && a > 0) parts.push(`${a} awaiting finance approval`);
+        setPayrollMessage(parts.length ? parts.join(" · ") : "");
       })
       .catch(() => {});
-  }, [needsPayrollAction]);
+  }, [hasPayrollAccess, isFinanceApprover, isHrAdmin]);
 
   const handleLogout = () => {
     localStorage.removeItem("rafiki_token");
@@ -78,11 +90,14 @@ export default function ManagerLayout() {
             Team Attendance
           </NavLink>
           {hasPayrollAccess && (
-            <NavLink to="/manager/payroll" className={({ isActive }) => `mgr-nav-link ${isActive ? "active" : ""}`}>
-              Payroll
-              {pendingPayrollApprovals > 0 && (
-                <span className="mgr-nav-payroll-badge" title="Action required">{pendingPayrollApprovals}</span>
-              )}
+            <NavLink to="/manager/payroll" className={({ isActive }) => `mgr-nav-link mgr-nav-link--payroll ${isActive ? "active" : ""}`} title={payrollMessage || "Payroll"}>
+              <span className="mgr-nav-payroll-label">
+                Payroll
+                {pendingPayrollApprovals > 0 && (
+                  <span className="mgr-nav-payroll-badge" title="Action required">{pendingPayrollApprovals}</span>
+                )}
+              </span>
+              {payrollMessage && <span className="mgr-nav-payroll-msg">{payrollMessage}</span>}
             </NavLink>
           )}
         </nav>

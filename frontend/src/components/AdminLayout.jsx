@@ -1,9 +1,30 @@
 // frontend/src/components/AdminLayout.jsx
+import { useState, useEffect } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { API, authFetch } from "../api.js";
 import "./AdminLayout.css";
 
 export default function AdminLayout() {
   const navigate = useNavigate();
+  const [payrollMessage, setPayrollMessage] = useState("");
+  const user = JSON.parse(localStorage.getItem("rafiki_user") || "{}");
+  const hasPayrollAccess = user.role === "hr_admin" || user.role === "super_admin";
+
+  useEffect(() => {
+    if (!hasPayrollAccess) return;
+    authFetch(`${API}/api/v1/payroll/notifications`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (!data) return;
+        const p = data.ready_to_parse || 0;
+        const d = data.ready_to_distribute || 0;
+        const parts = [];
+        if (p > 0) parts.push(`${p} to parse`);
+        if (d > 0) parts.push(`${d} to distribute`);
+        setPayrollMessage(parts.length ? parts.join(" · ") : "");
+      })
+      .catch(() => {});
+  }, [hasPayrollAccess]);
 
   const handleLogout = () => {
     localStorage.removeItem("rafiki_token");
@@ -48,8 +69,9 @@ export default function AdminLayout() {
           <NavLink to="/admin/managers" className={({ isActive }) => `admin-nav-link ${isActive ? "active" : ""}`}>
             Managers
           </NavLink>
-          <NavLink to="/admin/payroll" className={({ isActive }) => `admin-nav-link ${isActive ? "active" : ""}`}>
-            Payroll
+          <NavLink to="/admin/payroll" className={({ isActive }) => `admin-nav-link admin-nav-link--payroll ${isActive ? "active" : ""}`} title={payrollMessage || "Payroll"}>
+            <span className="admin-nav-payroll-label">Payroll</span>
+            {payrollMessage && <span className="admin-nav-payroll-msg">{payrollMessage}</span>}
           </NavLink>
           <NavLink to="/admin/leave" className={({ isActive }) => `admin-nav-link ${isActive ? "active" : ""}`}>
             Leave Management

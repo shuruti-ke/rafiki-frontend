@@ -15,10 +15,14 @@ from app.services.payroll_parser import parse_payroll_file
 router = APIRouter(prefix="/api/v1/payroll/statutory", tags=["Payroll Statutory"])
 
 
+# KRA PAYE Individual Income Tax Rates (Finance Act 2023, effective 1 July 2023)
+# https://www.kra.go.ke/individual/filing-paying/types-of-taxes/paye
 DEFAULT_KE_BANDS = [
-    {"limit": 24000, "rate": 0.10},
-    {"limit": 8333, "rate": 0.25},
-    {"limit": None, "rate": 0.30},
+    {"limit": 24000, "rate": 0.10},    # On the first KShs 24,000
+    {"limit": 8333, "rate": 0.25},     # On the next KShs 8,333
+    {"limit": 467667, "rate": 0.30},   # On the next KShs 467,667
+    {"limit": 300000, "rate": 0.325},  # On the next KShs 300,000
+    {"limit": None, "rate": 0.35},     # On all income above KShs 800,000
 ]
 
 

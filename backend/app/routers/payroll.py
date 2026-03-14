@@ -59,7 +59,7 @@ PAYROLL_MIME_TYPES = {
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 }
 
-# Flow: Thomas (creator) → Finance manager (can_authorize_payroll) approves → HR admin parses/verifies/distributes
+# Flow: 3 steps, one per person — (1) Thomas: create (2) Finance: approve (3) HR admin: parse & distribute
 
 
 def _require_payroll_processor(user: User | None) -> None:
@@ -977,6 +977,76 @@ def reject_batch(
         batch.batch_id,
         {"reason": reason},
     )
+    return {"ok": True, "message": "Batch rejected", "status": batch.status}
+
+
+@router.post("/batches/{batch_id}/send-back")
+def send_back_batch(
+    batch_id: uuid.UUID,
+    reason: str = Query(default=""),
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
+    current_user: User | None = Depends(get_current_user),
+    _user=Depends(require_can_distribute_payroll),
+):
+    """
+    HR admin sends back an approved batch (status uploaded) when they have an issue.
+    Status returns to uploaded_needs_approval; approved_by/approved_at cleared.
+    Creator and finance manager are notified so they can fix and re-approve.
+    """
+    batch = (
+        db.query(PayrollBatch)
+        .filter(PayrollBatch.batch_id == batch_id, PayrollBatch.org_id == org_id)
+        .first()
+    )
+    if not batch:
+        raise HTTPException(status_code=404, detail="Payroll batch not found")
+    if batch.status == "distributed":
+        raise HTTPException(status_code=409, detail="Cannot send back a distributed batch")
+    if batch.status != "uploaded":
+        raise HTTPException(
+            status_code=400,
+            detail="Send back is for approved batches only (status uploaded). Use Reject for batches awaiting approval.",
+        )
+
+    month_str = _month_str(batch)
+    batch.status = "uploaded_needs_approval"
+    batch.approved_by_user_id = None
+    batch.approved_at = None
+    _set_if_attr(batch, "approved_by", None)
+    _set_if_attr(batch, "approved_at", None)
+
+    requested_by = _get_if_attr(batch, "approval_requested_by", None)
+    approver_id = getattr(batch, "approved_by_user_id", None)
+    to_notify = set()
+    if requested_by:
+        to_notify.add(requested_by)
+    if approver_id:
+        to_notify.add(approver_id)
+
+    for uid in to_notify:
+        if uid and uid != current_user_id:
+            _send_simple_dm(
+                db,
+                org_id=org_id,
+                sender_id=current_user_id,
+                recipient_id=uid,
+                text=f"↩️ Payroll for {month_str} was sent back by HR Admin. Reason: {reason or 'Not provided'}. Please fix and resubmit for approval.",
+            )
+
+    db.commit()
+    db.refresh(batch)
+    log_action(
+        db,
+        org_id,
+        current_user_id,
+        "send_back",
+        "payroll_batch",
+        batch.batch_id,
+        {"reason": reason},
+    )
+    return {"ok": True, "message": "Batch sent back for approval", "status": batch.status}
     return {"ok": True, "batch_id": str(batch.batch_id), "status": batch.status, "reason": reason}
 
 
@@ -1112,6 +1182,29 @@ def upload_payroll(
         "replaced": False,
         "requires_approval": True,
         "warning": None,
+    }
+
+
+@router.get("/notifications")
+def get_payroll_notifications(
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    _user: User = Depends(require_payroll_access),
+):
+    """Counts for nav badge and message: awaiting approval, ready to parse, ready to distribute."""
+    batches = (
+        db.query(PayrollBatch)
+        .filter(PayrollBatch.org_id == org_id)
+        .order_by(PayrollBatch.created_at.desc())
+        .all()
+    )
+    awaiting_approval = sum(1 for b in batches if getattr(b, "status", None) == "uploaded_needs_approval")
+    ready_to_parse = sum(1 for b in batches if getattr(b, "status", None) == "uploaded")
+    ready_to_distribute = sum(1 for b in batches if getattr(b, "status", None) == "parsed")
+    return {
+        "awaiting_approval": awaiting_approval,
+        "ready_to_parse": ready_to_parse,
+        "ready_to_distribute": ready_to_distribute,
     }
 
 
@@ -1684,6 +1777,183 @@ def distribute_payslips(
     )
 
     return {"ok": True, "message": f"Distributed {distributed_count} payslips", "distributed_count": distributed_count}
+
+
+@router.post("/batches/{batch_id}/parse-and-distribute")
+def parse_and_distribute(
+    batch_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
+    _user=Depends(require_can_distribute_payroll),
+):
+    """
+    Step 3 (HR admin only): Parse the payroll file and distribute payslips in one action.
+    Batch must be approved (status uploaded). Fails if parse does not reconcile or no employees matched.
+    """
+    batch = (
+        db.query(PayrollBatch)
+        .filter(PayrollBatch.batch_id == batch_id, PayrollBatch.org_id == org_id)
+        .first()
+    )
+    if not batch:
+        raise HTTPException(status_code=404, detail="Payroll batch not found")
+    _ensure_approved_for_parse_or_distribute(batch)
+    if batch.status == "distributed":
+        raise HTTPException(status_code=400, detail="Already distributed")
+    if batch.status != "uploaded":
+        raise HTTPException(
+            status_code=400,
+            detail="Batch must be approved first (status uploaded). Only approved batches can be parsed and distributed.",
+        )
+
+    from app.services.file_storage import _get_s3, R2_BUCKET
+    try:
+        s3 = _get_s3()
+        obj = s3.get_object(Bucket=R2_BUCKET, Key=batch.upload_storage_key)
+        content = obj["Body"].read()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read payroll file: {e}")
+
+    filename = (
+        getattr(batch, "upload_original_filename", None)
+        or getattr(batch, "original_filename", None)
+        or batch.upload_storage_key
+    )
+    result = parse_payroll_file(filename, content, db, org_id)
+    if "error" in result:
+        raise HTTPException(status_code=500, detail=result["error"])
+    if not result.get("reconciled"):
+        raise HTTPException(
+            status_code=400,
+            detail="Totals do not reconcile. Fix the payroll file before distributing.",
+        )
+    if (result.get("matched_count") or 0) == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="No employees matched. Ensure names in the file match employee names in the system.",
+        )
+
+    entries = result["entries"]
+    month_str = _month_str(batch)
+    batch.payroll_total = result["total_gross"]
+    batch.computed_total = result["total_net"]
+    batch.discrepancy = round((result["total_gross"] - result["total_deductions"]) - result["total_net"], 2)
+    batch.status = "parsed"
+
+    from app.models.user import Organization
+    org = db.query(Organization).filter(Organization.org_id == org_id).first()
+    org_name = org.name if org else "Organisation"
+    logo_bytes = None
+    if org and getattr(org, "logo_storage_key", None):
+        try:
+            s3 = _get_s3()
+            logo_bytes = s3.get_object(Bucket=R2_BUCKET, Key=org.logo_storage_key)["Body"].read()
+        except Exception:
+            logo_bytes = None
+
+    from datetime import date as date_type
+    from app.routers import payroll_statutory
+    effective_on = date_type(batch.period_year, batch.period_month, 1)
+    statutory_cfg = payroll_statutory._get_config(db, org_id, effective_on=effective_on)
+
+    db.query(Payslip).filter(Payslip.batch_id == batch.batch_id).delete()
+    db.flush()
+
+    distributed_count = 0
+    try:
+        for entry in entries:
+            user_id_str = entry.get("matched_user_id")
+            if not user_id_str:
+                continue
+            user_id = uuid.UUID(user_id_str)
+            gross = float(entry.get("gross_salary") or 0)
+            from app.models.employee_profile import EmployeeProfile
+            profile = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == user_id).first()
+            emp_number = profile.employment_number if profile else None
+            calc = payroll_statutory._calculate_kenya(gross, 0.0, 0.0, statutory_cfg)
+            total_deductions = float(entry.get("deductions") or 0)
+            net_salary = float(entry.get("net_salary") or 0)
+            if calc["statutory_total"] and (total_deductions == 0 or abs(total_deductions - calc["statutory_total"]) < 0.02):
+                total_deductions = calc["statutory_total"]
+                net_salary = calc["estimated_net_pay"]
+            pdf_bytes = generate_payslip_pdf(
+                org_name=org_name,
+                employee_name=entry.get("employee_name", ""),
+                employment_number=emp_number,
+                month=month_str,
+                gross_salary=gross,
+                nssf=calc["nssf"],
+                shif=calc["shif"],
+                paye=calc["paye"],
+                nhdf=calc["ahl"],
+                total_deductions=total_deductions,
+                net_salary=net_salary,
+                logo_bytes=logo_bytes,
+                details=entry.get("details"),
+                taxable_pay=calc["taxable_pay"],
+                income_tax_before_relief=calc["income_tax_before_relief"],
+                personal_relief=calc["personal_relief"],
+                housing_levy=calc["ahl"],
+            )
+            pdf_key = f"payslips/{org_id}/{month_str}/{user_id}.pdf"
+            s3 = _get_s3()
+            s3.put_object(
+                Bucket=R2_BUCKET,
+                Key=pdf_key,
+                Body=pdf_bytes,
+                ContentType="application/pdf",
+            )
+            doc_id = uuid.uuid4()
+            doc = EmployeeDocument(
+                id=doc_id,
+                user_id=user_id,
+                org_id=org_id,
+                doc_type="payslip",
+                title=f"Payslip - {month_str}",
+                file_path=pdf_key,
+                original_filename=f"payslip_{month_str}_{entry.get('employee_name','').replace(' ','_')}.pdf",
+                mime_type="application/pdf",
+                file_size=len(pdf_bytes),
+                uploaded_by=current_user_id,
+            )
+            db.add(doc)
+            db.flush()
+            payslip = Payslip(
+                org_id=org_id,
+                batch_id=batch.batch_id,
+                employee_user_id=user_id,
+                gross_pay=entry.get("gross_salary"),
+                total_deductions=entry.get("deductions"),
+                net_pay=entry.get("net_salary"),
+                document_id=doc_id,
+            )
+            db.add(payslip)
+            distributed_count += 1
+
+        batch.status = "distributed"
+        batch.distributed_at = _now_utc()
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Parse and distribute failed: {e}")
+
+    log_action(
+        db, org_id, current_user_id, "parse", "payroll_batch", batch.batch_id,
+        {"month": month_str, "employee_count": result["employee_count"], "matched": result["matched_count"]},
+    )
+    log_action(
+        db, org_id, current_user_id, "distribute", "payroll_batch", batch.batch_id,
+        {"month": month_str, "distributed_count": distributed_count},
+    )
+    db.refresh(batch)
+    return {
+        "ok": True,
+        "message": f"Parsed and distributed {distributed_count} payslips",
+        "distributed_count": distributed_count,
+        "employee_count": result["employee_count"],
+        "matched_count": result["matched_count"],
+    }
 
 
 # ─────────────────────────────────────────────────────────────

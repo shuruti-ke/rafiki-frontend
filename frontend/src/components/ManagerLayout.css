@@ -116,8 +116,29 @@
   border-radius: 0 3px 3px 0;
 }
 
+.mgr-nav-link--payroll {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.mgr-nav-payroll-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mgr-nav-payroll-msg {
+  font-size: 11px;
+  color: var(--muted, #64748b);
+  font-weight: 400;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
 .mgr-nav-payroll-badge {
-  margin-left: auto;
   min-width: 18px;
   height: 18px;
   padding: 0 5px;

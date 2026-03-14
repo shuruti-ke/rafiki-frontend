@@ -437,13 +437,57 @@ function UploadTab() {
     }
   }
 
+  async function handleParseAndDistribute() {
+    if (!batch) return;
+    setDistributing(true);
+    setError("");
+    setParseResult(null);
+    try {
+      const r = await authFetch(
+        `${API}/api/v1/payroll/batches/${batch.batch_id}/parse-and-distribute`,
+        { method: "POST" }
+      );
+      const data = await r.json();
+      if (!r.ok) {
+        setError(data.detail || "Parse and distribute failed");
+        return;
+      }
+      setDistributeResult(data);
+      setBatch((b) => ({ ...b, status: "distributed" }));
+    } catch (err) {
+      setError("Parse and distribute failed: " + err.message);
+    } finally {
+      setDistributing(false);
+    }
+  }
+
+  async function handleSendBack() {
+    if (!batch) return;
+    const reason = window.prompt("Reason for sending back (visible to creator and finance manager):") ?? "";
+    setError("");
+    try {
+      const r = await authFetch(
+        `${API}/api/v1/payroll/batches/${batch.batch_id}/send-back?reason=${encodeURIComponent(reason)}`,
+        { method: "POST" }
+      );
+      const data = await r.json();
+      if (!r.ok) {
+        setError(data.detail || "Send back failed");
+        return;
+      }
+      setBatch((b) => ({ ...b, status: "uploaded_needs_approval" }));
+    } catch (err) {
+      setError("Send back failed: " + err.message);
+    }
+  }
+
   const user = JSON.parse(localStorage.getItem("rafiki_user") || "{}");
   const canProcessPayroll = !!(user.can_process_payroll || user.role === "super_admin");
-  const canParsePayroll = user.role === "hr_admin" || user.role === "super_admin";
   const canDistributePayroll = user.role === "hr_admin" || user.role === "super_admin";
   const canParse = batch && batch.status === "uploaded";
   const canDistribute = batch && batch.status === "parsed" && parseResult && parseResult.reconciled;
   const needsApproval = batch && batch.status === "uploaded_needs_approval";
+  const canParseAndDistribute = canParse && canDistributePayroll;
 
   return (
     <div className="ap-section">
@@ -616,36 +660,40 @@ function UploadTab() {
 
           {batch.warning && <div className="ap-warning">{batch.warning}</div>}
 
-          {/* Approval is automated: DMs sent to HR Admin and finance manager on batch creation */}
+          {/* 3 steps: (1) Thomas create (2) Finance approve (3) HR admin parse & distribute */}
           {needsApproval && (
             <div className="ap-step">
-              <div className="ap-hint">
-                Approval request sent automatically to HR Admin. Complete the flow in Batch History (approve → parse → distribute).
+              <h3 className="ap-step-title">Step 2 — Finance manager: Approve</h3>
+              <p className="ap-hint">Approval request sent to the Finance manager. After they approve, HR Admin can complete Step 3 in Batch History.</p>
+            </div>
+          )}
+
+          {/* Step 3: HR admin — Parse & distribute, or Send back if there's an issue */}
+          {canParseAndDistribute && (
+            <div className="ap-step">
+              <h3 className="ap-step-title">Step 3 — Parse & distribute</h3>
+              <p className="ap-hint">Parse the payroll file and issue payslips to all matched employees in one action. If something is wrong, send the batch back so creator or finance can fix it.</p>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                <button
+                  className="ap-btn ap-btn-primary"
+                  onClick={handleParseAndDistribute}
+                  disabled={distributing}
+                >
+                  {distributing ? "Parsing & distributing…" : "Parse & distribute"}
+                </button>
+                <button type="button" className="ap-btn ap-btn-ghost" onClick={handleSendBack}>
+                  Send back (have an issue)
+                </button>
               </div>
             </div>
           )}
-
-          {/* Step 2: Parse (managers only; HR Admin cannot parse) */}
-          {canParse && canParsePayroll && (
+          {canParse && !canDistributePayroll && (
             <div className="ap-step">
-              <h3 className="ap-step-title">Step 2 — Parse & Verify</h3>
-              <p className="ap-hint">Extract employee salary data from the uploaded file.</p>
-              <button
-                className="ap-btn ap-btn-primary"
-                onClick={handleParse}
-                disabled={parsing}
-              >
-                {parsing ? "Parsing…" : "Parse Payroll File"}
-              </button>
-            </div>
-          )}
-          {canParse && !canParsePayroll && (
-            <div className="ap-step">
-              <p className="ap-hint">Only managers (or users with parse permission) can parse and verify. Complete this step in Batch History.</p>
+              <p className="ap-hint">Step 3: Only HR Admin can parse and distribute. Complete in Batch History.</p>
             </div>
           )}
 
-          {/* Parse results */}
+          {/* Parse results (when batch was parsed separately, e.g. legacy) */}
           {parseResult && (
             <div className="ap-parse-result">
               <div className="ap-stats-row">
@@ -697,9 +745,9 @@ function UploadTab() {
                 </table>
               </div>
 
-              {/* Step 3: Distribute (HR Admin only) */}
+              {/* Distribute (when batch was already parsed, e.g. legacy flow) */}
               <div className="ap-step">
-                <h3 className="ap-step-title">Step 3 — Distribute Payslips</h3>
+                <h3 className="ap-step-title">Distribute payslips</h3>
                 {canDistributePayroll ? (
                   <>
                     {!parseResult.reconciled && (
@@ -721,7 +769,7 @@ function UploadTab() {
                     </button>
                   </>
                 ) : (
-                  <p className="ap-hint">Only HR Admin can parse, verify and distribute. Complete this step in Batch History.</p>
+                  <p className="ap-hint">Only HR Admin can distribute. Complete in Batch History.</p>
                 )}
               </div>
             </div>
@@ -855,6 +903,57 @@ function BatchesTab() {
       setDistributeResult("Error: " + e.message);
     }
     setDistributing(false);
+  }
+
+  async function handleParseAndDistribute(batchId) {
+    if (!confirm("Parse the payroll file and distribute payslips to all matched employees? This cannot be undone.")) return;
+    setDistributing(true);
+    setDetail(null);
+    setDistributeResult(null);
+    try {
+      const r = await authFetch(`${API}/api/v1/payroll/batches/${batchId}/parse-and-distribute`, { method: "POST" });
+      const data = await r.json();
+      if (r.ok) {
+        setDistributeResult(data.message || "Parsed and distributed successfully.");
+        const br = await authFetch(`${API}/api/v1/payroll/batches`);
+        const bdata = await br.json();
+        if (Array.isArray(bdata)) {
+          setBatches(bdata);
+          const updated = bdata.find(b => b.batch_id === batchId);
+          if (updated) setSelectedBatch(updated);
+        }
+      } else {
+        setDistributeResult("Error: " + (data.detail || "Parse and distribute failed"));
+      }
+    } catch (e) {
+      setDistributeResult("Error: " + e.message);
+    }
+    setDistributing(false);
+  }
+
+  async function handleSendBack(batchId) {
+    const reason = window.prompt("Reason for sending back (visible to creator and finance manager):") ?? "";
+    try {
+      const r = await authFetch(
+        `${API}/api/v1/payroll/batches/${batchId}/send-back?reason=${encodeURIComponent(reason)}`,
+        { method: "POST" }
+      );
+      const data = await r.json();
+      if (r.ok) {
+        const br = await authFetch(`${API}/api/v1/payroll/batches`);
+        const bdata = await br.json();
+        if (Array.isArray(bdata)) {
+          setBatches(bdata);
+          const updated = bdata.find(b => b.batch_id === batchId);
+          if (updated) setSelectedBatch(updated);
+        }
+        setDistributeResult(null);
+      } else {
+        setDistributeResult("Error: " + (data.detail || "Send back failed"));
+      }
+    } catch (e) {
+      setDistributeResult("Error: " + e.message);
+    }
   }
 
   async function handleDownload(batchId) {
@@ -1034,28 +1133,38 @@ function BatchesTab() {
             </>
           )}
 
-          {/* Action buttons for uploaded or parsed batches */}
+          {/* Action buttons: Step 3 (HR admin) = Parse & distribute when uploaded; or Distribute when already parsed (legacy) */}
           {(selectedBatch.status === "uploaded" || selectedBatch.status === "parsed") && (
             <div className="ap-step" style={{ marginTop: 16 }}>
-              {!detail && canParsePayroll && (
+              {selectedBatch.status === "uploaded" && canDistributePayroll && (
                 <>
-                  <p className="ap-hint">Parse the payroll file to verify totals before distributing.</p>
-                  <button
-                    className="ap-btn ap-btn-primary"
-                    onClick={() => handleParse(selected)}
-                    disabled={parsing}
-                  >
-                    {parsing ? "Parsing…" : "Parse & Verify"}
-                  </button>
+                  <h3 className="ap-step-title">Step 3 — Parse & distribute</h3>
+                  <p className="ap-hint">Parse the payroll file and issue payslips in one action. If you have an issue with this payroll, send it back so creator or finance can fix it.</p>
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                    <button
+                      className="ap-btn ap-btn-primary"
+                      onClick={() => handleParseAndDistribute(selected)}
+                      disabled={distributing}
+                    >
+                      {distributing ? "Parsing & distributing…" : "Parse & distribute"}
+                    </button>
+                    <button
+                      type="button"
+                      className="ap-btn ap-btn-ghost"
+                      onClick={() => handleSendBack(selected)}
+                    >
+                      Send back (have an issue)
+                    </button>
+                  </div>
                 </>
               )}
-              {!detail && !canParsePayroll && selectedBatch.status === "uploaded" && (
-                <p className="ap-hint">Only managers (or users with parse permission) can parse and verify. HR Admin distributes after verification.</p>
+              {selectedBatch.status === "uploaded" && !canDistributePayroll && (
+                <p className="ap-hint">Step 3: Only HR Admin can parse and distribute.</p>
               )}
               {detail?.error && (
                 <div className="ap-error" style={{ marginTop: 8 }}>{detail.error}</div>
               )}
-              {detail && canDistributePayroll && (
+              {selectedBatch.status === "parsed" && detail && canDistributePayroll && (
                 <>
                   <h3 className="ap-step-title">Distribute Payslips</h3>
                   {detail.matched_count === 0 && (
@@ -1076,7 +1185,7 @@ function BatchesTab() {
                   )}
                 </>
               )}
-              {detail && !canDistributePayroll && (
+              {selectedBatch.status === "parsed" && detail && !canDistributePayroll && (
                 <p className="ap-hint">Only HR Admin can distribute and issue payslips.</p>
               )}
             </div>

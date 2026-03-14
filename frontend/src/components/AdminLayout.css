@@ -68,6 +68,25 @@
   color: var(--accent);
 }
 
+.admin-nav-link--payroll {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.admin-nav-payroll-label { font-weight: 600; }
+
+.admin-nav-payroll-msg {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 400;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
 .admin-nav-footer {
   padding: 12px 8px;
   border-top: 1px solid var(--border);
