@@ -4,6 +4,8 @@ import httpx
 import json
 import base64
 import traceback
+from datetime import date, datetime
+from decimal import Decimal
 from pathlib import Path
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
 from pydantic import BaseModel
@@ -20,6 +22,18 @@ from app.services.agent_tools import TOOL_DEFINITIONS, execute_tool
 from app.services.user_context import build_user_context
 
 logger = logging.getLogger(__name__)
+
+
+def _json_serial_default(obj):
+    """For json.dumps: serialize date, datetime, Decimal, UUID so tool results never raise TypeError."""
+    if isinstance(obj, (date, datetime)):
+        return obj.isoformat()
+    if isinstance(obj, Decimal):
+        return float(obj)
+    if isinstance(obj, UUID):
+        return str(obj)
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
 
 router = APIRouter(prefix="/api/v1", tags=["Chat"])
 
@@ -391,15 +405,15 @@ def _run_agentic_loop(
             except json.JSONDecodeError:
                 tool_input = {}
 
-            logger.info("Tool call: %s | input: %s", tool_name, json.dumps(tool_input)[:200])
+            logger.info("Tool call: %s | input: %s", tool_name, json.dumps(tool_input, default=_json_serial_default)[:200])
             result = execute_tool(tool_name, tool_input, user_id, org_id, db)
-            logger.info("Tool result: %s | %s", tool_name, json.dumps(result)[:200])
+            logger.info("Tool result: %s | %s", tool_name, json.dumps(result, default=_json_serial_default)[:200])
 
             card = _build_action_card(tool_name, tool_input, result)
             if card:
                 action_cards.append(card)
 
-            tool_messages.append({"role": "tool", "tool_call_id": t_id, "content": json.dumps(result)})
+            tool_messages.append({"role": "tool", "tool_call_id": t_id, "content": json.dumps(result, default=_json_serial_default)})
 
         request_messages.extend(tool_messages)
 
