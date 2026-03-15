@@ -60,7 +60,7 @@ def create_cycle(
         text(
             """INSERT INTO performance_cycles
                (id, org_id, name, period_start, period_end, due_date, template, status, created_by)
-               VALUES (:id, :org, :name, :ps, :pe, :due, :template::jsonb, 'draft', :created_by)
+               VALUES (:id, :org, :name, :ps, :pe, :due, CAST(:template AS jsonb), 'draft', :created_by)
                RETURNING *"""
         ),
         {
@@ -117,7 +117,7 @@ def update_cycle(
         updates.append("due_date = :due")
         params["due"] = body.due_date
     if body.template is not None:
-        updates.append("template = :template::jsonb")
+        updates.append("template = CAST(:template AS jsonb)")
         params["template"] = json.dumps(body.template)
     if body.status is not None and body.status in ("draft", "active", "closed"):
         updates.append("status = :status")
@@ -329,7 +329,7 @@ def submit_review(
     db.execute(
         text(
             """UPDATE performance_reviews_360
-               SET rating=:rating, feedback_text=:feedback, criteria_ratings=:criteria_ratings::jsonb,
+               SET rating=:rating, feedback_text=:feedback, criteria_ratings=CAST(:criteria_ratings AS jsonb),
                    status='submitted', submitted_at=:submitted_at, updated_at=:updated_at
                WHERE id=:id"""
         ),
