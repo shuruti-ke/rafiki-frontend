@@ -24,6 +24,7 @@ export default function CalendarPage() {
   const [showModal, setShowModal] = useState(false);
   const [editEvent, setEditEvent] = useState(null);
   const [colleagues, setColleagues] = useState([]);
+  const [modifyEvent, setModifyEvent] = useState(null);
 
   const currentUser = JSON.parse(localStorage.getItem("rafiki_user") || "{}");
   const currentUserId = currentUser.user_id || currentUser.id;
@@ -185,12 +186,23 @@ export default function CalendarPage() {
                   </div>
                   {e.description && <div className="calp-event-meta" style={{marginTop:"4px"}}>{e.description}</div>}
                   {(e.attendees||[]).length > 0 && (
-                    <div className="calp-event-meta" style={{marginTop:"4px"}}>
+                    <div className="calp-event-meta" style={{marginTop:"4px",display:"flex",flexWrap:"wrap",gap:"4px",alignItems:"center"}}>
                       {(e.attendees||[]).map(a => {
                         const c = colleagues.find(col => String(col.id) === String(a.id));
-                        return c?.name || a.name || a.id;
-                      }).join(", ")}
-                      {myRsvp && ` · You: ${myRsvp.status}`}
+                        const name = c?.name || a.name || a.id;
+                        const sc = a.status === "accepted" ? "#10b981" : a.status === "declined" ? "#ef4444" : a.status === "tentative" ? "#f59e0b" : "var(--muted,#9ca3af)";
+                        return (
+                          <span key={a.id} style={{display:"inline-flex",alignItems:"center",gap:"3px"}}>
+                            <span style={{width:7,height:7,borderRadius:"50%",background:sc,flexShrink:0}} />
+                            <span>{name}</span>
+                          </span>
+                        );
+                      }).reduce((acc,el,i) => i===0 ? [el] : [...acc, <span key={`sep${i}`} style={{color:"var(--muted)"}}>·</span>, el], [])}
+                      {myRsvp && (
+                        <span style={{marginLeft:4,fontWeight:600,color: myRsvp.status==="accepted"?"#10b981":myRsvp.status==="declined"?"#ef4444":myRsvp.status==="tentative"?"#f59e0b":"var(--muted)"}}>
+                          You: {myRsvp.status}
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>
@@ -203,8 +215,25 @@ export default function CalendarPage() {
                   )}
                   {!isOwner && (
                     <>
-                      <button onClick={() => handleRSVP(e.id,"accepted")} style={myRsvp?.status==="accepted"?{background:"rgba(16,185,129,0.2)",borderColor:"#10b981"}:{}}>Accept</button>
-                      <button onClick={() => handleRSVP(e.id,"declined")} style={myRsvp?.status==="declined"?{background:"rgba(239,68,68,0.2)",borderColor:"#ef4444"}:{}}>Decline</button>
+                      <button onClick={() => handleRSVP(e.id,"accepted")} style={{
+                        fontWeight:600, fontSize:"0.78rem", padding:"4px 10px", borderRadius:6, border:"1.5px solid",
+                        cursor:"pointer", transition:"all 0.15s",
+                        background: myRsvp?.status==="accepted" ? "#10b981" : "transparent",
+                        borderColor: myRsvp?.status==="accepted" ? "#10b981" : "#10b981",
+                        color: myRsvp?.status==="accepted" ? "#fff" : "#10b981",
+                      }}>✓ Accept</button>
+                      <button onClick={() => handleRSVP(e.id,"declined")} style={{
+                        fontWeight:600, fontSize:"0.78rem", padding:"4px 10px", borderRadius:6, border:"1.5px solid",
+                        cursor:"pointer", transition:"all 0.15s",
+                        background: myRsvp?.status==="declined" ? "#ef4444" : "transparent",
+                        borderColor: myRsvp?.status==="declined" ? "#ef4444" : "#ef4444",
+                        color: myRsvp?.status==="declined" ? "#fff" : "#ef4444",
+                      }}>✕ Decline</button>
+                      <button onClick={() => setModifyEvent(e)} style={{
+                        fontWeight:600, fontSize:"0.78rem", padding:"4px 10px", borderRadius:6,
+                        border:"1.5px solid #f59e0b", background:"transparent", color:"#f59e0b",
+                        cursor:"pointer",
+                      }}>✎ Modify</button>
                     </>
                   )}
                 </div>
@@ -225,6 +254,77 @@ export default function CalendarPage() {
           onSaved={() => { setShowModal(false); loadEvents(); }}
         />
       )}
+      {modifyEvent && (
+        <ModifyRequestModal
+          event={modifyEvent}
+          onClose={() => setModifyEvent(null)}
+          onSent={() => { setModifyEvent(null); }}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ─── Modify Request Modal ─── */
+function ModifyRequestModal({ event, onClose, onSent }) {
+  const [note, setNote] = useState("");
+  const [reqDate, setReqDate] = useState("");
+  const [reqTime, setReqTime] = useState("");
+  const [reqLocation, setReqLocation] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  const handleSend = async () => {
+    if (!note.trim()) return;
+    setSending(true);
+    const res = await authFetch(`${API}/api/v1/calendar/${event.id}/modify-request`, {
+      method: "POST",
+      body: JSON.stringify({ note, requested_date: reqDate||null, requested_time: reqTime||null, requested_location: reqLocation||null }),
+    });
+    setSending(false);
+    if (res.ok) { setSent(true); setTimeout(onSent, 1500); }
+  };
+
+  return (
+    <div className="calp-modal-overlay" onClick={onClose}>
+      <div className="calp-modal" onClick={e => e.stopPropagation()}>
+        <h2 style={{marginBottom:"0.5rem"}}>Request Change</h2>
+        <p style={{fontSize:"0.85rem",color:"var(--muted)",marginBottom:"1rem"}}>
+          Your request will be sent to the organiser of <strong>{event.title}</strong>.
+        </p>
+        {sent ? (
+          <div style={{padding:"1rem",background:"rgba(16,185,129,0.1)",borderRadius:8,color:"#10b981",fontWeight:600,textAlign:"center"}}>
+            ✓ Request sent to organiser
+          </div>
+        ) : (
+          <>
+            <div className="calp-form-row-inline">
+              <div className="calp-form-row">
+                <label>Proposed date</label>
+                <input type="date" value={reqDate} onChange={e => setReqDate(e.target.value)} />
+              </div>
+              <div className="calp-form-row">
+                <label>Proposed time</label>
+                <input type="time" value={reqTime} onChange={e => setReqTime(e.target.value)} />
+              </div>
+            </div>
+            <div className="calp-form-row">
+              <label>Proposed location</label>
+              <input value={reqLocation} onChange={e => setReqLocation(e.target.value)} placeholder="New location (optional)" />
+            </div>
+            <div className="calp-form-row">
+              <label>Note / reason <span style={{color:"#ef4444"}}>*</span></label>
+              <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="Explain why you need a change…" rows={3} />
+            </div>
+            <div className="calp-modal-actions">
+              <button className="calp-btn calp-btn-ghost" onClick={onClose}>Cancel</button>
+              <button className="calp-btn calp-btn-primary" onClick={handleSend} disabled={sending || !note.trim()}>
+                {sending ? "Sending…" : "Send Request"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

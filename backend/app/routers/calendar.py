@@ -273,6 +273,77 @@ def rsvp_event(
     flag_modified(event, "attendees")
     db.commit()
     db.refresh(event)
+
+    # Notify event creator
+    if event.user_id and event.user_id != user_id:
+        try:
+            responder = db.query(User).filter(User.user_id == user_id).first()
+            responder_name = (responder.name if responder else None) or "Someone"
+            status_label = {"accepted": "accepted", "declined": "declined", "tentative": "tentatively accepted"}.get(body.status, body.status)
+            _insert_notification(
+                db, user_id=event.user_id, org_id=org_id,
+                kind="calendar_rsvp",
+                title=f"{responder_name} {status_label} '{event.title}'",
+                body=f"Go to your calendar to see the updated attendee list.",
+                link="/calendar",
+            )
+            db.commit()
+        except Exception as e:
+            logger.warning("RSVP notification failed (non-fatal): %s", e)
+
     return {"ok": True, "attendees": event.attendees}
+
+
+class ModifyRequestBody(BaseModel):
+    note: str
+    requested_date: Optional[str] = None
+    requested_time: Optional[str] = None
+    requested_location: Optional[str] = None
+
+
+@router.post("/{event_id}/modify-request")
+def request_modify(
+    event_id: uuid.UUID,
+    body: ModifyRequestBody,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    db: Session = Depends(get_db),
+):
+    event = db.query(CalendarEvent).filter(
+        CalendarEvent.id == event_id,
+        CalendarEvent.org_id == org_id,
+    ).first()
+    if not event:
+        raise HTTPException(404, "Event not found")
+    if event.user_id == user_id:
+        raise HTTPException(400, "You are the event owner — edit directly")
+
+    requester = db.query(User).filter(User.user_id == user_id).first()
+    requester_name = (requester.name if requester else None) or "Someone"
+
+    parts = [f"{requester_name} requested a change to '{event.title}'."]
+    if body.requested_date:
+        parts.append(f"Proposed date: {body.requested_date}")
+    if body.requested_time:
+        parts.append(f"Proposed time: {body.requested_time}")
+    if body.requested_location:
+        parts.append(f"Proposed location: {body.requested_location}")
+    if body.note:
+        parts.append(f"Note: {body.note}")
+
+    try:
+        _insert_notification(
+            db, user_id=event.user_id, org_id=org_id,
+            kind="calendar_modify_request",
+            title=f"Change request: '{event.title}'",
+            body=" ".join(parts),
+            link="/calendar",
+        )
+        db.commit()
+    except Exception as e:
+        logger.warning("Modify request notification failed (non-fatal): %s", e)
+        raise HTTPException(500, "Failed to send modify request")
+
+    return {"ok": True, "message": "Change request sent to the organiser"}
 
 
