@@ -963,8 +963,13 @@ def _search_knowledge_base(args: dict, user_id: UUID, org_id: UUID, db: Session)
                         SELECT dc.content
                         FROM document_chunks dc
                         WHERE dc.document_id = d.id
-                          AND dc.content ILIKE :ql
-                        ORDER BY dc.chunk_index
+                          AND (
+                              to_tsvector('english', dc.content) @@ plainto_tsquery('english', :q)
+                              OR dc.content ILIKE :ql
+                          )
+                        ORDER BY
+                            ts_rank(to_tsvector('english', dc.content), plainto_tsquery('english', :q)) DESC,
+                            dc.chunk_index
                         LIMIT 1
                     ) AS matching_chunk
                 FROM documents d
@@ -979,7 +984,10 @@ def _search_knowledge_base(args: dict, user_id: UUID, org_id: UUID, db: Session)
                       OR EXISTS (
                           SELECT 1 FROM document_chunks dc2
                           WHERE dc2.document_id = d.id
-                            AND dc2.content ILIKE :ql
+                            AND (
+                                to_tsvector('english', dc2.content) @@ plainto_tsquery('english', :q)
+                                OR dc2.content ILIKE :ql
+                            )
                       )
                   )
                 ORDER BY

@@ -156,7 +156,8 @@ def _tavily_search(query: str, max_results: int = 5) -> str:
             return ""
         return (
             "\n══════════════════════════════════════\n"
-            "WEB SEARCH RESULTS (use these for accurate, factual answers):\n"
+            "SUPPLEMENTARY WEB RESULTS (use ONLY to enrich or extend an answer already grounded in company KB data — "
+            "never use these as the primary source for company policy, rates, or allowances):\n"
             "══════════════════════════════════════\n"
             + "\n".join(parts)
             + "\nSOURCE: Tavily real-time web search\n"
@@ -577,11 +578,16 @@ async def chat(
 
         # Sprint 6: inject agentic capability instructions and access rules
         system_prompt += (
-            "\n\n## Access and Privacy (platform is interlinked; chats are private)\n"
-            "- **Employees**: You have access to the current user's own data (objectives, leave, timesheet, documents, etc.) via context and tools. Use it to answer their questions.\n"
-            "- **Managers**: When the user asks about a team member by name, your context includes that person's data (profile, objectives, timesheet, leave, performance, coaching). You may also call tools with **for_employee_id** (the team member's UUID) to check leave, calendar, timesheet, or objectives for them. You do NOT have access to any user's chat history — never mention or infer other people's conversations.\n"
-            "- **HR admin**: When the user asks about any employee in the org by name, your context includes that employee's data. Use **for_employee_id** in tools when querying on their behalf. You do NOT have access to any user's chat content — never expose or refer to it.\n"
-            "All information is interlinked so you can give a single, consistent view; only chat remains private per user.\n\n"
+            "\n\n## Access Control (STRICTLY ENFORCED)\n"
+            "You must respect data access rights at all times:\n"
+            "- **Employees** can only see their OWN data. If a regular employee asks about another person's "
+            "leave balance, salary, performance, or any personal data, refuse and explain they do not have access.\n"
+            "- **Managers** can see their own data AND their direct reports' data only. "
+            "They cannot access data for employees outside their team.\n"
+            "- **HR admins / Super admins** can access all employee data within the organisation.\n"
+            "- **No one** has access to another user's chat history — never reveal or reference another person's conversations.\n"
+            "If the user's role does not permit the requested access, respond: "
+            "'You don't have permission to view that information.'\n\n"
             "## Agentic Capabilities\n"
             "You have tools to take actions:\n"
             "- **check_leave_balance** / **submit_leave_request** — check and request leave (use for_employee_id for managers/HR to query a team member). To amend or cancel approved leave, direct the user to the **Leave** page; their manager is notified for re-approval. Approved leave is synced to the **Calendar**.\n"
@@ -592,7 +598,16 @@ async def chat(
             "- **search_knowledge_base** — HR policies and company information\n\n"
             "Use these tools proactively when the user's request implies an action. "
             "Always confirm key details before submitting leave or timesheet entries. "
-            "After completing an action, summarise what was done in a friendly, concise message."
+            "After completing an action, summarise what was done in a friendly, concise message.\n\n"
+            "## NO HALLUCINATION — ABSOLUTE RULE\n"
+            "1. For ANY question about company policies, allowances (DSA, per diem, imprest, mileage), "
+            "leave entitlements, salary bands, or internal HR rules: ALWAYS call search_knowledge_base FIRST.\n"
+            "2. Only after searching the KB may you supplement with web search results for external context "
+            "(e.g. hotel listings, market rates) — clearly labelling what comes from the company KB vs the web.\n"
+            "3. If search_knowledge_base returns no results, say explicitly: "
+            "'I couldn't find that information in your company's documents.' "
+            "NEVER invent numbers, rates, or policies. Do not use your training knowledge as a substitute "
+            "for company-specific data."
         )
 
         if web_search_context:
