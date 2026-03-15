@@ -39,13 +39,24 @@ const STATUS_COLORS = {
 };
 
 const QUICK_LINKS = [
-  { to: "/admin/knowledge-base", title: "Knowledge Base",  desc: "Upload and manage organization documents."   },
-  { to: "/admin/announcements",  title: "Announcements",   desc: "Broadcast updates and track read receipts." },
-  { to: "/admin/employees",      title: "Employees",       desc: "Manage employee profiles and records."      },
-  { to: "/admin/guided-paths",   title: "Guided Paths",    desc: "Create guided wellbeing modules."           },
-  { to: "/admin/org-config",     title: "Org Config",      desc: "Configure organisation context."           },
-  { to: "/admin/managers",       title: "Managers",        desc: "Assign manager roles and access."          },
+  { to: "/admin/knowledge-base", icon: "📚", title: "Knowledge Base",  desc: "Upload and manage organization documents."   },
+  { to: "/admin/announcements",  icon: "📣", title: "Announcements",   desc: "Broadcast updates and track read receipts." },
+  { to: "/admin/employees",      icon: "👤", title: "Employees",       desc: "Manage employee profiles and records."      },
+  { to: "/admin/guided-paths",   icon: "🧭", title: "Guided Paths",    desc: "Create guided wellbeing modules."           },
+  { to: "/admin/org-config",     icon: "⚙️", title: "Org Config",      desc: "Configure organisation context."           },
+  { to: "/admin/managers",       icon: "🛡️", title: "Managers",        desc: "Assign manager roles and access."          },
 ];
+
+function greeting() {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning";
+  if (h < 17) return "Good afternoon";
+  return "Good evening";
+}
+
+const TODAY_LABEL = new Date().toLocaleDateString("en-GB", {
+  weekday: "long", day: "numeric", month: "long", year: "numeric",
+});
 
 /* ─────────────────────────────────────────────────────
    ORIGINAL BarChart — unchanged logic, unchanged markup
@@ -419,76 +430,91 @@ export default function AdminDashboard() {
   return (
     <div className="adash-wrap">
 
-      {/* ── HEADER — unchanged ── */}
+      {/* ── HEADER ── */}
       <div className="adash-header">
-        <h1>HR Portal Dashboard</h1>
-        <p>Organization overview and quick analytics.</p>
+        <div className="adash-header-left">
+          <h1>{greeting()}, Admin</h1>
+          <p>Organization overview and quick analytics.</p>
+        </div>
+        <div className="adash-header-date">📅 {TODAY_LABEL}</div>
       </div>
 
-      {/* ── KPI CARDS — unchanged ── */}
+      {/* ── KPI CARDS ── */}
       <div className="adash-kpis">
         <div className="adash-kpi" style={{ "--kpi-color": "#8b5cf6" }}>
+          <div className="adash-kpi-icon">👥</div>
           <div className="adash-kpi-value">{emp?.total ?? data?._empCount ?? "—"}</div>
           <div className="adash-kpi-label">Total Employees</div>
         </div>
         <div className="adash-kpi" style={{ "--kpi-color": "#3b82f6" }}>
+          <div className="adash-kpi-icon">🎯</div>
           <div className="adash-kpi-value">{obj?.total ?? "—"}</div>
           <div className="adash-kpi-label">Active Objectives</div>
         </div>
         <div className="adash-kpi" style={{ "--kpi-color": "#34d399" }}>
+          <div className="adash-kpi-icon">⏱️</div>
           <div className="adash-kpi-value">{ts?.total_hours_30d ?? "—"}</div>
           <div className="adash-kpi-label">Hours Logged (30d)</div>
         </div>
         <div className="adash-kpi" style={{ "--kpi-color": "#fbbf24" }}>
+          <div className="adash-kpi-icon">📄</div>
           <div className="adash-kpi-value">{docs?.kb_doc_count ?? "—"}</div>
           <div className="adash-kpi-label">KB Documents</div>
         </div>
         <div className="adash-kpi" style={{ "--kpi-color": "#f87171" }}>
+          <div className="adash-kpi-icon">📣</div>
           <div className="adash-kpi-value">{ann?.total ?? "—"}</div>
           <div className="adash-kpi-label">Announcements</div>
         </div>
       </div>
 
-      {/* ── CHARTS — same conditionals, same order ── */}
-      <div className="adash-charts">
-        {emp?.by_department && Object.keys(emp.by_department).length > 0 && (
-          <div className="adash-chart">
-            <div className="adash-chart-title">Employees by Department</div>
-            <BarChart data={emp.by_department} color="#8b5cf6" />
+      {/* ── CHARTS ── */}
+      {(emp?.by_department || obj?.by_status || ts?.by_category || ts?.by_project) && (
+        <>
+          <div className="adash-section-head">
+            <h2>📊 Analytics</h2>
+            <Link to="/admin/reports" className="adash-section-link">View reports →</Link>
           </div>
-        )}
+          <div className="adash-charts">
+            {emp?.by_department && Object.keys(emp.by_department).length > 0 && (
+              <div className="adash-chart">
+                <div className="adash-chart-title">👥 Employees by Department</div>
+                <BarChart data={emp.by_department} color="#8b5cf6" />
+              </div>
+            )}
 
-        {obj?.by_status && Object.keys(obj.by_status).length > 0 && (
-          <div className="adash-chart">
-            <div className="adash-chart-title">Objectives by Status</div>
-            <SegmentedBar data={obj.by_status} colorMap={STATUS_COLORS} />
+            {obj?.by_status && Object.keys(obj.by_status).length > 0 && (
+              <div className="adash-chart">
+                <div className="adash-chart-title">🎯 Objectives by Status</div>
+                <SegmentedBar data={obj.by_status} colorMap={STATUS_COLORS} />
+              </div>
+            )}
+
+            {ts?.by_category && Object.keys(ts.by_category).length > 0 && (
+              <div className="adash-chart">
+                <div className="adash-chart-title">📂 Time Allocation by Category</div>
+                <BarChart data={ts.by_category} color="#3b82f6" />
+              </div>
+            )}
+
+            {ts?.by_project && Object.keys(ts.by_project).length > 0 && (
+              <div className="adash-chart adash-chart--full">
+                <HoursByProject
+                  data={ts.by_project}
+                  onAnalytics={() => setShowAnalytics(true)}
+                />
+              </div>
+            )}
           </div>
-        )}
+        </>
+      )}
 
-        {ts?.by_category && Object.keys(ts.by_category).length > 0 && (
-          <div className="adash-chart">
-            <div className="adash-chart-title">Time Allocation by Category</div>
-            <BarChart data={ts.by_category} color="#3b82f6" />
-          </div>
-        )}
-
-        {/* Hours by Project — full width, with analytics button */}
-        {ts?.by_project && Object.keys(ts.by_project).length > 0 && (
-          <div className="adash-chart adash-chart--full">
-            <HoursByProject
-              data={ts.by_project}
-              onAnalytics={() => setShowAnalytics(true)}
-            />
-          </div>
-        )}
-      </div>
-
-      {/* ── TIMESHEET SUBMISSIONS — original logic, tidied markup ── */}
+      {/* ── TIMESHEET SUBMISSIONS ── */}
       {tsSub && (
         <div className="adash-charts" style={{ marginTop: 0 }}>
           <div className="adash-chart adash-chart--full">
             <div className="adash-chart-title">
-              Timesheet Submissions (This Week)
+              🗒️ Timesheet Submissions (This Week)
               <span style={{ fontWeight: 400, fontSize: 13, color: "var(--muted)" }}>
                 {tsSub.submitted_count} submitted · {tsSub.not_submitted_count} pending
               </span>
@@ -562,10 +588,14 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* ── QUICK LINKS — unchanged ── */}
+      {/* ── QUICK LINKS ── */}
+      <div className="adash-section-head">
+        <h2>⚡ Quick Access</h2>
+      </div>
       <div className="adash-links">
         {QUICK_LINKS.map(l => (
           <Link key={l.to} to={l.to} className="adash-link">
+            <div className="adash-link-icon">{l.icon}</div>
             <strong>{l.title}</strong>
             <p>{l.desc}</p>
           </Link>
