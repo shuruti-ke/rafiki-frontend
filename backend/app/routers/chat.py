@@ -498,8 +498,14 @@ def _run_agentic_loop_claude(
         if not tool_use_blocks or stop_reason == "end_turn":
             return ("".join(text_parts).strip() or "..."), action_cards
 
-        # Append assistant turn (raw blocks list)
-        anthropic_messages.append({"role": "assistant", "content": response.content})
+        # Append assistant turn — serialize SDK objects to plain dicts
+        def _block_to_dict(b) -> dict:
+            if b.type == "text":
+                return {"type": "text", "text": b.text}
+            if b.type == "tool_use":
+                return {"type": "tool_use", "id": b.id, "name": b.name, "input": b.input or {}}
+            return {"type": b.type}
+        anthropic_messages.append({"role": "assistant", "content": [_block_to_dict(b) for b in response.content]})
 
         # Execute each tool call and collect results
         tool_results = []
