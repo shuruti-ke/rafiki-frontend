@@ -23,8 +23,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["Chat"])
 
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()
-ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929").strip()
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
+OPENAI_BASE_URL = (os.getenv("OPENAI_BASE_URL", "https://api.openai.com").strip().rstrip("/"))
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "").strip()
 
 BACKEND_DIR = Path(__file__).parent.parent.parent
@@ -45,7 +46,7 @@ MAX_TOOL_ITERATIONS = 6
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _should_search(message: str, chat_history: list | None = None) -> bool:
-    if not TAVILY_API_KEY or not ANTHROPIC_API_KEY:
+    if not TAVILY_API_KEY or not OPENAI_API_KEY:
         return False
     if len(message.strip()) < 8:
         return False
@@ -74,22 +75,23 @@ def _should_search(message: str, chat_history: list | None = None) -> bool:
         "- Questions about the user's own data (timesheets, objectives, documents)\n"
         "- General wellbeing, emotional support, or career advice\n"
         "- Workplace policy questions answerable from internal documents\n"
-        "- Generic how-to questions Claude can answer from training\n\n"
+        "- Generic how-to questions the model can answer from training\n\n"
         f"Recent conversation context:\n{history_snippet}\n\n"
         f"User message: {message}\n\n"
         "Reply with ONLY the single word YES or NO."
     )
 
     try:
+        base = OPENAI_BASE_URL.rstrip("/")
+        url = f"{base}/v1/chat/completions" if "/v1" not in base else f"{base}/chat/completions"
         resp = httpx.post(
-            "https://api.anthropic.com/v1/messages",
+            url,
             headers={
                 "Content-Type": "application/json",
-                "x-api-key": ANTHROPIC_API_KEY,
-                "anthropic-version": "2023-06-01",
+                "Authorization": f"Bearer {OPENAI_API_KEY}",
             },
             json={
-                "model": "claude-haiku-4-5-20251001",
+                "model": OPENAI_MODEL,
                 "max_tokens": 5,
                 "messages": [{"role": "user", "content": classifier_prompt}],
             },
@@ -97,10 +99,7 @@ def _should_search(message: str, chat_history: list | None = None) -> bool:
         )
         if resp.status_code == 200:
             result = resp.json()
-            text = ""
-            for block in result.get("content", []):
-                if block.get("type") == "text":
-                    text += block.get("text", "")
+            text = (result.get("choices") or [{}])[0].get("message", {}).get("content", "") or ""
             decision = text.strip().upper()
             logger.info("Search classifier decision: %s for: %.80s", decision, message)
             return decision.startswith("YES")
@@ -152,6 +151,21 @@ def _tavily_search(query: str, max_results: int = 5) -> str:
     except Exception as e:
         logger.warning("Tavily search failed: %s", e)
         return ""
+
+
+def _openai_tools_from_definitions():
+    """Convert Anthropic-style TOOL_DEFINITIONS to OpenAI API tools format."""
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": t["name"],
+                "description": t["description"],
+                "parameters": t.get("input_schema", {"type": "object", "properties": {}, "required": []}),
+            },
+        }
+        for t in TOOL_DEFINITIONS
+    ]
 
 
 def _build_search_query(message: str, chat_history: list | None) -> str:
@@ -308,17 +322,24 @@ def _run_agentic_loop(
     db: Session,
 ) -> tuple[str, list]:
     """
-    Run the Claude tool-calling loop.
+    Run the OpenAI tool-calling loop.
 
     Returns:
         (final_reply_text, action_cards)
         action_cards is a list of structured dicts for the frontend to render.
     """
+    if not OPENAI_API_KEY:
+        return "AI is not configured (set OPENAI_API_KEY).", []
+
+    base = OPENAI_BASE_URL.rstrip("/")
+    url = f"{base}/v1/chat/completions" if "/v1" not in base else f"{base}/chat/completions"
     headers = {
         "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
+        "Authorization": f"Bearer {OPENAI_API_KEY}",
     }
+    openai_tools = _openai_tools_from_definitions()
+    # Build request messages: system first, then conversation
+    request_messages = [{"role": "system", "content": system_prompt}] + messages
 
     action_cards: list[dict] = []
     iteration = 0
@@ -329,68 +350,59 @@ def _run_agentic_loop(
         payload = {
             "model": chosen_model,
             "max_tokens": 4096,
-            "system": system_prompt,
-            "tools": TOOL_DEFINITIONS,
-            "messages": messages,
+            "messages": request_messages,
+            "tools": openai_tools,
         }
 
-        r = httpx.post(
-            "https://api.anthropic.com/v1/messages",
-            headers=headers,
-            json=payload,
-            timeout=90,
-        )
+        r = httpx.post(url, headers=headers, json=payload, timeout=90)
 
         if r.status_code >= 400:
-            logger.error("Anthropic API error (%d): %s", r.status_code, r.text[:500])
+            logger.error("OpenAI API error (%d): %s", r.status_code, r.text[:500])
             return f"AI service error ({r.status_code}). Please try again.", action_cards
 
         data = r.json()
-        stop_reason = data.get("stop_reason")
-        content_blocks = data.get("content", [])
+        choice = (data.get("choices") or [{}])[0]
+        msg = choice.get("message", {})
+        content = msg.get("content") or ""
+        tool_calls = msg.get("tool_calls") or []
 
         # ── No tool calls → final text response ──
-        if stop_reason != "tool_use":
-            reply_text = ""
-            for block in content_blocks:
-                if isinstance(block, dict) and block.get("type") == "text":
-                    reply_text += block.get("text", "")
-            return reply_text.strip() or "...", action_cards
+        if not tool_calls:
+            return (content.strip() or "..."), action_cards
 
         # ── Process tool calls ──
-        # Append the assistant's response (with tool_use blocks) to messages
-        messages.append({"role": "assistant", "content": content_blocks})
+        # Append assistant message (with tool_calls) to request_messages
+        request_messages.append({
+            "role": "assistant",
+            "content": content or "",
+            "tool_calls": [
+                {"id": tc["id"], "type": "function", "function": {"name": tc["function"]["name"], "arguments": tc["function"].get("arguments", "{}")}}
+                for tc in tool_calls
+            ],
+        })
 
-        tool_results = []
-        for block in content_blocks:
-            if not isinstance(block, dict) or block.get("type") != "tool_use":
-                continue
-
-            tool_name = block.get("name", "")
-            tool_use_id = block.get("id", "")
-            tool_input = block.get("input", {})
+        tool_messages = []
+        for tc in tool_calls:
+            t_id = tc.get("id", "")
+            f = tc.get("function", {})
+            tool_name = f.get("name", "")
+            try:
+                tool_input = json.loads(f.get("arguments", "{}") or "{}")
+            except json.JSONDecodeError:
+                tool_input = {}
 
             logger.info("Tool call: %s | input: %s", tool_name, json.dumps(tool_input)[:200])
-
             result = execute_tool(tool_name, tool_input, user_id, org_id, db)
-
             logger.info("Tool result: %s | %s", tool_name, json.dumps(result)[:200])
 
-            # Build action card for the frontend
             card = _build_action_card(tool_name, tool_input, result)
             if card:
                 action_cards.append(card)
 
-            tool_results.append({
-                "type": "tool_result",
-                "tool_use_id": tool_use_id,
-                "content": json.dumps(result),
-            })
+            tool_messages.append({"role": "tool", "tool_call_id": t_id, "content": json.dumps(result)})
 
-        # Append all tool results as a single user turn
-        messages.append({"role": "user", "content": tool_results})
+        request_messages.extend(tool_messages)
 
-    # Exceeded iteration limit — ask Claude for a graceful wrap-up
     logger.warning("Tool loop hit MAX_TOOL_ITERATIONS=%d", MAX_TOOL_ITERATIONS)
     return "I've gathered all the information I need. Let me summarise what I found for you.", action_cards
 
@@ -497,18 +509,14 @@ async def chat(
             search_query = _build_search_query(content, history_dicts)
             web_search_context = _tavily_search(search_query)
 
-        # ── Process attachments ──
+        # ── Process attachments (OpenAI format: image_url with data URL) ──
         image_blocks = []
         if req.attachments:
             for att in req.attachments:
                 if att.image_base64 and att.media_type:
                     image_blocks.append({
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": att.media_type,
-                            "data": att.image_base64,
-                        },
+                        "type": "image_url",
+                        "image_url": {"url": f"data:{att.media_type};base64,{att.image_base64}"},
                     })
                 elif att.extracted_text:
                     content += f"\n\n[Attached file: {att.filename}]\n{att.extracted_text}"
@@ -517,10 +525,8 @@ async def chat(
         if file_context:
             final_user_message = file_context + "\n\n" + content
 
-        # ── Choose model ──
-        chosen = req.model or ANTHROPIC_MODEL
-        if chosen not in ["claude-sonnet-4-5-20250929", "claude-opus-4-20250514", "claude-haiku-4-5-20251001"]:
-            chosen = ANTHROPIC_MODEL
+        # ── Model (OpenAI only) ──
+        chosen = OPENAI_MODEL
 
         # ── Build enhanced user context (direct report data, objectives, etc.) ──
         # IMPORTANT: Use a FRESH database session to avoid transaction state issues

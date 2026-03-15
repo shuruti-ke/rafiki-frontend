@@ -10,7 +10,7 @@ logic already used in the live routers:
   - objectives      → objectives / key_results tables
 
 Each function receives (args_dict, user_id, org_id, db) and returns a plain
-dict that is JSON-serialised back to Claude as the tool_result content.
+dict that is JSON-serialised back to the model as the tool result content.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ from sqlalchemy import text
 logger = logging.getLogger(__name__)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Tool schema definitions — passed to the Anthropic API
+# Tool schema definitions (Anthropic-style input_schema; chat.py converts to OpenAI format)
 # ──────────────────────────────────────────────────────────────────────────────
 
 TOOL_DEFINITIONS = [

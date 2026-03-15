@@ -3,7 +3,7 @@ Crisis detection + background sentiment/stress analysis service.
 
 Two-tier approach:
 1. Fast keyword scan on every message (~0ms)
-2. If keywords found -> full Haiku-based contextual analysis (~1-2s)
+2. If keywords found -> full OpenAI-based contextual analysis (~1-2s)
 """
 
 import os
@@ -15,8 +15,9 @@ from uuid import UUID
 
 logger = logging.getLogger(__name__)
 
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()
-HAIKU_MODEL = "claude-haiku-4-5-20251001"
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
+OPENAI_BASE_URL = (os.getenv("OPENAI_BASE_URL", "https://api.openai.com").strip().rstrip("/"))
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
 
 # ── Crisis keywords (ported from uploads/text/main.py) ──
 
@@ -128,11 +129,11 @@ def quick_safety_screen(text: str) -> str:
 
 def analyze_safety(text: str, history: list | None = None) -> dict:
     """
-    Full contextual safety analysis using Claude Haiku.
+    Full contextual safety analysis using OpenAI.
     Only called when quick_safety_screen finds something.
     Returns: {risk_level, detected_patterns, recommended_action, safety_message}
     """
-    if not ANTHROPIC_API_KEY:
+    if not OPENAI_API_KEY:
         # Fallback to keyword-only analysis
         return _keyword_safety_result(text)
 
@@ -145,26 +146,25 @@ def analyze_safety(text: str, history: list | None = None) -> dict:
     prompt = f"{SAFETY_ANALYSIS_PROMPT}\n\nRecent conversation:\n{history_text}\n\nCurrent message: {text}"
 
     try:
+        base = OPENAI_BASE_URL.rstrip("/")
+        url = f"{base}/v1/chat/completions" if "/v1" not in base else f"{base}/chat/completions"
         resp = httpx.post(
-            "https://api.anthropic.com/v1/messages",
+            url,
             headers={
                 "Content-Type": "application/json",
-                "x-api-key": ANTHROPIC_API_KEY,
-                "anthropic-version": "2023-06-01",
+                "Authorization": f"Bearer {OPENAI_API_KEY}",
             },
             json={
-                "model": HAIKU_MODEL,
+                "model": OPENAI_MODEL,
                 "max_tokens": 300,
                 "messages": [{"role": "user", "content": prompt}],
+                "response_format": {"type": "json_object"},
             },
             timeout=10,
         )
         if resp.status_code == 200:
             result = resp.json()
-            ai_text = ""
-            for block in result.get("content", []):
-                if block.get("type") == "text":
-                    ai_text += block.get("text", "")
+            ai_text = (result.get("choices") or [{}])[0].get("message", {}).get("content", "") or ""
 
             ai_text = ai_text.strip()
             if not ai_text:
@@ -267,7 +267,7 @@ def _run_sentiment_analysis(
 ):
     """Actual sentiment analysis — runs in background thread."""
     try:
-        if not ANTHROPIC_API_KEY:
+        if not OPENAI_API_KEY:
             return
 
         prompt = (
@@ -276,17 +276,19 @@ def _run_sentiment_analysis(
             f"ASSISTANT: {assistant_reply[:500]}"
         )
 
+        base = OPENAI_BASE_URL.rstrip("/")
+        url = f"{base}/v1/chat/completions" if "/v1" not in base else f"{base}/chat/completions"
         resp = httpx.post(
-            "https://api.anthropic.com/v1/messages",
+            url,
             headers={
                 "Content-Type": "application/json",
-                "x-api-key": ANTHROPIC_API_KEY,
-                "anthropic-version": "2023-06-01",
+                "Authorization": f"Bearer {OPENAI_API_KEY}",
             },
             json={
-                "model": HAIKU_MODEL,
+                "model": OPENAI_MODEL,
                 "max_tokens": 200,
                 "messages": [{"role": "user", "content": prompt}],
+                "response_format": {"type": "json_object"},
             },
             timeout=15,
         )
@@ -296,10 +298,7 @@ def _run_sentiment_analysis(
             return
 
         result = resp.json()
-        ai_text = ""
-        for block in result.get("content", []):
-            if block.get("type") == "text":
-                ai_text += block.get("text", "")
+        ai_text = (result.get("choices") or [{}])[0].get("message", {}).get("content", "") or ""
 
         ai_text = ai_text.strip()
         if not ai_text:

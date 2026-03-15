@@ -159,11 +159,11 @@ export default function CoachingSessionForm({ prefillData = null, onSessionSaved
 
   async function fetchEmployees() {
     try {
-      const res = await authFetch(`${API}/manager/team`);
+      const res = await authFetch(`${API}/api/v1/manager/team`);
       if (!res.ok) throw new Error();
       const data = await res.json();
-      // TeamMemberResponse uses `name` (not `full_name`)
-      setEmployees(data);
+      // TeamMemberResponse uses `name` (not `full_name`), user_id for value
+      setEmployees(Array.isArray(data) ? data : []);
     } catch {}
   }
 
