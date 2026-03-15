@@ -43,6 +43,15 @@ export default function CalendarPage() {
   useEffect(() => { loadEvents(); }, [year, month]);
   useEffect(() => { loadColleagues(); }, []);
 
+  // Refetch when user returns to this tab so coaching follow-ups and other updates appear
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") loadEvents();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, [year, month]);
+
   const prevMonth = () => { if(month===0){setMonth(11);setYear(year-1);}else setMonth(month-1); setSelectedDay(null); };
   const nextMonth = () => { if(month===11){setMonth(0);setYear(year+1);}else setMonth(month+1); setSelectedDay(null); };
   const goToday = () => { setYear(today.getFullYear()); setMonth(today.getMonth()); setSelectedDay(today.getDate()); };
@@ -101,6 +110,7 @@ export default function CalendarPage() {
         <div style={{display:"flex",gap:"0.5rem",alignItems:"center",flexWrap:"wrap"}}>
           <a href="/leave" className="calp-link-leave">Manage leave</a>
           <button className="calp-btn calp-btn-ghost" onClick={goToday}>Today</button>
+          <button className="calp-btn calp-btn-ghost" onClick={loadEvents} title="Refresh events (e.g. after adding a coaching follow-up)">Refresh</button>
           <button className="calp-btn calp-btn-primary" onClick={openCreate}>+ New Event</button>
         </div>
       </div>
