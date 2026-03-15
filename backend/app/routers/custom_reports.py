@@ -117,17 +117,21 @@ def _run_config(db: Session, org_id: uuid.UUID, config: dict) -> dict:
 
     if dataset == "payroll":
         sql = """
-            SELECT payroll_month, status, COUNT(*) AS payslip_count,
-                   SUM(net_pay) AS total_net_pay, SUM(gross_pay) AS total_gross_pay
-            FROM payslips
-            WHERE org_id=:org
+            SELECT pb.period_year, pb.period_month,
+                   pb.status,
+                   COUNT(ps.payslip_id) AS payslip_count,
+                   SUM(ps.net_pay)      AS total_net_pay,
+                   SUM(ps.gross_pay)    AS total_gross_pay
+            FROM payroll_batches pb
+            LEFT JOIN payslips ps ON ps.batch_id = pb.batch_id
+            WHERE pb.org_id = :org
         """
         params = {"org": str(org_id)}
         if start_date and end_date:
-            sql += " AND payroll_month BETWEEN :start AND :end"
+            sql += " AND MAKE_DATE(pb.period_year, pb.period_month, 1) BETWEEN :start AND :end"
             params["start"] = start_date
             params["end"] = end_date
-        sql += " GROUP BY payroll_month, status ORDER BY payroll_month DESC, status"
+        sql += " GROUP BY pb.period_year, pb.period_month, pb.status ORDER BY pb.period_year DESC, pb.period_month DESC, pb.status"
         rows = db.execute(text(sql), params).mappings().all()
         return {"dataset": dataset, "rows": [dict(r) for r in rows]}
 
