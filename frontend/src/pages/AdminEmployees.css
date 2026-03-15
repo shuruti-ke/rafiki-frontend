@@ -1,5 +1,5 @@
-/* Admin Employees — card-based list aligned with Manager Team layout */
-.admin-emp-page { max-width: 900px; }
+/* Admin Employees — card-based list in 3-column grid */
+.admin-emp-page { max-width: 1100px; }
 
 .admin-emp-title {
   font-weight: 700;
@@ -52,11 +52,11 @@
 .admin-emp-msg--ok { background: rgba(52, 211, 153, 0.12); color: #059669; }
 .admin-emp-msg--err { background: rgba(248, 113, 113, 0.12); color: #dc2626; }
 
-/* List — matches Manager Team layout (single column, card per row) */
+/* List — 3 columns of cards */
 .admin-emp-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
 }
 
 .admin-emp-card {
@@ -156,7 +156,7 @@
 
 .admin-emp-card-actions {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   padding: 12px 16px;
   border-top: 1px solid #f3f0ff;
   background: #faf9ff;
@@ -221,6 +221,11 @@
 
 .admin-emp-add-form .admin-emp-add-full { grid-column: 1 / -1; }
 
+@media (max-width: 900px) {
+  .admin-emp-list { grid-template-columns: repeat(2, 1fr); }
+}
+
 @media (max-width: 640px) {
+  .admin-emp-list { grid-template-columns: 1fr; }
   .admin-emp-add-form { grid-template-columns: 1fr; }
 }
