@@ -67,10 +67,10 @@ export default function CalendarPage() {
   const daysInMonth = new Date(year,month+1,0).getDate();
   const daysInPrev = new Date(year,month,0).getDate();
   const cells = [];
-  for(let i=0;i<firstDow;i++) cells.push({day:daysInPrev-firstDow+1+i,outside:true});
+  for(let i=0;i<firstDow;i++) cells.push({day:daysInPrev-firstDow+1+i,outside:true,prev:true});
   for(let i=1;i<=daysInMonth;i++) cells.push({day:i,outside:false});
   const rem = 7 - (cells.length % 7);
-  if(rem<7) for(let i=1;i<=rem;i++) cells.push({day:i,outside:true});
+  if(rem<7) for(let i=1;i<=rem;i++) cells.push({day:i,outside:true,prev:false});
 
   const eventsForDay = (d) => {
     const ds = fmtDate(year,month,d);
@@ -136,7 +136,15 @@ export default function CalendarPage() {
           return (
             <div key={i}
               className={`calp-day${c.outside?" calp-outside":""}${!c.outside&&isToday(c.day)?" calp-today":""}${sel?" calp-selected":""}`}
-              onClick={() => !c.outside && handleDayClick(c.day)}
+              onClick={() => {
+                if (!c.outside) { handleDayClick(c.day); return; }
+                if (c.prev) {
+                  if (month === 0) { setYear(year-1); setMonth(11); } else setMonth(month-1);
+                } else {
+                  if (month === 11) { setYear(year+1); setMonth(0); } else setMonth(month+1);
+                }
+                setSelectedDay(c.day);
+              }}
             >
               <div className="calp-day-num">{c.day}</div>
               {de.slice(0,3).map(e => (
