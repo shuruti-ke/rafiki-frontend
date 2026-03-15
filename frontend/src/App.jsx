@@ -82,6 +82,7 @@ export default function App() {
           <Route path="/chat" element={<ChatPage />} />
           <Route path="/knowledge-base" element={<EmployeeKnowledgeBase />} />
           <Route path="/announcements" element={<EmployeeAnnouncements />} />
+          <Route path="/announcements/:id" element={<Navigate to="/announcements" replace />} />
           <Route path="/guided-paths" element={<GuidedPathExplore />} />
           <Route path="/guided-paths/:moduleId" element={<GuidedPathRunner />} />
           <Route path="/objectives" element={<ObjectivesPage />} />
@@ -137,6 +138,7 @@ export default function App() {
           <Route path="usage-report" element={<AdminUsageReport />} />
           <Route path="knowledge-base" element={<AdminKnowledgeBase />} />
           <Route path="announcements" element={<AdminAnnouncements />} />
+          <Route path="announcements/:id" element={<Navigate to="/admin/announcements" replace />} />
           <Route path="employees" element={<AdminEmployees />} />
           <Route path="employees/:userId" element={<AdminEmployeeDetail />} />
           <Route path="guided-paths" element={<AdminGuidedPaths />} />
