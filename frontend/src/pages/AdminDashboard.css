@@ -53,6 +53,10 @@
 .adash-kpi-icon { font-size: 20px; line-height: 1; }
 .adash-kpi-value { font-size: 32px; font-weight: 800; line-height: 1; color: var(--text); }
 .adash-kpi-label { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+.adash-kpi-hint  { font-size: 10px; color: var(--kpi-color, var(--accent)); font-weight: 600; opacity: 0; transition: opacity .18s; }
+.adash-kpi--btn  { all: unset; cursor: pointer; display: grid; gap: 8px; width: 100%; box-sizing: border-box; }
+.adash-kpi--btn:hover .adash-kpi-hint { opacity: 1; }
+.adash-kpi--btn:focus-visible { outline: 2px solid var(--kpi-color, var(--accent)); outline-offset: 3px; }
 
 /* ── Section header ── */
 .adash-section-head {
