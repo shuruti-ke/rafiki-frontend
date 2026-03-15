@@ -275,6 +275,126 @@ TOOL_DEFINITIONS = [
             "required": ["query"],
         },
     },
+    {
+        "name": "search_my_documents",
+        "description": (
+            "Search the current user's own uploaded documents (contracts, certificates, ID documents, letters, etc.). "
+            "Use when the user asks about something in their personal documents — e.g. 'what does my contract say', "
+            "'find my certificate', 'check my NDA'. Only returns documents belonging to the current user."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Search query — what to look for in the user's personal documents",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "get_performance_reviews",
+        "description": (
+            "Retrieve performance review history for the current user or (for managers/HR) a team member. "
+            "Use for questions about past reviews, ratings, feedback, and review cycles."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "for_employee_id": {
+                    "type": "string",
+                    "description": "Optional UUID of employee (managers/HR only). Omit for current user.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max number of reviews to return (default 5)",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "get_announcements",
+        "description": (
+            "Retrieve recent company announcements visible to the current user. "
+            "Use when the user asks about company news, updates, or announcements."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "description": "Max number of announcements to return (default 10)",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "get_attendance",
+        "description": (
+            "Retrieve attendance records (clock-in/out times) for the current user or a team member. "
+            "Use for questions about work hours, late arrivals, absences, or attendance history."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "start_date": {
+                    "type": "string",
+                    "description": "Start date in YYYY-MM-DD format (defaults to 7 days ago)",
+                },
+                "end_date": {
+                    "type": "string",
+                    "description": "End date in YYYY-MM-DD format (defaults to today)",
+                },
+                "for_employee_id": {
+                    "type": "string",
+                    "description": "Optional UUID of employee (managers/HR only). Omit for current user.",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "get_payslips",
+        "description": (
+            "Retrieve payslip summaries for the current user. "
+            "Use for questions about salary, net pay, deductions, or past payslips."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "description": "Max number of payslips to return (default 6)",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "get_coaching_sessions",
+        "description": (
+            "Retrieve coaching sessions. For managers: returns sessions they have run. "
+            "For employees: returns sessions where they are the subject. "
+            "Managers/HR can pass for_employee_id to see sessions for a specific team member."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "for_employee_id": {
+                    "type": "string",
+                    "description": "Optional UUID of employee (managers/HR only). Omit for current user.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max number of sessions to return (default 10)",
+                },
+            },
+            "required": [],
+        },
+    },
 ]
 
 
@@ -334,6 +454,12 @@ def execute_tool(
         "submit_timesheet_entry":    _submit_timesheet_entry,
         "check_objectives":          _check_objectives,
         "search_knowledge_base":     _search_knowledge_base,
+        "search_my_documents":       _search_my_documents,
+        "get_performance_reviews":   _get_performance_reviews,
+        "get_announcements":         _get_announcements,
+        "get_attendance":            _get_attendance,
+        "get_payslips":              _get_payslips,
+        "get_coaching_sessions":     _get_coaching_sessions,
     }
     handler = handlers.get(tool_name)
     if not handler:
@@ -1017,3 +1143,226 @@ def _search_knowledge_base(args: dict, user_id: UUID, org_id: UUID, db: Session)
     except Exception as exc:
         logger.warning("search_knowledge_base DB error: %s", exc)
         return {"results": [], "note": "Could not search knowledge base."}
+
+
+def _search_my_documents(args: dict, user_id: UUID, org_id: UUID, db: Session) -> dict:
+    """Search the current user's own uploaded documents (employee_documents table)."""
+    query = (args.get("query") or "").strip()
+    if not query:
+        return {"results": [], "error": "Query is required."}
+
+    try:
+        from app.models.employee_document import EmployeeDocument
+
+        # Fulltext search on extracted_text + title, falling back to ILIKE
+        rows = db.execute(
+            text("""
+                SELECT id, title, doc_type, original_filename, visibility,
+                       extracted_text, created_at
+                FROM employee_documents
+                WHERE user_id = :uid
+                  AND org_id  = :oid
+                  AND (
+                      (extracted_text IS NOT NULL AND
+                       to_tsvector('english', COALESCE(extracted_text,'') || ' ' || COALESCE(title,''))
+                       @@ plainto_tsquery('english', :q))
+                      OR title          ILIKE :ql
+                      OR extracted_text ILIKE :ql
+                  )
+                ORDER BY
+                    ts_rank(
+                        to_tsvector('english', COALESCE(extracted_text,'') || ' ' || COALESCE(title,'')),
+                        plainto_tsquery('english', :q)
+                    ) DESC
+                LIMIT 4
+            """),
+            {"uid": str(user_id), "oid": str(org_id), "q": query, "ql": f"%{query}%"},
+        ).fetchall()
+
+        results = []
+        for r in rows:
+            doc_id, title, doc_type, filename, visibility, extracted_text, created_at = r
+            snippet = (extracted_text or "")[:800]
+            results.append({
+                "id":       str(doc_id),
+                "title":    title,
+                "doc_type": doc_type,
+                "filename": filename,
+                "snippet":  snippet,
+                "visibility": visibility,
+                "uploaded": str(created_at) if created_at else None,
+            })
+
+        if not results:
+            return {"results": [], "note": f"No personal documents matched '{query}'."}
+        return {"results": results, "query": query}
+
+    except Exception as exc:
+        logger.warning("search_my_documents DB error: %s", exc)
+        return {"results": [], "note": "Could not search personal documents."}
+
+
+def _get_performance_reviews(args: dict, user_id: UUID, org_id: UUID, db: Session) -> dict:
+    limit = int(args.get("limit") or 5)
+    try:
+        rows = db.execute(
+            text("""
+                SELECT id, review_date, reviewer_id, rating, strengths, areas_for_improvement,
+                       goals, overall_comments, status, created_at
+                FROM performance_reviews
+                WHERE employee_id = :uid
+                ORDER BY review_date DESC NULLS LAST, created_at DESC
+                LIMIT :lim
+            """),
+            {"uid": str(user_id), "lim": limit},
+        ).fetchall()
+        reviews = []
+        for r in rows:
+            reviews.append({
+                "id":                    str(r[0]),
+                "review_date":           str(r[1]) if r[1] else None,
+                "rating":                r[3],
+                "strengths":             r[4] or "",
+                "areas_for_improvement": r[5] or "",
+                "goals":                 r[6] or "",
+                "overall_comments":      r[7] or "",
+                "status":                r[8] or "",
+            })
+        return {"reviews": reviews, "count": len(reviews)}
+    except Exception as exc:
+        logger.warning("get_performance_reviews error: %s", exc)
+        return {"reviews": [], "note": "Could not retrieve performance reviews."}
+
+
+def _get_announcements(args: dict, user_id: UUID, org_id: UUID, db: Session) -> dict:
+    limit = int(args.get("limit") or 10)
+    try:
+        rows = db.execute(
+            text("""
+                SELECT id, title, content, category, priority, created_at
+                FROM announcements
+                WHERE org_id = :oid
+                  AND (target_roles IS NULL OR target_roles = '{}')
+                ORDER BY created_at DESC
+                LIMIT :lim
+            """),
+            {"oid": str(org_id), "lim": limit},
+        ).fetchall()
+        items = [
+            {
+                "id":       str(r[0]),
+                "title":    r[1],
+                "content":  (r[2] or "")[:500],
+                "category": r[3] or "general",
+                "priority": r[4] or "normal",
+                "date":     str(r[5]) if r[5] else None,
+            }
+            for r in rows
+        ]
+        return {"announcements": items, "count": len(items)}
+    except Exception as exc:
+        logger.warning("get_announcements error: %s", exc)
+        return {"announcements": [], "note": "Could not retrieve announcements."}
+
+
+def _get_attendance(args: dict, user_id: UUID, org_id: UUID, db: Session) -> dict:
+    today = date.today()
+    start_str = args.get("start_date") or (today - timedelta(days=7)).isoformat()
+    end_str   = args.get("end_date")   or today.isoformat()
+    try:
+        rows = db.execute(
+            text("""
+                SELECT id, work_date, clock_in, clock_out, status, hours_worked, notes
+                FROM attendance_records
+                WHERE user_id = :uid
+                  AND work_date BETWEEN :sd AND :ed
+                ORDER BY work_date DESC
+                LIMIT 30
+            """),
+            {"uid": str(user_id), "sd": start_str, "ed": end_str},
+        ).fetchall()
+        records = [
+            {
+                "date":         str(r[1]),
+                "clock_in":     str(r[2]) if r[2] else None,
+                "clock_out":    str(r[3]) if r[3] else None,
+                "status":       r[4] or "",
+                "hours_worked": float(r[5]) if r[5] else None,
+                "notes":        r[6] or "",
+            }
+            for r in rows
+        ]
+        return {"records": records, "range": {"start": start_str, "end": end_str}}
+    except Exception as exc:
+        logger.warning("get_attendance error: %s", exc)
+        return {"records": [], "note": "Could not retrieve attendance records."}
+
+
+def _get_payslips(args: dict, user_id: UUID, org_id: UUID, db: Session) -> dict:
+    limit = int(args.get("limit") or 6)
+    try:
+        rows = db.execute(
+            text("""
+                SELECT payslip_id, month, gross_pay, total_deductions, net_pay,
+                       status, created_at
+                FROM payslips
+                WHERE employee_user_id = :uid AND org_id = :oid
+                ORDER BY created_at DESC
+                LIMIT :lim
+            """),
+            {"uid": str(user_id), "oid": str(org_id), "lim": limit},
+        ).fetchall()
+        payslips = [
+            {
+                "id":               str(r[0]),
+                "month":            r[1] or str(r[6])[:7] if r[6] else None,
+                "gross_pay":        float(r[2]) if r[2] is not None else None,
+                "total_deductions": float(r[3]) if r[3] is not None else None,
+                "net_pay":          float(r[4]) if r[4] is not None else None,
+                "status":           r[5] or "",
+            }
+            for r in rows
+        ]
+        return {"payslips": payslips, "count": len(payslips)}
+    except Exception as exc:
+        logger.warning("get_payslips error: %s", exc)
+        return {"payslips": [], "note": "Could not retrieve payslips."}
+
+
+def _get_coaching_sessions(args: dict, user_id: UUID, org_id: UUID, db: Session) -> dict:
+    limit = int(args.get("limit") or 10)
+    try:
+        # Try coach_sessions table first, fall back to coaching_sessions
+        for table in ("coach_sessions", "coaching_sessions"):
+            try:
+                rows = db.execute(
+                    text(f"""
+                        SELECT id, manager_id, employee_name, session_date, concern,
+                               outcome, follow_up_date, status
+                        FROM {table}
+                        WHERE org_id = :oid
+                          AND (manager_id = :uid OR employee_member_id = :uid)
+                        ORDER BY session_date DESC NULLS LAST
+                        LIMIT :lim
+                    """),
+                    {"oid": str(org_id), "uid": str(user_id), "lim": limit},
+                ).fetchall()
+                sessions = [
+                    {
+                        "id":             str(r[0]),
+                        "employee_name":  r[2] or "",
+                        "session_date":   str(r[3]) if r[3] else None,
+                        "concern":        (r[4] or "")[:300],
+                        "outcome":        (r[5] or "")[:300],
+                        "follow_up_date": str(r[6]) if r[6] else None,
+                        "status":         r[7] or "",
+                    }
+                    for r in rows
+                ]
+                return {"sessions": sessions, "count": len(sessions)}
+            except Exception:
+                continue
+        return {"sessions": [], "note": "Could not retrieve coaching sessions."}
+    except Exception as exc:
+        logger.warning("get_coaching_sessions error: %s", exc)
+        return {"sessions": [], "note": "Could not retrieve coaching sessions."}
