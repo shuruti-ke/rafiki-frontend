@@ -576,13 +576,17 @@ def employee_analytics(
         dept_counts = {}
         role_counts = {}
         new_this_month = 0
+        month_start_date = month_start.date()
         for u in users:
             d = getattr(u, "department", None) or "Unassigned"
             dept_counts[d] = dept_counts.get(d, 0) + 1
             r = str(u.role) if u.role else "user"
             role_counts[r] = role_counts.get(r, 0) + 1
-            if getattr(u, "created_at", None) and u.created_at >= month_start:
-                new_this_month += 1
+            raw_created = getattr(u, "created_at", None)
+            if raw_created:
+                created_date = raw_created.date() if hasattr(raw_created, "date") else raw_created
+                if created_date >= month_start_date:
+                    new_this_month += 1
         result["employees"] = {
             "total": len(users),
             "active": len(active),
@@ -590,7 +594,8 @@ def employee_analytics(
             "by_role": role_counts,
             "new_this_month": new_this_month,
         }
-    except Exception:
+    except Exception as e:
+        logger.error("Analytics employees block failed: %s", e, exc_info=True)
         result["employees"] = None
 
     # ── Timesheets (last 30 days) ──
@@ -615,7 +620,8 @@ def employee_analytics(
             "by_project": by_project,
             "by_category": by_category,
         }
-    except Exception:
+    except Exception as e:
+        logger.error("Analytics timesheets block failed: %s", e, exc_info=True)
         result["timesheets"] = None
 
     # ── Objectives ──
@@ -632,7 +638,8 @@ def employee_analytics(
             "by_status": by_status,
             "avg_progress": round(progress_sum / max(len(objectives), 1), 1),
         }
-    except Exception:
+    except Exception as e:
+        logger.error("Analytics objectives block failed: %s", e, exc_info=True)
         result["objectives"] = None
 
     # ── Calendar Events (this month) ──
@@ -647,7 +654,8 @@ def employee_analytics(
             t = getattr(e, "event_type", "other") or "other"
             by_type[t] = by_type.get(t, 0) + 1
         result["calendar"] = {"events_this_month": len(events), "by_type": by_type}
-    except Exception:
+    except Exception as e:
+        logger.error("Analytics calendar block failed: %s", e, exc_info=True)
         result["calendar"] = None
 
     # ── Documents ──
@@ -655,7 +663,8 @@ def employee_analytics(
         kb_count = db.query(func.count(Document.id)).filter(Document.org_id == org_id).scalar() or 0
         emp_doc_count = db.query(func.count(EmployeeDocument.id)).filter(EmployeeDocument.org_id == org_id).scalar() or 0
         result["documents"] = {"kb_doc_count": kb_count, "employee_doc_count": emp_doc_count}
-    except Exception:
+    except Exception as e:
+        logger.error("Analytics documents block failed: %s", e, exc_info=True)
         result["documents"] = None
 
     # ── Announcements ──
@@ -667,7 +676,8 @@ def employee_analytics(
             .scalar() or 0
         )
         result["announcements"] = {"total": total_ann, "recent_count": recent_ann}
-    except Exception:
+    except Exception as e:
+        logger.error("Analytics announcements block failed: %s", e, exc_info=True)
         result["announcements"] = None
 
     # ── Timesheet Submissions (current week Mon-Sun) ──
@@ -715,7 +725,8 @@ def employee_analytics(
             "not_submitted_count": len(active_users) - submitted_count,
             "staff": staff,
         }
-    except Exception:
+    except Exception as e:
+        logger.error("Analytics timesheet_submissions block failed: %s", e, exc_info=True)
         result["timesheet_submissions"] = None
 
     return result
