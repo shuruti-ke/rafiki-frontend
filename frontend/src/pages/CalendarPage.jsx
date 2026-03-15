@@ -43,6 +43,15 @@ export default function CalendarPage() {
   useEffect(() => { loadEvents(); }, [year, month]);
   useEffect(() => { loadColleagues(); }, []);
 
+  // Refetch when user returns to this tab so coaching follow-up dates etc. stay in sync
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") loadEvents();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, [year, month]);
+
   const prevMonth = () => { if(month===0){setMonth(11);setYear(year-1);}else setMonth(month-1); setSelectedDay(null); };
   const nextMonth = () => { if(month===11){setMonth(0);setYear(year+1);}else setMonth(month+1); setSelectedDay(null); };
   const goToday = () => { setYear(today.getFullYear()); setMonth(today.getMonth()); setSelectedDay(today.getDate()); };
