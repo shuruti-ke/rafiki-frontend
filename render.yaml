@@ -14,16 +14,14 @@ services:
           property: connectionString
       - key: APP_ENV
         value: production
-      - key: BONSAI_API_KEY
-        sync: false
-      - key: BONSAI_BASE_URL
-        value: https://go.trybons.ai
-      - key: BONSAI_DEFAULT_MODEL
-        value: anthropic/claude-sonnet-4.5
       - key: CORS_ORIGINS
         sync: false
       - key: OPENAI_API_KEY
         sync: false
+      - key: OPENAI_BASE_URL
+        value: https://api.openai.com
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
       - key: JWT_SECRET
         sync: false
       - key: TAVILY_API_KEY

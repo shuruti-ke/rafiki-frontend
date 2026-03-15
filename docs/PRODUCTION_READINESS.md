@@ -10,7 +10,6 @@ Backend:
 - `DATABASE_URL`
 - `CORS_ORIGINS`
 - `OPENAI_API_KEY`
-- `BONSAI_API_KEY`
 - `TAVILY_API_KEY`
 
 Security rules:

@@ -29,10 +29,10 @@ JAAS_API_KEY_ID = os.getenv("JAAS_API_KEY_ID", "").strip()
 JAAS_PRIVATE_KEY = os.getenv("JAAS_PRIVATE_KEY", "").strip().replace("\\n", "\n")
 JITSI_BASE_URL = f"https://8x8.vc/{JAAS_APP_ID}" if JAAS_APP_ID else "https://meet.jit.si"
 
-# ── Claude / Bonsai config (reuses existing env vars) ──
-BONSAI_API_KEY = os.getenv("BONSAI_API_KEY", "").strip()
-BONSAI_BASE_URL = os.getenv("BONSAI_BASE_URL", "https://go.trybons.ai").strip().rstrip("/")
-CLAUDE_MODEL = "anthropic/claude-sonnet-4.5"
+# ── OpenAI config (for meeting objectives / AI features) ──
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com").strip().rstrip("/")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
 
 # Internal base URL for pushing objectives
 INTERNAL_API_BASE = os.getenv("INTERNAL_API_BASE", "https://rafiki-backend.onrender.com")
@@ -81,27 +81,31 @@ def _generate_jaas_token(user_id, user_name, user_email, room_name, is_moderator
         return None
 
 
-def _claude(system: str, user: str) -> str:
-    """Call Claude via Bonsai and return text response."""
-    if not BONSAI_API_KEY:
-        raise HTTPException(503, "AI not configured")
+def _openai_chat(system: str, user: str) -> str:
+    """Call OpenAI chat completions and return text response."""
+    if not OPENAI_API_KEY:
+        raise HTTPException(503, "AI not configured (set OPENAI_API_KEY)")
     try:
+        base = OPENAI_BASE_URL.rstrip("/")
+        url = f"{base}/v1/chat/completions" if "/v1" not in base else f"{base}/chat/completions"
         resp = httpx.post(
-            f"{BONSAI_BASE_URL}/v1/messages",
-            headers={"x-api-key": BONSAI_API_KEY, "Content-Type": "application/json"},
+            url,
+            headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
             json={
-                "model": CLAUDE_MODEL,
+                "model": OPENAI_MODEL,
                 "max_tokens": 1000,
-                "system": system,
-                "messages": [{"role": "user", "content": user}],
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
             },
             timeout=30,
         )
         resp.raise_for_status()
         data = resp.json()
-        return data["content"][0]["text"].strip()
+        return (data.get("choices") or [{}])[0].get("message", {}).get("content", "").strip()
     except Exception as e:
-        logger.error("Claude API error: %s", e)
+        logger.error("OpenAI API error: %s", e)
         raise HTTPException(502, f"AI generation failed: {e}")
 
 
@@ -233,7 +237,7 @@ def generate_agenda(
         f"Create a practical agenda with time allocations that adds up to {meeting.duration_minutes} minutes."
     )
 
-    agenda_text = _claude(system, user_prompt)
+    agenda_text = _openai_chat(system, user_prompt)
     meeting.agenda = agenda_text
     db.commit()
 
@@ -269,7 +273,7 @@ def generate_summary(
     if data.notes:
         context += f"\nNotes/Transcript:\n{data.notes}"
 
-    raw = _claude(system, context)
+    raw = _openai_chat(system, context)
 
     # Parse JSON response
     import json
@@ -317,7 +321,7 @@ def log_wellbeing(
             f"(low). Their note: '{data.note or 'none'}'. "
             "Give a brief (2 sentences), warm, supportive message and suggest one small action."
         )
-        message = _claude(system, prompt)
+        message = _openai_chat(system, prompt)
     else:
         message = "Thanks for sharing how you're feeling. Keep up the great work! 🌟"
 
@@ -399,7 +403,7 @@ def save_coaching_notes(
     if meeting.action_items:
         context += f"\nAction items:\n" + "\n".join(f"- {a}" for a in meeting.action_items)
 
-    notes = _claude(system, f"Generate coaching session notes for:\n{context}")
+    notes = _openai_chat(system, f"Generate coaching session notes for:\n{context}")
 
     # Post to manager coaching endpoint internally
     try:

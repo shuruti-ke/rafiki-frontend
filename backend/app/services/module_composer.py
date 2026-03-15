@@ -10,9 +10,9 @@ load_dotenv(dotenv_path=Path(__file__).parent.parent.parent / ".env", override=T
 
 logger = logging.getLogger(__name__)
 
-BONSAI_API_KEY = os.getenv("BONSAI_API_KEY", "").strip()
-BONSAI_BASE_URL = os.getenv("BONSAI_BASE_URL", "https://go.trybons.ai").strip().rstrip("/")
-BONSAI_DEFAULT_MODEL = os.getenv("BONSAI_DEFAULT_MODEL", "anthropic/claude-sonnet-4.5").strip()
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com").strip().rstrip("/")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
 
 COMPOSER_SYSTEM_PROMPT = """You are the Rafiki Module Composer.
 You receive a module blueprint (fixed psychological structure) and a context pack.
@@ -40,8 +40,8 @@ def compose_module(
 
     Returns adapted steps, or falls back to raw blueprint on failure.
     """
-    if not BONSAI_API_KEY:
-        logger.warning("Bonsai not configured — returning raw blueprint")
+    if not OPENAI_API_KEY:
+        logger.warning("OpenAI not configured — returning raw blueprint")
         return blueprint_steps
 
     user_prompt = json.dumps({
@@ -51,32 +51,29 @@ def compose_module(
     }, indent=2)
 
     try:
-        bonsai_url = BONSAI_BASE_URL + "/v1/messages"
+        base = OPENAI_BASE_URL.rstrip("/")
+        openai_url = f"{base}/v1/chat/completions" if "/v1" not in base else f"{base}/chat/completions"
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {BONSAI_API_KEY}",
-            "anthropic-version": "2023-06-01",
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
         }
         payload = {
-            "model": BONSAI_DEFAULT_MODEL,
+            "model": OPENAI_MODEL,
             "max_tokens": 4096,
-            "system": COMPOSER_SYSTEM_PROMPT,
             "messages": [
+                {"role": "system", "content": COMPOSER_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
             ],
         }
 
-        r = httpx.post(bonsai_url, headers=headers, json=payload, timeout=60)
+        r = httpx.post(openai_url, headers=headers, json=payload, timeout=60)
 
         if r.status_code >= 400:
             logger.error("Composer LLM error (%d): %s", r.status_code, r.text[:300])
             return blueprint_steps
 
         data = r.json()
-        reply_text = ""
-        for block in (data.get("content") or []):
-            if isinstance(block, dict) and block.get("type") == "text":
-                reply_text += block.get("text", "")
+        reply_text = (data.get("choices") or [{}])[0].get("message", {}).get("content", "") or ""
 
         # Parse JSON from response
         adapted_steps = json.loads(reply_text.strip())

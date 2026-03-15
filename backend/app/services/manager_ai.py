@@ -20,9 +20,9 @@ from app.models.toolkit import CoachingSession
 
 logger = logging.getLogger(__name__)
 
-BONSAI_API_KEY = os.getenv("BONSAI_API_KEY", "").strip()
-BONSAI_BASE_URL = os.getenv("BONSAI_BASE_URL", "https://go.trybons.ai").strip().rstrip("/")
-BONSAI_DEFAULT_MODEL = os.getenv("BONSAI_DEFAULT_MODEL", "anthropic/claude-sonnet-4.5").strip()
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com").strip().rstrip("/")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
 
 
 MANAGER_AI_SYSTEM_PROMPT = """You are a performance coaching assistant for managers, part of the Rafiki@Work platform by Shoulder2LeanOn.
@@ -178,37 +178,37 @@ def generate_coaching_plan(
     # 2. Build prompts
     user_prompt = _build_coaching_prompt(context, concern)
 
-    # 3. Call AI
+    # 3. Call OpenAI for coaching plan
     ai_response_text = ""
     structured = {}
 
-    if BONSAI_API_KEY:
+    if OPENAI_API_KEY:
         try:
-            bonsai_url = BONSAI_BASE_URL + "/v1/messages"
+            base = OPENAI_BASE_URL.rstrip("/")
+            openai_url = f"{base}/v1/chat/completions" if "/v1" not in base else f"{base}/chat/completions"
             headers = {
                 "Content-Type": "application/json",
-                "Authorization": f"Bearer {BONSAI_API_KEY}",
-                "anthropic-version": "2023-06-01",
+                "Authorization": f"Bearer {OPENAI_API_KEY}",
             }
             payload = {
-                "model": BONSAI_DEFAULT_MODEL,
+                "model": OPENAI_MODEL,
                 "max_tokens": 2048,
-                "system": MANAGER_AI_SYSTEM_PROMPT,
-                "messages": [{"role": "user", "content": user_prompt}],
+                "messages": [
+                    {"role": "system", "content": MANAGER_AI_SYSTEM_PROMPT},
+                    {"role": "user", "content": user_prompt},
+                ],
+                "response_format": {"type": "json_object"},
             }
 
             with httpx.Client() as client:
-                r = client.post(bonsai_url, headers=headers, json=payload, timeout=60)
+                r = client.post(openai_url, headers=headers, json=payload, timeout=60)
 
             if r.status_code < 400:
                 data = r.json()
-                for block in (data.get("content") or []):
-                    if isinstance(block, dict) and block.get("type") == "text":
-                        ai_response_text += block.get("text", "")
+                ai_response_text = (data.get("choices") or [{}])[0].get("message", {}).get("content", "")
 
-                # Try to parse structured JSON from response
                 try:
-                    structured = json.loads(ai_response_text)
+                    structured = json.loads(ai_response_text) if ai_response_text else {}
                 except json.JSONDecodeError:
                     structured = {
                         "situation_summary": ai_response_text[:500],
@@ -217,7 +217,7 @@ def generate_coaching_plan(
                         "escalation_path": "",
                     }
             else:
-                logger.warning("Bonsai coaching call failed: %d %s", r.status_code, r.text[:200])
+                logger.warning("OpenAI coaching call failed: %d %s", r.status_code, r.text[:200])
 
         except Exception as e:
             logger.error("Coaching AI error: %s", e)
@@ -258,13 +258,13 @@ def _generate_fallback_plan(concern: str, context: dict) -> dict:
     if context.get("evaluations"):
         ratings = [e["rating"] for e in context["evaluations"]]
         avg = sum(ratings) / len(ratings)
-        eval_summary = f"Average performance rating: {avg:.1f}/5 across {len(ratings)} evaluation(s)."
+        eval_summary = f"Average performance rating: {avg:.1f}/5 across {len(ratings)} evaluation(s). "
 
     return {
         "situation_summary": (
-            f"The manager has raised a concern: \"{concern}\". "
-            f"{eval_summary} "
-            "AI coaching is currently unavailable — please use the HR Toolkit modules for structured guidance."
+            f"Concern: \"{concern}\". "
+            f"{eval_summary}"
+            "Below you'll find a conversation script, action options, and escalation path to support a constructive 1:1 conversation."
         ),
         "conversation_script": (
             "Opening: 'I'd like to have a conversation about [topic]. I value your work and want to support you.'\n\n"
