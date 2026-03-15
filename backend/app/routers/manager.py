@@ -61,7 +61,8 @@ def get_team(
     is_elevated = _role in ("super_admin", "hr_admin")
 
     config = get_manager_config(db, user_id, org_id)
-    if not config and not is_elevated:
+    # Manager with direct reports can use toolkits even without a ManagerConfig row
+    if not config and not is_elevated and _role != "manager":
         raise HTTPException(status_code=403, detail="No active manager configuration found")
 
     # super_admin: all users platform-wide
@@ -98,8 +99,8 @@ def get_team(
             .all()
         )
 
-        # Fallback: if no direct reports via manager_id, check department scope
-        if not direct_reports and config.department_scope:
+        # Fallback: if no direct reports via manager_id, check department scope (requires config)
+        if not direct_reports and config and getattr(config, "department_scope", None):
             direct_reports = (
                 db.query(User)
                 .filter(

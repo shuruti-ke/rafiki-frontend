@@ -78,12 +78,17 @@ def validate_employee_access(
     # hr_admin can access any employee in their org (same as /manager/team behaviour)
     if _get_user_role(db, manager_user_id) == "hr_admin":
         emp = db.query(User).filter(User.user_id == employee_user_id).first()
-        if emp and emp.org_id == org_id:
+        if emp and (emp.org_id is None or emp.org_id == org_id):
             return True
         return False
 
     config = get_manager_config(db, manager_user_id, org_id)
     if not config:
+        # Manager without config: allow if employee is a direct report (manager_id points to this manager)
+        if _get_user_role(db, manager_user_id) == "manager":
+            emp = db.query(User).filter(User.user_id == employee_user_id).first()
+            if emp and emp.manager_id == manager_user_id and (emp.org_id is None or emp.org_id == org_id):
+                return True
         return False
 
     # Manager can't view their own data through manager tools
@@ -109,8 +114,9 @@ def get_allowed_features(db: Session, user_id: UUID, org_id: UUID) -> list[str]:
 
 
 def can_use_feature(db: Session, user_id: UUID, org_id: UUID, feature: str) -> bool:
-    # hr_admin and super_admin can use coaching_ai and toolkit without a ManagerConfig
+    # hr_admin, super_admin, and manager can use coaching_ai and toolkit without a ManagerConfig
+    # (managers use it for their direct reports)
     role = _get_user_role(db, user_id)
-    if role in ("hr_admin", "super_admin") and feature in ("coaching_ai", "toolkit"):
+    if role in ("hr_admin", "super_admin", "manager") and feature in ("coaching_ai", "toolkit"):
         return True
     return feature in get_allowed_features(db, user_id, org_id)
