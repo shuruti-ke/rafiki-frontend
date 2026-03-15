@@ -924,9 +924,29 @@ def _get_user_doc_titles(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) -> 
 # MAIN AGGREGATOR
 # ══════════════════════════════════════
 
+# Words that should never be treated as person names — common HR terms, acronyms,
+# question words, and short tokens that regex patterns accidentally capture.
+_NAME_BLOCKLIST = frozenset({
+    # question / filler words
+    "the", "this", "that", "what", "when", "where", "which", "who", "why", "how",
+    "any", "all", "some", "more", "less", "most", "just", "also", "even", "only",
+    "and", "but", "for", "with", "from", "about", "into", "over", "under",
+    "here", "there", "then", "than", "them", "they", "their", "our", "your", "its",
+    "him", "his", "her", "she", "not", "yes", "now", "new", "old", "next", "last",
+    # common HR / business acronyms & terms
+    "dsa", "kpi", "okr", "hr", "ceo", "cfo", "cto", "coo", "vp", "hod",
+    "ppe", "pto", "fmla", "pmo", "roi", "nda", "sop", "kra", "eap",
+    "leave", "annual", "sick", "payroll", "payslip", "allowance", "bonus",
+    "salary", "contract", "policy", "benefit", "overtime", "shift",
+    "team", "staff", "report", "update", "review", "summary", "status",
+    # locations / misc
+    "nairobi", "mombasa", "kenya", "office", "remote", "home",
+})
+
 def _extract_names_from_context(text: str, chat_history: list[dict] = None) -> set[str]:
     """
     Extract potential person names from user message and recent chat history.
+    Filters out short tokens, known acronyms, and common HR/business terms.
     """
     import re
 
@@ -939,24 +959,28 @@ def _extract_names_from_context(text: str, chat_history: list[dict] = None) -> s
 
     combined = " ".join(context_texts)
     patterns = [
-        r"(?:tell me about|who is|what about|status of|how is|about)\s+([A-Za-z]+)",
+        r"(?:tell me about|who is|what about|status of|how is)\s+([A-Za-z]+)",
         r"(?:my report|employee|team member|manager|direct report)\s+([A-Za-z]+)",
-        r"(?:what about|how about|any issues with)\s+([A-Za-z]+)",
-        r"(?:regarding|on)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)",
+        r"(?:how about|any issues with)\s+([A-Za-z]+)",
+        r"(?:regarding)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)",
     ]
 
     for pattern in patterns:
         matches = re.findall(pattern, combined, re.IGNORECASE)
         for match in matches:
-            if match.strip():
-                names.add(match.strip().lower())
+            token = match.strip().lower()
+            # Must be at least 4 chars and not a known non-name word
+            if len(token) >= 4 and token not in _NAME_BLOCKLIST:
+                names.add(token)
 
     for line in combined.split("\n"):
         line = line.strip()
         if line and len(line.split()) <= 3:
             words = line.split()
-            if words and len(words[0]) > 2 and words[0][0].isupper():
-                names.add(words[0].strip().lower())
+            if words and len(words[0]) > 3 and words[0][0].isupper():
+                token = words[0].strip().lower()
+                if token not in _NAME_BLOCKLIST:
+                    names.add(token)
 
     return names
 
