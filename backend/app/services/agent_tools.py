@@ -259,6 +259,25 @@ TOOL_DEFINITIONS = [
         },
     },
     {
+        "name": "get_employee_profile",
+        "description": (
+            "Look up an employee's profile by name. Use immediately when a manager or HR admin "
+            "mentions a person's name and asks about them. Returns profile, job title, department, "
+            "manager, tenure, and a link to their data. Managers can only look up their own team; "
+            "HR admins can look up any employee in the organisation."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "The employee's first name, last name, or full name",
+                },
+            },
+            "required": ["name"],
+        },
+    },
+    {
         "name": "search_knowledge_base",
         "description": (
             "Search the company knowledge base / policy documents for information. "
@@ -453,6 +472,7 @@ def execute_tool(
         "check_timesheet":           _check_timesheet,
         "submit_timesheet_entry":    _submit_timesheet_entry,
         "check_objectives":          _check_objectives,
+        "get_employee_profile":      _get_employee_profile,
         "search_knowledge_base":     _search_knowledge_base,
         "search_my_documents":       _search_my_documents,
         "get_performance_reviews":   _get_performance_reviews,
@@ -1068,6 +1088,75 @@ def _check_objectives(args: dict, user_id: UUID, org_id: UUID, db: Session) -> d
     except Exception as exc:
         logger.warning("check_objectives DB error: %s", exc)
         return {"objectives": [], "note": "Could not retrieve objectives data."}
+
+
+def _get_employee_profile(args: dict, user_id: UUID, org_id: UUID, db: Session) -> dict:
+    """Find an employee by name and return their profile. Enforces manager/HR scope."""
+    from app.models.user import User
+    from app.models.employee_profile import EmployeeProfile
+
+    name_query = (args.get("name") or "").strip().lower()
+    if not name_query:
+        return {"error": "name is required."}
+
+    # Determine caller role to enforce scope
+    caller = db.query(User).filter(User.user_id == user_id).first()
+    caller_role = (getattr(caller, "role", "") or "").strip().lower()
+    is_hr = caller_role in ("hr_admin", "super_admin")
+    is_manager = caller_role == "manager"
+
+    if not is_hr and not is_manager:
+        return {"error": "You don't have permission to look up other employees."}
+
+    candidates = (
+        db.query(User)
+        .filter(User.org_id == org_id, User.is_active == True, User.user_id != user_id)
+        .all()
+    )
+
+    # Access control: managers can only see their team
+    if is_manager and not is_hr:
+        from app.services.manager_scope import validate_employee_access
+        candidates = [u for u in candidates if validate_employee_access(db, user_id, u.user_id, org_id)]
+
+    # Name matching: first/last/full name
+    matched = []
+    for u in candidates:
+        full_name = (getattr(u, "name", "") or "").strip().lower()
+        if name_query in full_name or full_name.startswith(name_query):
+            matched.append(u)
+
+    if not matched:
+        return {"found": False, "message": f"No employee named '{args.get('name')}' found in your accessible scope."}
+
+    results = []
+    for u in matched[:3]:
+        profile_row = db.query(EmployeeProfile).filter(EmployeeProfile.user_id == u.user_id).first()
+        entry = {
+            "user_id":    str(u.user_id),
+            "name":       getattr(u, "name", "") or "",
+            "email":      getattr(u, "email", "") or "",
+            "role":       getattr(u, "role", "") or "",
+            "department": getattr(u, "department", "") or "",
+            "job_title":  getattr(u, "job_title", "") or "",
+            "is_active":  getattr(u, "is_active", True),
+        }
+        if profile_row:
+            entry.update({
+                "phone":       getattr(profile_row, "phone", "") or "",
+                "location":    getattr(profile_row, "location", "") or "",
+                "bio":         (getattr(profile_row, "bio", "") or "")[:300],
+                "hire_date":   str(getattr(profile_row, "hire_date", "") or ""),
+                "gender":      getattr(profile_row, "gender", "") or "",
+                "nationality": getattr(profile_row, "nationality", "") or "",
+            })
+        # Manager name
+        if getattr(u, "manager_id", None):
+            mgr = db.query(User).filter(User.user_id == u.manager_id).first()
+            entry["reports_to"] = getattr(mgr, "name", "") if mgr else ""
+        results.append(entry)
+
+    return {"found": True, "employees": results, "count": len(results)}
 
 
 def _search_knowledge_base(args: dict, user_id: UUID, org_id: UUID, db: Session) -> dict:
