@@ -297,8 +297,8 @@ def ai_query_to_config(
         config = json.loads(resp.choices[0].message.content)
         return config
     except Exception as e:
-        logger.warning("AI query failed: %s", e)
-        raise HTTPException(500, "AI query failed. Check OpenAI API key configuration.")
+        logger.error("AI query failed: %s", e, exc_info=True)
+        raise HTTPException(500, f"AI query failed: {e}")
 
 
 @router.post("/ai-insights")
@@ -329,5 +329,5 @@ def ai_insights(
         )
         return {"insights": resp.choices[0].message.content}
     except Exception as e:
-        logger.warning("AI insights failed: %s", e)
-        raise HTTPException(500, "AI insights failed. Check OpenAI API key configuration.")
+        logger.error("AI insights failed: %s", e, exc_info=True)
+        raise HTTPException(500, f"AI insights failed: {e}")
