@@ -22,11 +22,14 @@ from sqlalchemy import text
 
 from app.database import get_db
 from app.dependencies import (
+    get_current_user,
     get_current_user_id,
     get_current_org_id,
     require_manager,
+    require_can_act_for_employee,
 )
 from app.models.calendar_event import CalendarEvent
+from app.models.user import User
 from app.routers.notifications import _insert_notification
 
 logger = logging.getLogger(__name__)
@@ -282,6 +285,33 @@ def _sync_coaching_to_calendar(
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
+
+@router.get("/for-employee/{user_id}", response_model=List[CoachingSessionOut])
+def list_sessions_for_employee(
+    user_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    current_user: Optional[User] = Depends(get_current_user),
+):
+    """
+    List coaching sessions for a specific employee (reports view).
+    Allowed: the employee themselves, their manager, or HR admin / super_admin.
+    Used by HR portal (employee detail), manager view, and employee's own "My reports".
+    """
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    require_can_act_for_employee(db, current_user, user_id)
+
+    query = """
+        SELECT * FROM coaching_sessions
+        WHERE org_id = :org_id AND employee_member_id = :user_id
+        ORDER BY created_at DESC
+    """
+    params: dict = {"org_id": str(org_id), "user_id": str(user_id)}
+    result = db.execute(text(query), params)
+    rows = result.mappings().all()
+    return [_row_to_out(dict(r)) for r in rows]
+
 
 @router.get("/", response_model=List[CoachingSessionOut])
 def list_sessions(

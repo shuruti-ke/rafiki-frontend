@@ -35,6 +35,7 @@ const NAV_GROUPS = [
       { to: "/announcements", label: "Announcements", icon: "📣" },
       { to: "/knowledge-base", label: "Knowledge Base", icon: "📚" },
       { to: "/my-documents", label: "My Documents", icon: "📄" },
+      { to: "/my-reports", label: "My Reports", icon: "📋" },
       { to: "/guided-paths", label: "Guided Paths", icon: "🧭" },
     ],
   },

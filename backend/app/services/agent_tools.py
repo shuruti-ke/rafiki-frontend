@@ -35,17 +35,20 @@ TOOL_DEFINITIONS = [
     {
         "name": "check_leave_balance",
         "description": (
-            "Check the current employee's leave balance — shows entitled days, "
-            "used days, carried-over days, and available days for each leave type "
-            "(annual, sick, maternity/paternity, and any custom types). "
-            "Call this before submitting a leave request."
+            "Check leave balance — shows entitled, used, carried-over, and available days per leave type. "
+            "Call for the current user, or for managers/HR use for_employee_id to check a team member's balance. "
+            "Never exposes chat content."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "year": {
                     "type": "integer",
-                    "description": "Leave year to check (defaults to current year)",
+                    "description": "Leave year (defaults to current year)",
+                },
+                "for_employee_id": {
+                    "type": "string",
+                    "description": "Optional. UUID of employee to check (managers: team members only; HR: any org employee). Omit for current user.",
                 },
             },
             "required": [],
@@ -93,15 +96,18 @@ TOOL_DEFINITIONS = [
     {
         "name": "get_my_leave_applications",
         "description": (
-            "Retrieve the employee's leave application history. "
-            "Optionally filter by status: 'pending', 'approved', 'rejected', 'cancelled'."
+            "Retrieve leave application history. Use for_employee_id for managers/HR to see a team member's applications. Never exposes chat."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "status": {
                     "type": "string",
-                    "description": "Filter by status: 'pending', 'approved', 'rejected', 'cancelled' (omit for all)",
+                    "description": "Filter: 'pending', 'approved', 'rejected', 'cancelled' (omit for all)",
+                },
+                "for_employee_id": {
+                    "type": "string",
+                    "description": "Optional. UUID of employee (managers/HR only). Omit for current user.",
                 },
             },
             "required": [],
@@ -110,12 +116,15 @@ TOOL_DEFINITIONS = [
     {
         "name": "check_calendar_events",
         "description": (
-            "Retrieve the employee's upcoming calendar events within a date range "
-            "(defaults to today + 7 days)."
+            "Retrieve upcoming calendar events. Use for_employee_id for managers/HR to see a team member's events. Never exposes chat."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
+                "for_employee_id": {
+                    "type": "string",
+                    "description": "Optional. UUID of employee (managers/HR only). Omit for current user.",
+                },
                 "start_date": {
                     "type": "string",
                     "description": "Start date in YYYY-MM-DD format (defaults to today)",
@@ -176,16 +185,18 @@ TOOL_DEFINITIONS = [
     {
         "name": "check_timesheet",
         "description": (
-            "Check the employee's timesheet entries for a given week. "
-            "Returns entries, total hours, and a daily breakdown. "
-            "week_start must be a Monday."
+            "Check timesheet entries for a week. Use for_employee_id for managers/HR to see a team member's timesheet. Never exposes chat."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "week_start": {
                     "type": "string",
-                    "description": "Monday of the week to check in YYYY-MM-DD format (defaults to current week's Monday)",
+                    "description": "Monday of the week in YYYY-MM-DD (defaults to current week)",
+                },
+                "for_employee_id": {
+                    "type": "string",
+                    "description": "Optional. UUID of employee (managers/HR only). Omit for current user.",
                 },
             },
             "required": [],
@@ -234,11 +245,16 @@ TOOL_DEFINITIONS = [
     {
         "name": "check_objectives",
         "description": (
-            "Retrieve the employee's current OKRs / objectives with progress percentages and key results."
+            "Retrieve current OKRs/objectives with progress. Use for_employee_id for managers/HR to see a team member's objectives. Never exposes chat."
         ),
         "input_schema": {
             "type": "object",
-            "properties": {},
+            "properties": {
+                "for_employee_id": {
+                    "type": "string",
+                    "description": "Optional. UUID of employee (managers/HR only). Omit for current user.",
+                },
+            },
             "required": [],
         },
     },
@@ -266,6 +282,40 @@ TOOL_DEFINITIONS = [
 # Dispatcher
 # ──────────────────────────────────────────────────────────────────────────────
 
+def _resolve_effective_user(
+    tool_input: dict,
+    caller_id: UUID,
+    org_id: UUID,
+    db: Session,
+) -> tuple[UUID, dict]:
+    """
+    If tool_input has for_employee_id, validate that caller (manager/hr_admin) can access
+    that employee. Returns (effective_user_id, tool_input_without_for_employee_id).
+    Never exposes chat data.
+    """
+    from app.models.user import User
+    from app.services.manager_scope import validate_employee_access
+
+    for_id = tool_input.pop("for_employee_id", None)
+    if not for_id:
+        return caller_id, tool_input
+    try:
+        target = UUID(str(for_id))
+    except (ValueError, TypeError):
+        return caller_id, tool_input
+    if target == caller_id:
+        return caller_id, tool_input
+    role_row = db.query(User).filter(User.user_id == caller_id).first()
+    role = getattr(role_row, "role", None) if role_row else None
+    role = (role or "").strip().lower()
+    if role not in ("manager", "hr_admin", "super_admin") and "admin" not in role:
+        logger.warning("for_employee_id used by non-manager/HR role=%s", role)
+        return caller_id, tool_input
+    if not validate_employee_access(db, caller_id, target, org_id):
+        return caller_id, {**tool_input, "error": "You do not have access to this employee's data."}
+    return target, tool_input
+
+
 def execute_tool(
     tool_name: str,
     tool_input: dict,
@@ -273,7 +323,7 @@ def execute_tool(
     org_id: UUID,
     db: Session,
 ) -> dict:
-    """Route a tool call to the correct handler and return a result dict."""
+    """Route a tool call to the correct handler. Managers/HR can pass for_employee_id for team/org member data. Chat is never exposed."""
     handlers = {
         "check_leave_balance":       _check_leave_balance,
         "submit_leave_request":      _submit_leave_request,
@@ -288,8 +338,12 @@ def execute_tool(
     handler = handlers.get(tool_name)
     if not handler:
         return {"error": f"Unknown tool: {tool_name}"}
+    tool_input = dict(tool_input)
+    effective_user_id, tool_input = _resolve_effective_user(tool_input, user_id, org_id, db)
+    if tool_input.get("error"):
+        return tool_input
     try:
-        return handler(tool_input, user_id, org_id, db)
+        return handler(tool_input, effective_user_id, org_id, db)
     except Exception as exc:
         logger.error("Tool %s failed: %s", tool_name, exc, exc_info=True)
         return {"error": str(exc)}

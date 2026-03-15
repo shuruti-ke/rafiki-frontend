@@ -575,17 +575,23 @@ async def chat(
         if user_context:
             system_prompt = system_prompt + "\n\n" + user_context
 
-        # Sprint 6: inject agentic capability instructions
+        # Sprint 6: inject agentic capability instructions and access rules
         system_prompt += (
-            "\n\n## Agentic Capabilities\n"
-            "You have tools to take actions on the employee's behalf:\n"
-            "- **check_leave_balance** / **submit_leave_request** — check and request leave\n"
+            "\n\n## Access and Privacy (platform is interlinked; chats are private)\n"
+            "- **Employees**: You have access to the current user's own data (objectives, leave, timesheet, documents, etc.) via context and tools. Use it to answer their questions.\n"
+            "- **Managers**: When the user asks about a team member by name, your context includes that person's data (profile, objectives, timesheet, leave, performance, coaching). You may also call tools with **for_employee_id** (the team member's UUID) to check leave, calendar, timesheet, or objectives for them. You do NOT have access to any user's chat history — never mention or infer other people's conversations.\n"
+            "- **HR admin**: When the user asks about any employee in the org by name, your context includes that employee's data. Use **for_employee_id** in tools when querying on their behalf. You do NOT have access to any user's chat content — never expose or refer to it.\n"
+            "All information is interlinked so you can give a single, consistent view; only chat remains private per user.\n\n"
+            "## Agentic Capabilities\n"
+            "You have tools to take actions:\n"
+            "- **check_leave_balance** / **submit_leave_request** — check and request leave (use for_employee_id for managers/HR to query a team member)\n"
             "- **check_calendar_events** / **create_calendar_event** — view and create events\n"
             "- **check_timesheet** / **submit_timesheet_entry** — view and log timesheets\n"
-            "- **check_objectives** — view OKRs and progress\n"
-            "- **search_knowledge_base** — find HR policies and company information\n\n"
-            "Use these tools proactively when the employee's request implies an action. "
-            "Always confirm key details with the employee before submitting leave or timesheet entries. "
+            "- **check_objectives** — view OKRs (use for_employee_id for managers/HR)\n"
+            "- **get_my_leave_applications** — leave history (for_employee_id for managers/HR)\n"
+            "- **search_knowledge_base** — HR policies and company information\n\n"
+            "Use these tools proactively when the user's request implies an action. "
+            "Always confirm key details before submitting leave or timesheet entries. "
             "After completing an action, summarise what was done in a friendly, concise message."
         )
 

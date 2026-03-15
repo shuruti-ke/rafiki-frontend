@@ -1,0 +1,95 @@
+.my-reports-page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 16px;
+}
+
+.my-reports-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #1a1a2e;
+  margin: 0 0 8px;
+}
+
+.my-reports-desc {
+  font-size: 0.9rem;
+  color: #64748b;
+  margin: 0 0 24px;
+}
+
+.my-reports-section {
+  margin-bottom: 28px;
+}
+
+.my-reports-section-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #1e1b4b;
+  margin: 0 0 6px;
+}
+
+.my-reports-section-desc {
+  font-size: 0.85rem;
+  color: #64748b;
+  margin: 0 0 14px;
+}
+
+.my-reports-muted {
+  font-size: 0.9rem;
+  color: #94a3b8;
+  margin: 0;
+}
+
+.my-reports-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.my-reports-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px 18px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+}
+
+.my-reports-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.my-reports-card-header strong {
+  font-size: 14px;
+  color: #1f2937;
+}
+
+.my-reports-badge {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: capitalize;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(123, 47, 190, 0.12);
+  color: #7b2fbe;
+  border: 1px solid rgba(123, 47, 190, 0.2);
+}
+
+.my-reports-field {
+  font-size: 13px;
+  color: #6b7280;
+  margin-top: 8px;
+  line-height: 1.5;
+}
+
+.my-reports-label {
+  color: #374151;
+  font-weight: 600;
+}
+
+.my-reports-action-list {
+  margin: 4px 0 0 18px;
+  padding: 0;
+}

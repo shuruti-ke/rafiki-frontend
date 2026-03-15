@@ -27,6 +27,7 @@ import GuidedPathExplore from "./pages/GuidedPathExplore.jsx";
 import GuidedPathRunner from "./pages/GuidedPathRunner.jsx";
 import ObjectivesPage from "./pages/ObjectivesPage.jsx";
 import MyDocumentsPage from "./pages/MyDocumentsPage.jsx";
+import MyReportsPage from "./pages/MyReportsPage.jsx";
 import CalendarPage from "./pages/CalendarPage.jsx";
 import TimesheetPage from "./pages/TimesheetPage.jsx";
 import AttendancePage from "./pages/AttendancePage.jsx";
@@ -84,6 +85,7 @@ export default function App() {
           <Route path="/guided-paths/:moduleId" element={<GuidedPathRunner />} />
           <Route path="/objectives" element={<ObjectivesPage />} />
           <Route path="/my-documents" element={<MyDocumentsPage />} />
+          <Route path="/my-reports" element={<MyReportsPage />} />
           <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/timesheet" element={<TimesheetPage />} />
           <Route path="/attendance" element={<AttendancePage />} />

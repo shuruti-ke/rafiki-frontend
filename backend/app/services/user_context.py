@@ -964,6 +964,83 @@ def _extract_names_from_context(text: str, chat_history: list[dict] = None) -> s
 
 
 
+def _get_current_user_role(db: Session, user_id: uuid.UUID) -> Optional[str]:
+    """Return the current user's role (manager, hr_admin, super_admin, etc.) for context branching."""
+    try:
+        from app.models.user import User
+        u = db.query(User).filter(User.user_id == user_id).first()
+        return getattr(u, "role", None) if u else None
+    except Exception:
+        return None
+
+
+def _find_team_member_id_by_name(
+    db: Session,
+    org_id: uuid.UUID,
+    manager_id: uuid.UUID,
+    name: str,
+) -> Optional[uuid.UUID]:
+    """
+    Resolve an employee's user_id by name among all employees the manager can access
+    (direct reports + L2/L3/L4 scope via validate_employee_access). Never includes chat data.
+    """
+    try:
+        from app.models.user import User
+        from app.services.manager_scope import validate_employee_access
+
+        name_lower = (name or "").strip().lower()
+        if len(name_lower) < 2:
+            return None
+        # All active users in org that the manager is allowed to see (except self)
+        candidates = (
+            db.query(User)
+            .filter(User.org_id == org_id, User.is_active == True, User.user_id != manager_id)
+            .all()
+        )
+        for u in candidates:
+            if not validate_employee_access(db, manager_id, u.user_id, org_id):
+                continue
+            report_name = (getattr(u, "name", None) or "").strip().lower()
+            if report_name == name_lower or report_name.startswith(name_lower):
+                return u.user_id
+            if name_lower in report_name.split() or name_lower in report_name:
+                return u.user_id
+        return None
+    except Exception as e:
+        _safe_rollback(db)
+        logger.debug("_find_team_member_id_by_name failed: %s", e)
+        return None
+
+
+def _find_org_employee_id_by_name(db: Session, org_id: uuid.UUID, name: str) -> Optional[uuid.UUID]:
+    """
+    Resolve an employee's user_id by name among all active users in the org.
+    Used for HR admin / super_admin so they can ask about any employee. Never includes chat data.
+    """
+    try:
+        from app.models.user import User
+
+        name_lower = (name or "").strip().lower()
+        if len(name_lower) < 2:
+            return None
+        candidates = (
+            db.query(User)
+            .filter(User.org_id == org_id, User.is_active == True)
+            .all()
+        )
+        for u in candidates:
+            report_name = (getattr(u, "name", None) or "").strip().lower()
+            if report_name == name_lower or report_name.startswith(name_lower):
+                return u.user_id
+            if name_lower in report_name.split() or name_lower in report_name:
+                return u.user_id
+        return None
+    except Exception as e:
+        _safe_rollback(db)
+        logger.debug("_find_org_employee_id_by_name failed: %s", e)
+        return None
+
+
 def _get_direct_reports(db: Session, org_id: uuid.UUID, manager_id: uuid.UUID) -> list:
     """Return active direct reports for a manager. Used for both context and security checks."""
     try:
@@ -1030,16 +1107,17 @@ def _build_direct_report_context(
             if not name or len(name.strip()) < 2:
                 logger.info("⏭️ Skipping name (too short): '%s'", name)
                 continue
-            
-            # HYBRID STEP 1: Get user_id by name (single lookup, user-friendly)
-            report_user_id = _find_report_user_id_by_name(db, org_id, manager_id, name)
-            
+
+            # Resolve by name: managers can access all team members (direct reports + scope)
+            report_user_id = _find_team_member_id_by_name(db, org_id, manager_id, name)
+
             if not report_user_id:
                 logger.warning("❌ NOT FOUND: '%s' for manager '%s'", name, manager_id)
                 continue
-            
+
             logger.info("✅ MAPPED: '%s' → user_id=%s", name, report_user_id)
-            matched_user_ids.append(report_user_id)
+            if report_user_id not in matched_user_ids:
+                matched_user_ids.append(report_user_id)
         
         logger.info("📊 Matched user_ids count: %d from %d names", len(matched_user_ids), len(names_to_search))
 
@@ -1049,166 +1127,13 @@ def _build_direct_report_context(
         
         logger.info("🏗️ Building context for %d matched user_ids", len(matched_user_ids))
         
-        # HYBRID STEP 2: Use user_id to fetch ALL data reliably
+        # HYBRID STEP 2: Use user_id to fetch ALL data reliably (shared block, never includes chat)
         for report_user_id in matched_user_ids[:2]:  # cap at 2 to keep context size reasonable
             logger.info("📝 Fetching profile for user_id=%s", report_user_id)
-            
-            # Get the user profile first
-            from app.models.user import User
-            user_profile = (
-                db.query(User)
-                .filter(
-                    User.user_id == report_user_id,
-                    User.org_id == org_id,
-                    User.is_active == True,
-                )
-                .first()
-            )
-            
-            if not user_profile:
-                logger.warning("⚠️ Could not find user profile for user_id=%s", report_user_id)
-                continue
-            
-            logger.info("✓ Found profile: %s", user_profile.name)
-            
-            parts = [f"DIRECT REPORT PROFILE — {user_profile.name or user_profile.email}:"]
-            if user_profile.job_title:
-                parts.append(f"  Job Title: {user_profile.job_title}")
-            if user_profile.department:
-                parts.append(f"  Department: {user_profile.department}")
-            if user_profile.created_at:
-                try:
-                    days = (date.today() - user_profile.created_at.date()).days
-                    parts.append(f"  Tenure: ~{days // 30} months")
-                except Exception:
-                    pass
-
-            # QUERY 1: Objectives (using user_id)
-            try:
-                from app.models.objective import Objective, KeyResult
-                logger.info("  📋 Fetching objectives for user_id=%s", report_user_id)
-                objectives = (
-                    db.query(Objective)
-                    .filter(
-                        Objective.user_id == report_user_id,
-                        Objective.status.in_(["active", "pending_review", "draft"]),
-                    )
-                    .order_by(desc(Objective.created_at))
-                    .limit(5)
-                    .all()
-                )
-                if objectives:
-                    logger.info("  ✓ Found %d objectives", len(objectives))
-                    parts.append("  Objectives:")
-                    for obj in objectives:
-                        icon = {"active": "●", "pending_review": "◐", "draft": "○"}.get(obj.status, "?")
-                        parts.append(f"    {icon} {obj.title} — {obj.progress}% complete")
-                        if obj.target_date:
-                            try:
-                                days_left = (obj.target_date - date.today()).days
-                                parts.append(f"      Due: {obj.target_date} ({days_left}d remaining)")
-                            except Exception:
-                                pass
-                        krs = db.query(KeyResult).filter(KeyResult.objective_id == obj.id).all()
-                        for kr in krs:
-                            pct = min(int(kr.current_value / kr.target_value * 100), 100) if kr.target_value else 0
-                            parts.append(f"      → {kr.title}: {kr.current_value}/{kr.target_value} {kr.unit or ''} ({pct}%)")
-                else:
-                    logger.info("  - No objectives found")
-                    parts.append("  Objectives: None on record")
-            except Exception as e:
-                _safe_rollback(db)
-                logger.debug("Direct report objectives failed: %s", e)
-
-            # QUERY 2: Timesheet — last 30 days (using user_id)
-            try:
-                from app.models.timesheet import TimesheetEntry
-                logger.info("  ⏱️ Fetching timesheet for user_id=%s", report_user_id)
-                cutoff = date.today() - timedelta(days=30)
-                entries = (
-                    db.query(TimesheetEntry)
-                    .filter(
-                        TimesheetEntry.user_id == report_user_id,
-                        TimesheetEntry.date >= cutoff,
-                    )
-                    .all()
-                )
-                if entries:
-                    total_h = sum(float(e.hours) for e in entries)
-                    work_days = len(set(e.date for e in entries))
-                    submitted = sum(1 for e in entries if e.status in ("submitted", "approved"))
-                    draft = sum(1 for e in entries if e.status == "draft")
-                    parts.append(f"  Timesheet (last 30d): {total_h:.1f}h across {work_days} days")
-                    if draft:
-                        parts.append(f"    ⚠ {draft} draft entries not yet submitted")
-                    by_project = {}
-                    for e in entries:
-                        by_project[e.project] = by_project.get(e.project, 0) + float(e.hours)
-                    top = sorted(by_project.items(), key=lambda x: -x[1])[:3]
-                    parts.append("    Top projects: " + ", ".join(f"{p} ({h:.1f}h)" for p, h in top))
-                else:
-                    parts.append("  Timesheet (last 30d): No entries logged")
-            except Exception as e:
-                _safe_rollback(db)
-                logger.debug("Direct report timesheet failed: %s", e)
-
-            # QUERY 3: Performance feedback and reviews (using user_id)
-            try:
-                logger.info("  ⭐ Fetching performance reviews for user_id=%s", report_user_id)
-                # Try to get recent feedback/reviews if model exists
-                from app.models.performance import PerformanceReview
-                reviews = (
-                    db.query(PerformanceReview)
-                    .filter(
-                        PerformanceReview.employee_id == report_user_id,
-                        PerformanceReview.review_date >= date.today() - timedelta(days=365)
-                    )
-                    .order_by(desc(PerformanceReview.review_date))
-                    .limit(3)
-                    .all()
-                )
-                if reviews:
-                    logger.info("  ✓ Found %d performance reviews", len(reviews))
-                    parts.append("  Recent Performance Reviews:")
-                    for review in reviews:
-                        rating = getattr(review, "rating", "N/A")
-                        parts.append(f"    • {review.review_date}: Rating {rating}/5")
-                        if getattr(review, "summary", None):
-                            summary = review.summary[:100] + "..." if len(review.summary) > 100 else review.summary
-                            parts.append(f"      Summary: {summary}")
-                else:
-                    logger.info("  - No performance reviews found")
-            except Exception as e:
-                _safe_rollback(db)
-                logger.debug("Direct report performance reviews failed (model may not exist): %s", e)
-
-            # QUERY 4: Leave balance (using user_id)
-            try:
-                logger.info("  🏖️ Fetching leave balances for user_id=%s", report_user_id)
-                from sqlalchemy import text as _text
-                bal_rows = db.execute(
-                    _text("""
-                        SELECT leave_type, entitled_days, used_days, carried_over_days
-                        FROM leave_balances
-                        WHERE user_id = :uid AND leave_year = :yr
-                        ORDER BY leave_type
-                    """),
-                    {"uid": str(report_user_id), "yr": date.today().year},
-                ).mappings().all()
-                if bal_rows:
-                    logger.info("  ✓ Found %d leave balance records", len(bal_rows))
-                    parts.append("  Leave balances (this year):")
-                    for b in bal_rows:
-                        available = float(b["entitled_days"]) + float(b["carried_over_days"]) - float(b["used_days"])
-                        parts.append(f"    {b['leave_type']}: {max(0, available):.1f} days remaining")
-                else:
-                    logger.info("  - No leave balances found")
-            except Exception as e:
-                _safe_rollback(db)
-                logger.debug("Direct report leave balance failed: %s", e)
-            
+            block = _build_one_employee_context_block(db, org_id, report_user_id, label="DIRECT REPORT PROFILE")
+            if block:
+                sections.append(block)
             logger.info("✅ Completed context for user_id=%s", report_user_id)
-            sections.append("\n".join(parts))
 
         return "\n\n".join(sections)
 
@@ -1217,6 +1142,194 @@ def _build_direct_report_context(
         logger.warning("_build_direct_report_context failed: %s", e)
         return ""
 
+
+def _build_hr_employee_context(
+    db: Session,
+    org_id: uuid.UUID,
+    hr_user_id: uuid.UUID,
+    user_message: str,
+    chat_history: list[dict] | None = None,
+) -> str:
+    """
+    When an HR admin or super_admin asks about an employee by name, load that
+    employee's summary into context. Same data as team-member view (profile,
+    objectives, timesheet, leave, performance, coaching). Never includes chat.
+    """
+    try:
+        _safe_rollback(db)
+        if not user_message and not chat_history:
+            return ""
+        names_to_search = _extract_names_from_context(user_message, chat_history)
+        if not names_to_search:
+            return ""
+        matched_user_ids = []
+        for name in names_to_search:
+            if not name or len(name.strip()) < 2:
+                continue
+            emp_id = _find_org_employee_id_by_name(db, org_id, name)
+            if emp_id and emp_id not in matched_user_ids:
+                matched_user_ids.append(emp_id)
+        if not matched_user_ids:
+            return ""
+        sections = []
+        for report_user_id in matched_user_ids[:2]:
+            block = _build_one_employee_context_block(db, org_id, report_user_id, label="EMPLOYEE (HR VIEW)")
+            if block:
+                sections.append(block)
+        return "\n\n".join(sections) if sections else ""
+    except Exception as e:
+        _safe_rollback(db)
+        logger.warning("_build_hr_employee_context failed: %s", e)
+        return ""
+
+
+def _build_one_employee_context_block(
+    db: Session,
+    org_id: uuid.UUID,
+    report_user_id: uuid.UUID,
+    label: str = "DIRECT REPORT PROFILE",
+) -> str:
+    """Build the full context block for one employee (profile, objectives, timesheet, leave, performance, coaching). Used by manager and HR. Never includes chat."""
+    try:
+        from app.models.user import User
+
+        user_profile = (
+            db.query(User)
+            .filter(User.user_id == report_user_id, User.org_id == org_id, User.is_active == True)
+            .first()
+        )
+        if not user_profile:
+            return ""
+        parts = [f"{label} — {user_profile.name or user_profile.email}:"]
+        if user_profile.job_title:
+            parts.append(f"  Job Title: {user_profile.job_title}")
+        if user_profile.department:
+            parts.append(f"  Department: {user_profile.department}")
+        if user_profile.created_at:
+            try:
+                days = (date.today() - user_profile.created_at.date()).days
+                parts.append(f"  Tenure: ~{days // 30} months")
+            except Exception:
+                pass
+
+        try:
+            from app.models.objective import Objective, KeyResult
+            objectives = (
+                db.query(Objective)
+                .filter(Objective.user_id == report_user_id, Objective.status.in_(["active", "pending_review", "draft"]))
+                .order_by(desc(Objective.created_at)).limit(5).all()
+            )
+            if objectives:
+                parts.append("  Objectives:")
+                for obj in objectives:
+                    icon = {"active": "●", "pending_review": "◐", "draft": "○"}.get(obj.status, "?")
+                    parts.append(f"    {icon} {obj.title} — {obj.progress}% complete")
+                    if obj.target_date:
+                        try:
+                            days_left = (obj.target_date - date.today()).days
+                            parts.append(f"      Due: {obj.target_date} ({days_left}d remaining)")
+                        except Exception:
+                            pass
+                    krs = db.query(KeyResult).filter(KeyResult.objective_id == obj.id).all()
+                    for kr in krs:
+                        pct = min(int(kr.current_value / kr.target_value * 100), 100) if kr.target_value else 0
+                        parts.append(f"      → {kr.title}: {kr.current_value}/{kr.target_value} {kr.unit or ''} ({pct}%)")
+            else:
+                parts.append("  Objectives: None on record")
+        except Exception:
+            _safe_rollback(db)
+
+        try:
+            from app.models.timesheet import TimesheetEntry
+            cutoff = date.today() - timedelta(days=30)
+            entries = (
+                db.query(TimesheetEntry)
+                .filter(TimesheetEntry.user_id == report_user_id, TimesheetEntry.date >= cutoff)
+                .all()
+            )
+            if entries:
+                total_h = sum(float(e.hours) for e in entries)
+                work_days = len(set(e.date for e in entries))
+                draft = sum(1 for e in entries if e.status == "draft")
+                parts.append(f"  Timesheet (last 30d): {total_h:.1f}h across {work_days} days")
+                if draft:
+                    parts.append(f"    ⚠ {draft} draft entries not yet submitted")
+                by_project = {}
+                for e in entries:
+                    by_project[e.project] = by_project.get(e.project, 0) + float(e.hours)
+                top = sorted(by_project.items(), key=lambda x: -x[1])[:3]
+                parts.append("    Top projects: " + ", ".join(f"{p} ({h:.1f}h)" for p, h in top))
+            else:
+                parts.append("  Timesheet (last 30d): No entries logged")
+        except Exception:
+            _safe_rollback(db)
+
+        try:
+            from app.models.performance import PerformanceReview
+            reviews = (
+                db.query(PerformanceReview)
+                .filter(PerformanceReview.employee_id == report_user_id, PerformanceReview.review_date >= date.today() - timedelta(days=365))
+                .order_by(desc(PerformanceReview.review_date)).limit(3).all()
+            )
+            if reviews:
+                parts.append("  Recent Performance Reviews:")
+                for review in reviews:
+                    rating = getattr(review, "rating", "N/A")
+                    parts.append(f"    • {review.review_date}: Rating {rating}/5")
+                    if getattr(review, "summary", None):
+                        summary = review.summary[:100] + "..." if len(review.summary) > 100 else review.summary
+                        parts.append(f"      Summary: {summary}")
+        except Exception:
+            _safe_rollback(db)
+
+        try:
+            from sqlalchemy import text as _text
+            bal_rows = db.execute(
+                _text("""
+                    SELECT leave_type, entitled_days, used_days, carried_over_days
+                    FROM leave_balances
+                    WHERE user_id = :uid AND leave_year = :yr
+                    ORDER BY leave_type
+                """),
+                {"uid": str(report_user_id), "yr": date.today().year},
+            ).mappings().all()
+            if bal_rows:
+                parts.append("  Leave balances (this year):")
+                for b in bal_rows:
+                    available = float(b["entitled_days"]) + float(b["carried_over_days"]) - float(b["used_days"])
+                    parts.append(f"    {b['leave_type']}: {max(0, available):.1f} days remaining")
+        except Exception:
+            _safe_rollback(db)
+
+        try:
+            from sqlalchemy import text as _text
+            coaching_rows = db.execute(
+                _text("""
+                    SELECT concern, created_at, outcome_logged AS outcome_val
+                    FROM coaching_sessions
+                    WHERE org_id = :org AND employee_member_id = :uid
+                    ORDER BY created_at DESC
+                    LIMIT 5
+                """),
+                {"org": str(org_id), "uid": str(report_user_id)},
+            ).mappings().all()
+            if coaching_rows:
+                parts.append("  Coaching sessions (this employee):")
+                for row in coaching_rows:
+                    date_str = row["created_at"].strftime("%b %d, %Y") if row.get("created_at") else ""
+                    outcome = f" — {row.get('outcome_val') or 'pending'}" if row.get("outcome_val") else ""
+                    concern_short = (row.get("concern") or "")[:80] + ("…" if len(row.get("concern") or "") > 80 else "")
+                    parts.append(f"    • {date_str}: {concern_short}{outcome}")
+            else:
+                parts.append("  Coaching sessions: None on record")
+        except Exception:
+            _safe_rollback(db)
+
+        return "\n".join(parts)
+    except Exception as e:
+        _safe_rollback(db)
+        logger.debug("_build_one_employee_context_block failed: %s", e)
+        return ""
 
 
 def build_user_context(
@@ -1230,7 +1343,10 @@ def build_user_context(
     Entry point. Coerces org_id and user_id to native uuid.UUID immediately.
     All users get their own docs + org KB + objectives etc. (intent-driven).
     chat_history is a list of {"role": ..., "content": ...} dicts from the
-    conversation, used to enrich web search queries with prior context.
+    current user's conversation only; it is used to enrich name resolution and
+    intents. Chat content of other users is never included in context.
+    Managers get team-member data (by name) for employees they can access;
+    HR admin / super_admin get any org employee's data when they ask by name.
     """
     try:
         org_uuid = _as_uuid(org_id)
@@ -1321,21 +1437,28 @@ def build_user_context(
             if ctx:
                 sections.append(ctx)
 
-        # Direct report lookup — triggered whenever message names a report.
-        # Also scans recent chat history so follow-up turns like "tell me about
-        # thomas" work even when the name only appeared in a prior turn.
-        # Security: only loads data for confirmed direct reports (manager_id == user_uuid).
+        # Team/employee lookup — managers get team members (incl. L2/L3/L4 scope); HR gets any org employee.
+        # Chat content is never included in context for other users.
+        role = _get_current_user_role(db, user_uuid)
         if user_message:
-            logger.info("Checking for direct report context for message: %s", user_message[:100])
-            _safe_rollback(db)
-            ctx = _build_direct_report_context(
-                db, org_uuid, user_uuid, user_message, chat_history=chat_history
-            )
-            if ctx:
-                logger.info("Direct report context found: %d chars", len(ctx))
-                sections.append(ctx)
+            if role in ("hr_admin", "super_admin"):
+                logger.info("Checking for HR employee context for message: %s", user_message[:100])
+                _safe_rollback(db)
+                ctx = _build_hr_employee_context(db, org_uuid, user_uuid, user_message, chat_history=chat_history)
+                if ctx:
+                    logger.info("HR employee context found: %d chars", len(ctx))
+                    sections.append(ctx)
             else:
-                logger.info("No direct report context found")
+                logger.info("Checking for direct report context for message: %s", user_message[:100])
+                _safe_rollback(db)
+                ctx = _build_direct_report_context(
+                    db, org_uuid, user_uuid, user_message, chat_history=chat_history
+                )
+                if ctx:
+                    logger.info("Direct report context found: %d chars", len(ctx))
+                    sections.append(ctx)
+                else:
+                    logger.info("No direct report context found")
 
 
 

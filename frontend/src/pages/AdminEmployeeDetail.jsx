@@ -302,6 +302,7 @@ export default function AdminEmployeeDetail() {
   const [education, setEducation] = useState([]);
   const [assets, setAssets] = useState([]);
   const [documents, setDocuments] = useState([]);
+  const [coachingReports, setCoachingReports] = useState([]);
   const [sectionsLoading, setSectionsLoading] = useState(false);
   const [editingWork, setEditingWork] = useState(null);
   const [editingEdu, setEditingEdu] = useState(null);
@@ -379,6 +380,14 @@ export default function AdminEmployeeDetail() {
       if (sumRes?.ok) sumRes.json().then(setDashboardSummary).catch(() => {});
       if (evRes?.ok) evRes.json().then((d) => setEvaluations(Array.isArray(d) ? d : [])).catch(() => {});
     }).catch(() => {});
+  }, [userId]);
+
+  useEffect(() => {
+    if (!userId) return;
+    authFetch(`${API}/api/v1/coaching/for-employee/${userId}`)
+      .then((r) => (r?.ok ? r.json() : []))
+      .then((d) => setCoachingReports(Array.isArray(d) ? d : []))
+      .catch(() => setCoachingReports([]));
   }, [userId]);
 
   useEffect(() => {
@@ -602,41 +611,131 @@ export default function AdminEmployeeDetail() {
           </button>
         </div>
 
-        {/* Manager view — coaching, toolkit, dashboard (dive deeper) */}
+        {/* Employee reports — coaching, toolkit, and summary (this employee only) */}
         <div className="emp-detail-overview emp-detail-overview--manager">
           <button
             type="button"
             className="emp-overview-card emp-overview-card--clickable emp-overview-card--manager"
-            onClick={() => navigate("/manager/coaching")}
-            aria-label="Open manager coaching sessions"
+            onClick={() => document.getElementById("section-coaching-reports")?.scrollIntoView({ behavior: "smooth" })}
+            aria-label="View coaching reports for this employee"
           >
             <div className="emp-overview-icon">🧠</div>
-            <div className="emp-overview-value">Coaching</div>
-            <div className="emp-overview-label">Manager coaching sessions</div>
-            <span className="emp-overview-hint">Open →</span>
+            <div className="emp-overview-value">{coachingReports.length}</div>
+            <div className="emp-overview-label">Coaching reports</div>
+            <span className="emp-overview-hint">View →</span>
           </button>
           <button
             type="button"
             className="emp-overview-card emp-overview-card--clickable emp-overview-card--manager"
-            onClick={() => navigate("/manager/toolkit")}
-            aria-label="Open HR Toolkit"
+            onClick={() => document.getElementById("section-toolkit-reports")?.scrollIntoView({ behavior: "smooth" })}
+            aria-label="View toolkit reports for this employee"
           >
             <div className="emp-overview-icon">🛠️</div>
-            <div className="emp-overview-value">Toolkit</div>
-            <div className="emp-overview-label">HR Toolkit</div>
-            <span className="emp-overview-hint">Open →</span>
+            <div className="emp-overview-value">—</div>
+            <div className="emp-overview-label">Toolkit reports</div>
+            <span className="emp-overview-hint">View →</span>
           </button>
           <button
             type="button"
             className="emp-overview-card emp-overview-card--clickable emp-overview-card--manager"
-            onClick={() => navigate("/manager")}
-            aria-label="Open manager dashboard for reports"
+            onClick={() => document.getElementById("section-reports")?.scrollIntoView({ behavior: "smooth" })}
+            aria-label="View all employee reports"
           >
             <div className="emp-overview-icon">📊</div>
             <div className="emp-overview-value">Reports</div>
-            <div className="emp-overview-label">Manager dashboard</div>
+            <div className="emp-overview-label">Employee reports</div>
             <span className="emp-overview-hint">Insights →</span>
           </button>
+        </div>
+
+        {/* Coaching reports — sessions with this employee (visible to employee, manager, HR) */}
+        <div id="section-coaching-reports" className="emp-detail-card">
+          <div className="emp-card-title">Coaching reports (this employee)</div>
+          <p className="emp-section-desc">
+            Coaching sessions held with this employee. These reports are also available in the employee&apos;s private documents (visible only to them, their manager, and HR).
+          </p>
+          {coachingReports.length === 0 ? (
+            <p className="emp-muted">No coaching sessions on record for this employee.</p>
+          ) : (
+            <div className="emp-eval-list">
+              {coachingReports.map((s) => (
+                <div key={s.id} className="emp-eval-card">
+                  <div className="emp-eval-header">
+                    <strong>
+                      {s.created_at
+                        ? new Date(s.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+                        : "Session"}
+                    </strong>
+                    {s.outcome && (
+                      <span className="emp-eval-badge" style={{ textTransform: "capitalize" }}>{s.outcome.replace("_", " ")}</span>
+                    )}
+                  </div>
+                  {s.concern && (
+                    <div className="emp-eval-field">
+                      <span className="emp-eval-label">Concern:</span> {s.concern}
+                    </div>
+                  )}
+                  {s.notes && (
+                    <div className="emp-eval-field">
+                      <span className="emp-eval-label">Notes:</span> {s.notes}
+                    </div>
+                  )}
+                  {s.action_items?.length > 0 && (
+                    <div className="emp-eval-field">
+                      <span className="emp-eval-label">Action items:</span>
+                      <ul style={{ margin: "4px 0 0 16px", padding: 0 }}>
+                        {s.action_items.map((a, i) => (
+                          <li key={i}>
+                            {typeof a === "object" ? (a.text || a.description || JSON.stringify(a)) : String(a)}
+                            {a.due_date && ` (due ${a.due_date})`}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {s.follow_up_date && (
+                    <div className="emp-eval-field">
+                      <span className="emp-eval-label">Follow-up date:</span> {s.follow_up_date}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Toolkit reports — placeholder for employee-specific toolkit outputs */}
+        <div id="section-toolkit-reports" className="emp-detail-card">
+          <div className="emp-card-title">Toolkit reports (this employee)</div>
+          <p className="emp-section-desc">
+            Reports or documents generated from the HR toolkit for this employee (e.g. 1:1 prep, feedback scripts). Only visible to the employee, their manager, and HR.
+          </p>
+          <p className="emp-muted">No toolkit reports for this employee yet. When managers use the HR toolkit in context of this employee, reports will appear here and in the employee&apos;s private documents.</p>
+        </div>
+
+        {/* Employee reports summary */}
+        <div id="section-reports" className="emp-detail-card">
+          <div className="emp-card-title">Employee reports</div>
+          <p className="emp-section-desc">
+            Summary of reports for this employee. Coaching sessions and performance evaluations below are part of their record and visible in their knowledge base / private documents.
+          </p>
+          <div className="emp-profile-grid" style={{ marginTop: 8 }}>
+            <div className="emp-profile-row">
+              <span className="emp-profile-label">Coaching sessions</span>
+              <span className="emp-profile-value">{coachingReports.length}</span>
+            </div>
+            <div className="emp-profile-row">
+              <span className="emp-profile-label">Performance evaluations</span>
+              <span className="emp-profile-value">{evaluations.length}</span>
+            </div>
+            <div className="emp-profile-row">
+              <span className="emp-profile-label">Documents</span>
+              <span className="emp-profile-value">{documents?.length ?? 0}</span>
+            </div>
+          </div>
+          <p className="emp-muted" style={{ marginTop: 12, fontSize: "0.85rem" }}>
+            Scroll to &quot;Coaching reports&quot; or &quot;Performance evaluations&quot; below for full detail. The employee and their manager can also view coaching reports in their own portal.
+          </p>
         </div>
 
         {/* Performance evaluations */}
