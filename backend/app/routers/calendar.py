@@ -64,11 +64,9 @@ def create_event(
             if att_id == user_id:
                 continue
             _insert_notification(
-                db, user_id=att_id, org_id=org_id,
-                kind="calendar_invite",
-                title=f"Meeting invite: {body.title}",
-                body=f"{organiser_name} invited you to '{body.title}' on {start_label}. Open your calendar to accept or decline.",
-                link="/calendar",
+                db, att_id, org_id,
+                f"{organiser_name} invited you to '{body.title}' on {start_label}. Open your calendar to accept or decline.",
+                notification_type="calendar_invite",
             )
         except Exception as e:
             logger.warning("Failed to notify calendar attendee: %s", e)
@@ -281,11 +279,9 @@ def rsvp_event(
             responder_name = (responder.name if responder else None) or "Someone"
             status_label = {"accepted": "accepted", "declined": "declined", "tentative": "tentatively accepted"}.get(body.status, body.status)
             _insert_notification(
-                db, user_id=event.user_id, org_id=org_id,
-                kind="calendar_rsvp",
-                title=f"{responder_name} {status_label} '{event.title}'",
-                body=f"Go to your calendar to see the updated attendee list.",
-                link="/calendar",
+                db, event.user_id, org_id,
+                f"{responder_name} {status_label} '{event.title}'. Go to your calendar to see the updated attendee list.",
+                notification_type="calendar_rsvp",
             )
             db.commit()
         except Exception as e:
@@ -333,11 +329,9 @@ def request_modify(
 
     try:
         _insert_notification(
-            db, user_id=event.user_id, org_id=org_id,
-            kind="calendar_modify_request",
-            title=f"Change request: '{event.title}'",
-            body=" ".join(parts),
-            link="/calendar",
+            db, event.user_id, org_id,
+            " ".join(parts),
+            notification_type="calendar_modify_request",
         )
         db.commit()
     except Exception as e:
