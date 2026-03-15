@@ -68,7 +68,7 @@ def _sync_leave_to_calendar(
             title=title_label,
             start_time=start_dt,
             end_time=end_dt,
-            event_type="leave",
+            event_type="out-of-office",
             source="leave",
             external_id=f"leave_{app_id}_{current.isoformat()}",
         )

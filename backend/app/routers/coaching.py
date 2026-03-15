@@ -234,7 +234,7 @@ def _sync_coaching_to_calendar(
         end = datetime(d.year, d.month, d.day, 23, 59, 59, tzinfo=timezone.utc)
         return start, end
 
-    def _add_event(owner_id: uuid.UUID, title: str, desc: str, d: date, ext_id: str):
+    def _add_event(owner_id: uuid.UUID, title: str, desc: str, d: date, ext_id: str, etype: str = "task"):
         start, end = _make_all_day_range(d)
         ev = CalendarEvent(
             org_id=org_id,
@@ -245,7 +245,7 @@ def _sync_coaching_to_calendar(
             end_time=end,
             is_all_day=True,
             is_shared=False,
-            event_type="coaching",
+            event_type=etype,
             color="#8b5cf6",
             source="coaching",
             external_id=ext_id,
@@ -264,8 +264,8 @@ def _sync_coaching_to_calendar(
             text_part += "…"
         title = f"Coaching: {text_part}" if text_part else "Coaching action item"
         ext_id = f"{prefix}action_{i}"
-        _add_event(manager_id, title, item.get("text") or "", due, ext_id)
-        _add_event(employee_id, title, item.get("text") or "", due, ext_id)
+        _add_event(manager_id, title, item.get("text") or "", due, ext_id, etype="task")
+        _add_event(employee_id, title, item.get("text") or "", due, ext_id, etype="task")
 
     # Follow-up date
     if follow_up_date:
@@ -274,8 +274,8 @@ def _sync_coaching_to_calendar(
             concern_short += "…"
         title = f"Coaching follow-up: {concern_short}" if concern_short else "Coaching follow-up"
         ext_id = f"{prefix}followup"
-        _add_event(manager_id, title, concern or "", follow_up_date, ext_id)
-        _add_event(employee_id, title, concern or "", follow_up_date, ext_id)
+        _add_event(manager_id, title, concern or "", follow_up_date, ext_id, etype="reminder")
+        _add_event(employee_id, title, concern or "", follow_up_date, ext_id, etype="reminder")
 
     try:
         db.commit()

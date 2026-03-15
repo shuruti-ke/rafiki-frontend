@@ -55,7 +55,7 @@ def _sync_shift_to_calendar(
         title=f"Shift: {template_name}",
         start_time=start_dt,
         end_time=end_dt,
-        event_type="shift",
+        event_type="general",
         source="shift",
         external_id=f"shift_{assignment_id}",
     )
