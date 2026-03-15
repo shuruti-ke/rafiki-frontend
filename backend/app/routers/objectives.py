@@ -57,6 +57,7 @@ def _sync_objective_to_calendar(
             db.rollback()
         return
 
+    db.flush()  # Execute DELETEs before INSERTs
     d = obj.target_date
     start = datetime(d.year, d.month, d.day, 0, 0, 0, tzinfo=timezone.utc)
     end = datetime(d.year, d.month, d.day, 23, 59, 59, tzinfo=timezone.utc)

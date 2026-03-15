@@ -61,6 +61,7 @@ def _sync_meeting_to_calendar(db: Session, org_id: uuid.UUID, meeting: Meeting) 
     from datetime import timedelta, timezone
 
     _remove_meeting_from_calendar(db, org_id, meeting.id)
+    db.flush()  # Execute DELETEs before INSERTs
 
     if not meeting.scheduled_at:
         try:

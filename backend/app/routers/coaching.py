@@ -228,6 +228,7 @@ def _sync_coaching_to_calendar(
     for ev in existing:
         if ev.external_id and ev.external_id.startswith(prefix):
             db.delete(ev)
+    db.flush()  # Execute DELETEs before INSERTs to avoid unique constraint violation
 
     def _make_all_day_range(d: date):
         start = datetime(d.year, d.month, d.day, 0, 0, 0, tzinfo=timezone.utc)
