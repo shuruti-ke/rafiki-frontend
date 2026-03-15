@@ -251,13 +251,17 @@ def create_coaching_session(
     _role: str = Depends(require_manager),
 ):
     """Generate an AI coaching plan from performance data only."""
+    from app.models.user import User
+
     if not validate_employee_access(db, user_id, data.employee_member_id, org_id):
-        raise HTTPException(status_code=403, detail="Access denied for this employee")
+        # Fallback: if employee is in same org and user passed require_manager, allow
+        emp = db.query(User).filter(User.user_id == data.employee_member_id).first()
+        if not emp or (emp.org_id is not None and emp.org_id != org_id):
+            raise HTTPException(status_code=403, detail="Access denied for this employee")
 
     if not can_use_feature(db, user_id, org_id, "coaching_ai"):
         raise HTTPException(status_code=403, detail="Coaching AI feature not enabled for your role")
 
-    from app.models.user import User
     emp = db.query(User).filter(User.user_id == data.employee_member_id).first()
     emp_name = emp.name if emp else f"Employee #{data.employee_member_id}"
 

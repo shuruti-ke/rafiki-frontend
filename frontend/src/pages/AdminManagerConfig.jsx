@@ -1,14 +1,25 @@
 import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { API, authFetch } from "../api.js";
 import "./AdminManagerConfig.css";
 
+const MANAGER_LEVELS = ["L1", "L2", "L3"];
+const ALLOWED_DATA_TYPES = ["profile", "objectives", "evaluations"];
+const ALLOWED_FEATURES = [
+  { id: "coaching_ai", label: "AI Coaching" },
+  { id: "toolkit", label: "HR Toolkit" },
+];
+
 export default function AdminManagerConfig() {
   const [employees, setEmployees] = useState([]);
+  const [managerConfigs, setManagerConfigs] = useState([]);
   const [loading, setLoading]     = useState(true);
   const [saving, setSaving]       = useState(null); // user_id being saved
+  const [savingConfig, setSavingConfig] = useState(null); // user_id for config save
   const [search, setSearch]       = useState("");
   const [filterMgr, setFilterMgr] = useState("all");
   const [toast, setToast]         = useState(null);
+  const [optionsForManager, setOptionsForManager] = useState(null); // user_id when panel open
 
   const showToast = (msg, ok = true) => {
     setToast({ msg, ok });
@@ -18,8 +29,12 @@ export default function AdminManagerConfig() {
   const load = async () => {
     setLoading(true);
     try {
-      const r = await authFetch(`${API}/api/v1/employees/`);
-      if (r.ok) setEmployees(await r.json());
+      const [empRes, configRes] = await Promise.all([
+        authFetch(`${API}/api/v1/employees/`),
+        authFetch(`${API}/api/v1/manager/admin/configs`),
+      ]);
+      if (empRes.ok) setEmployees(await empRes.json());
+      if (configRes.ok) setManagerConfigs(await configRes.json());
     } catch {}
     setLoading(false);
   };
@@ -30,6 +45,113 @@ export default function AdminManagerConfig() {
   const managers = employees.filter(e =>
     ["manager","hr_admin","super_admin"].includes(e.user?.role)
   );
+
+  const getConfigForManager = (userId) =>
+    managerConfigs.find(c => c.user_id === userId) || null;
+
+  const departments = [...new Set(
+    employees
+      .map(e => e.user?.department || e.profile?.department || "")
+      .filter(Boolean)
+  )].sort();
+
+  const [optionsForm, setOptionsForm] = useState({
+    manager_level: "L1",
+    department_scope: [],
+    allowed_data_types: ["profile", "objectives", "evaluations"],
+    allowed_features: ["coaching_ai"],
+  });
+
+  const openOptions = (m) => {
+    const cfg = getConfigForManager(m.user?.user_id);
+    setOptionsForManager(m.user?.user_id);
+    setOptionsForm(cfg ? {
+      manager_level: cfg.manager_level || "L1",
+      department_scope: Array.isArray(cfg.department_scope) ? [...cfg.department_scope] : [],
+      allowed_data_types: Array.isArray(cfg.allowed_data_types) ? [...cfg.allowed_data_types] : ["profile", "objectives", "evaluations"],
+      allowed_features: Array.isArray(cfg.allowed_features) ? [...cfg.allowed_features] : ["coaching_ai"],
+    } : {
+      manager_level: "L1",
+      department_scope: [],
+      allowed_data_types: ["profile", "objectives", "evaluations"],
+      allowed_features: ["coaching_ai"],
+    });
+  };
+
+  const updateOptionsForm = (field, value) => {
+    setOptionsForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const toggleList = (field, item) => {
+    setOptionsForm(prev => {
+      const list = prev[field] || [];
+      const next = list.includes(item) ? list.filter(x => x !== item) : [...list, item];
+      return { ...prev, [field]: next };
+    });
+  };
+
+  const saveManagerOptions = async () => {
+    const userId = optionsForManager;
+    if (!userId) return;
+    const cfg = getConfigForManager(userId);
+    setSavingConfig(userId);
+    try {
+      if (cfg) {
+        const r = await authFetch(`${API}/api/v1/manager/admin/configs/${cfg.id}`, {
+          method: "PUT",
+          body: JSON.stringify({
+            manager_level: optionsForm.manager_level,
+            department_scope: optionsForm.department_scope,
+            allowed_data_types: optionsForm.allowed_data_types,
+            allowed_features: optionsForm.allowed_features,
+          }),
+        });
+        if (r.ok) {
+          showToast("Manager options updated");
+          await load();
+          setOptionsForManager(null);
+        } else {
+          const d = await r.json();
+          showToast(d.detail || "Update failed", false);
+        }
+      } else {
+        const r = await authFetch(`${API}/api/v1/manager/admin/configs`, {
+          method: "POST",
+          body: JSON.stringify({
+            user_id: userId,
+            manager_level: optionsForm.manager_level,
+            department_scope: optionsForm.department_scope,
+            allowed_data_types: optionsForm.allowed_data_types,
+            allowed_features: optionsForm.allowed_features,
+          }),
+        });
+        if (r.ok) {
+          showToast("Manager options added");
+          await load();
+          setOptionsForManager(null);
+        } else {
+          const d = await r.json();
+          showToast(d.detail || "Create failed", false);
+        }
+      }
+    } catch { showToast("Network error", false); }
+    setSavingConfig(null);
+  };
+
+  const removeManagerConfig = async (configId) => {
+    if (!window.confirm("Remove these options for this manager? They will still have manager role but use default scope.")) return;
+    try {
+      const r = await authFetch(`${API}/api/v1/manager/admin/configs/${configId}`, { method: "DELETE" });
+      if (r.ok) {
+        showToast("Manager options removed");
+        await load();
+        setOptionsForManager(null);
+      } else {
+        const d = await r.json();
+        showToast(d.detail || "Delete failed", false);
+      }
+    } catch { showToast("Network error", false); }
+  };
 
   // Promote/demote role
   const setRole = async (emp, newRole) => {
@@ -113,7 +235,12 @@ export default function AdminManagerConfig() {
           <h1>Manager Configuration</h1>
           <p>Assign employees to managers and manage roles</p>
         </div>
-        <div className="mgrcfg-stats">
+        <div className="mgrcfg-header-actions">
+          <Link to="/manager/coaching" className="mgrcfg-coaching-link">
+            <span className="mgrcfg-coaching-icon">🧠</span>
+            AI Coaching
+          </Link>
+          <div className="mgrcfg-stats">
           <div className="mgrcfg-stat">
             <span className="mgrcfg-stat-num">{managers.length}</span>
             <span className="mgrcfg-stat-lbl">Managers</span>
@@ -130,6 +257,7 @@ export default function AdminManagerConfig() {
             </span>
             <span className="mgrcfg-stat-lbl">Unassigned</span>
           </div>
+          </div>
         </div>
       </div>
 
@@ -140,18 +268,132 @@ export default function AdminManagerConfig() {
           <div className="mgrcfg-mgr-cards">
             {managers.map(m => {
               const reports = employees.filter(e => e.user?.manager_id === m.user?.user_id);
+              const cfg = getConfigForManager(m.user?.user_id);
+              const optionsOpen = optionsForManager === m.user?.user_id;
               return (
-                <div key={m.user?.user_id} className="mgrcfg-mgr-card">
+                <div key={m.user?.user_id} className={`mgrcfg-mgr-card${optionsOpen ? " mgrcfg-mgr-card--open" : ""}`}>
                   <div className="mgrcfg-mgr-av">{initial(m)}</div>
                   <div className="mgrcfg-mgr-info">
                     <div className="mgrcfg-mgr-name">{m.user?.name || m.user?.email}</div>
                     <div className="mgrcfg-mgr-dept">{m.user?.department || m.profile?.department || "—"}</div>
                   </div>
                   <div className="mgrcfg-mgr-reports">{reports.length} reports</div>
+                  <button
+                    type="button"
+                    className="mgrcfg-mgr-options-btn"
+                    onClick={() => optionsOpen ? setOptionsForManager(null) : openOptions(m)}
+                    aria-expanded={optionsOpen}
+                  >
+                    {cfg ? "Edit options" : "Add options"}
+                  </button>
                 </div>
               );
             })}
           </div>
+
+          {/* Expandable options panel for selected manager */}
+          {optionsForManager && (() => {
+            const m = managers.find(x => x.user?.user_id === optionsForManager);
+            const cfg = m ? getConfigForManager(m.user?.user_id) : null;
+            if (!m) return null;
+            return (
+              <div className="mgrcfg-options-panel">
+                <h3 className="mgrcfg-options-title">Options for {m.user?.name || m.user?.email}</h3>
+
+                <div className="mgrcfg-options-row">
+                  <label className="mgrcfg-options-label">Manager level</label>
+                  <select
+                    className="mgrcfg-options-select"
+                    value={optionsForm.manager_level}
+                    onChange={e => updateOptionsForm("manager_level", e.target.value)}
+                  >
+                    {MANAGER_LEVELS.map(l => (
+                      <option key={l} value={l}>{l}</option>
+                    ))}
+                  </select>
+                  <span className="mgrcfg-options-hint">L1 = direct reports only, L2 = reports of reports, L3 = department scope</span>
+                </div>
+
+                <div className="mgrcfg-options-row">
+                  <label className="mgrcfg-options-label">Department scope (L3)</label>
+                  <div className="mgrcfg-options-chips">
+                    {departments.map(d => (
+                      <label key={d} className="mgrcfg-options-chip">
+                        <input
+                          type="checkbox"
+                          checked={optionsForm.department_scope.includes(d)}
+                          onChange={() => toggleList("department_scope", d)}
+                        />
+                        <span>{d}</span>
+                      </label>
+                    ))}
+                    {departments.length === 0 && (
+                      <span className="mgrcfg-options-muted">No departments in org yet</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mgrcfg-options-row">
+                  <label className="mgrcfg-options-label">Allowed data types</label>
+                  <div className="mgrcfg-options-chips">
+                    {ALLOWED_DATA_TYPES.map(d => (
+                      <label key={d} className="mgrcfg-options-chip">
+                        <input
+                          type="checkbox"
+                          checked={optionsForm.allowed_data_types.includes(d)}
+                          onChange={() => toggleList("allowed_data_types", d)}
+                        />
+                        <span>{d}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mgrcfg-options-row">
+                  <label className="mgrcfg-options-label">Allowed features</label>
+                  <div className="mgrcfg-options-chips">
+                    {ALLOWED_FEATURES.map(({ id, label }) => (
+                      <label key={id} className="mgrcfg-options-chip">
+                        <input
+                          type="checkbox"
+                          checked={optionsForm.allowed_features.includes(id)}
+                          onChange={() => toggleList("allowed_features", id)}
+                        />
+                        <span>{label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mgrcfg-options-actions">
+                  <button
+                    type="button"
+                    className="mgrcfg-options-save"
+                    onClick={saveManagerOptions}
+                    disabled={savingConfig === optionsForManager}
+                  >
+                    {savingConfig === optionsForManager ? "Saving…" : "Save options"}
+                  </button>
+                  {cfg && (
+                    <button
+                      type="button"
+                      className="mgrcfg-options-remove"
+                      onClick={() => removeManagerConfig(cfg.id)}
+                    >
+                      Remove options
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="mgrcfg-options-cancel"
+                    onClick={() => setOptionsForManager(null)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 

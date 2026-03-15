@@ -81,35 +81,34 @@ def validate_employee_access(
     if _is_super_admin(db, manager_user_id):
         return True
 
-    # hr_admin can access any employee in their org (same as /manager/team behaviour)
-    if _role_is(db, manager_user_id, "hr_admin"):
-        emp = db.query(User).filter(User.user_id == employee_user_id).first()
-        if emp and (emp.org_id is None or emp.org_id == org_id):
-            return True
-        return False
-
-    config = get_manager_config(db, manager_user_id, org_id)
-    if not config:
-        # Manager without config: allow if employee is a direct report or in same org
-        if _role_is(db, manager_user_id, "manager"):
-            emp = db.query(User).filter(User.user_id == employee_user_id).first()
-            if not emp:
-                return False
-            if emp.org_id is not None and emp.org_id != org_id:
-                return False
-            # Direct report (manager_id points to this manager) or same org
-            if emp.manager_id == manager_user_id:
-                return True
-            if emp.org_id == org_id:
-                return True
+    emp = db.query(User).filter(User.user_id == employee_user_id).first()
+    if not emp:
         return False
 
     # Manager can't view their own data through manager tools
     if manager_user_id == employee_user_id:
         return False
 
-    # L4 managers can only see aggregates, not individuals
-    if config.manager_level == "L4":
+    # Employee must be in same org (or unassigned)
+    if emp.org_id is not None and emp.org_id != org_id:
+        return False
+
+    # hr_admin can access any employee in their org
+    if _role_is(db, manager_user_id, "hr_admin"):
+        return True
+
+    config = get_manager_config(db, manager_user_id, org_id)
+    if not config:
+        # Manager without config: allow if direct report or same org
+        if _role_is(db, manager_user_id, "manager"):
+            if emp.manager_id == manager_user_id or emp.org_id == org_id:
+                return True
+        return False
+
+    # L4 managers: allow same-org for coaching/toolkit (individual access)
+    if getattr(config, "manager_level", None) == "L4":
+        if emp.org_id == org_id:
+            return True
         return False
 
     # TODO: enforce hierarchy/department scoping when OrgMember exists
@@ -127,10 +126,11 @@ def get_allowed_features(db: Session, user_id: UUID, org_id: UUID) -> list[str]:
 
 
 def can_use_feature(db: Session, user_id: UUID, org_id: UUID, feature: str) -> bool:
-    # hr_admin, super_admin, and manager can use coaching_ai and toolkit without a ManagerConfig
-    role = _get_user_role(db, user_id)
-    if role is not None and feature in ("coaching_ai", "toolkit"):
-        r = role.strip().lower()
-        if r in ("hr_admin", "super_admin", "manager"):
-            return True
+    # Manager-like roles can use coaching_ai and toolkit (case-insensitive, any variant)
+    if feature in ("coaching_ai", "toolkit"):
+        role = _get_user_role(db, user_id)
+        if role is not None:
+            r = role.strip().lower()
+            if r in ("hr_admin", "super_admin", "manager") or "admin" in r:
+                return True
     return feature in get_allowed_features(db, user_id, org_id)

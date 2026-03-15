@@ -28,6 +28,23 @@
 }
 .mgrcfg-header h1 { font-size: 1.5rem; font-weight: 800; color: var(--navy); margin: 0 0 4px; }
 .mgrcfg-header p  { color: var(--gray); font-size: 0.88rem; margin: 0; }
+.mgrcfg-header-actions {
+  display: flex; align-items: center; gap: 20px; flex-shrink: 0;
+}
+.mgrcfg-coaching-link {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 10px 18px; border-radius: 10px;
+  background: linear-gradient(135deg, var(--purple), #9F7AEA);
+  color: white; font-size: 0.9rem; font-weight: 700; text-decoration: none;
+  box-shadow: 0 2px 8px rgba(123, 47, 190, 0.3);
+  transition: transform 0.15s ease, box-shadow 0.2s ease;
+}
+.mgrcfg-coaching-link:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(123, 47, 190, 0.4);
+  color: white;
+}
+.mgrcfg-coaching-icon { font-size: 1.1rem; }
 .mgrcfg-stats { display: flex; gap: 16px; }
 .mgrcfg-stat  { text-align: center; background: var(--white); border: 1px solid var(--border); border-radius: 10px; padding: 12px 20px; }
 .mgrcfg-stat-num { display: block; font-size: 1.6rem; font-weight: 800; color: var(--purple); line-height: 1; }
@@ -55,6 +72,63 @@
   margin-left: 8px; background: var(--bg); color: var(--purple);
   font-size: 0.75rem; font-weight: 700; padding: 3px 9px; border-radius: 10px;
 }
+.mgrcfg-mgr-options-btn {
+  margin-left: auto;
+  padding: 5px 12px; border-radius: 8px; font-size: 0.78rem; font-weight: 600;
+  border: 1.5px solid var(--purple); color: var(--purple); background: var(--white);
+  cursor: pointer; transition: all 0.2s; white-space: nowrap;
+}
+.mgrcfg-mgr-options-btn:hover { background: var(--purple); color: white; }
+.mgrcfg-mgr-card--open .mgrcfg-mgr-options-btn { background: var(--purple); color: white; }
+
+/* Manager options panel */
+.mgrcfg-options-panel {
+  margin-top: 16px; padding: 20px; background: var(--white);
+  border: 1px solid var(--border); border-radius: 12px;
+  border-left: 4px solid var(--purple);
+}
+.mgrcfg-options-title { font-size: 1rem; font-weight: 700; color: var(--navy); margin: 0 0 16px; }
+.mgrcfg-options-row { margin-bottom: 16px; }
+.mgrcfg-options-row:last-of-type { margin-bottom: 20px; }
+.mgrcfg-options-label {
+  display: block; font-size: 0.8rem; font-weight: 700; color: var(--gray);
+  text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px;
+}
+.mgrcfg-options-select {
+  padding: 8px 12px; border: 1.5px solid var(--border); border-radius: 8px;
+  font-size: 0.88rem; color: var(--navy); background: var(--white);
+  font-family: inherit; min-width: 100px;
+}
+.mgrcfg-options-hint { font-size: 0.75rem; color: var(--gray); margin-left: 10px; }
+.mgrcfg-options-chips {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+}
+.mgrcfg-options-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: 8px; background: var(--bg);
+  border: 1px solid var(--border); font-size: 0.82rem; font-weight: 600;
+  color: var(--navy); cursor: pointer; user-select: none;
+}
+.mgrcfg-options-chip input { accent-color: var(--purple); }
+.mgrcfg-options-chip:has(input:checked) { background: #EDE9FE; border-color: var(--purple); color: var(--purple); }
+.mgrcfg-options-muted { font-size: 0.82rem; color: var(--gray); }
+.mgrcfg-options-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.mgrcfg-options-save {
+  padding: 8px 18px; border-radius: 8px; font-size: 0.88rem; font-weight: 700;
+  background: var(--purple); color: white; border: none; cursor: pointer;
+}
+.mgrcfg-options-save:hover:not(:disabled) { filter: brightness(1.05); }
+.mgrcfg-options-save:disabled { opacity: 0.7; cursor: not-allowed; }
+.mgrcfg-options-remove {
+  padding: 8px 14px; border-radius: 8px; font-size: 0.82rem; font-weight: 600;
+  background: white; color: #B91C1C; border: 1.5px solid #FCA5A5; cursor: pointer;
+}
+.mgrcfg-options-remove:hover { background: #FEF2F2; }
+.mgrcfg-options-cancel {
+  padding: 8px 14px; border-radius: 8px; font-size: 0.82rem; font-weight: 600;
+  background: white; color: var(--gray); border: 1.5px solid var(--border); cursor: pointer;
+}
+.mgrcfg-options-cancel:hover { background: var(--bg); }
 
 /* Filters */
 .mgrcfg-filters { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
