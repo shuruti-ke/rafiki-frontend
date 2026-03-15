@@ -321,6 +321,23 @@ def request_modify(
     requester = db.query(User).filter(User.user_id == user_id).first()
     requester_name = (requester.name if requester else None) or "Someone"
 
+    # Store the request on the event so the owner can act on it
+    mod = {
+        "id": str(uuid.uuid4()),
+        "requester_id": str(user_id),
+        "requester_name": requester_name,
+        "requested_date": body.requested_date,
+        "requested_time": body.requested_time,
+        "requested_location": body.requested_location,
+        "note": body.note,
+        "created_at": datetime.utcnow().isoformat(),
+    }
+    mods = list(event.pending_modifications or [])
+    mods.append(mod)
+    event.pending_modifications = mods
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(event, "pending_modifications")
+
     parts = [f"{requester_name} requested a change to '{event.title}'."]
     if body.requested_date:
         parts.append(f"Proposed date: {body.requested_date}")
@@ -331,19 +348,124 @@ def request_modify(
     if body.note:
         parts.append(f"Note: {body.note}")
 
+    _insert_notification(
+        db, event.user_id, org_id,
+        " ".join(parts),
+        notification_type="calendar_modify_request",
+        title=f"Change request: '{event.title}'",
+        link="/calendar",
+    )
+    db.commit()
+    return {"ok": True, "message": "Change request sent to the organiser"}
+
+
+class ModifyRespondBody(BaseModel):
+    mod_id: str
+
+
+@router.post("/{event_id}/modify-accept")
+def accept_modify(
+    event_id: uuid.UUID,
+    body: ModifyRespondBody,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    db: Session = Depends(get_db),
+):
+    event = db.query(CalendarEvent).filter(
+        CalendarEvent.id == event_id,
+        CalendarEvent.org_id == org_id,
+    ).first()
+    if not event:
+        raise HTTPException(404, "Event not found")
+    if event.user_id != user_id:
+        raise HTTPException(403, "Only the event owner can accept changes")
+
+    mods = list(event.pending_modifications or [])
+    mod = next((m for m in mods if m["id"] == body.mod_id), None)
+    if not mod:
+        raise HTTPException(404, "Modification request not found")
+
+    # Apply the proposed changes
+    if mod.get("requested_date") or mod.get("requested_time"):
+        base_dt = event.start_time or datetime.utcnow()
+        new_date = mod.get("requested_date") or base_dt.strftime("%Y-%m-%d")
+        new_time = mod.get("requested_time") or base_dt.strftime("%H:%M")
+        try:
+            new_start = datetime.fromisoformat(f"{new_date}T{new_time}:00")
+            if event.end_time and event.start_time:
+                duration = event.end_time - event.start_time
+                event.end_time = new_start + duration
+            event.start_time = new_start
+        except Exception as e:
+            logger.warning("Could not parse proposed date/time: %s", e)
+    if mod.get("requested_location"):
+        event.location = mod["requested_location"]
+
+    # Remove this modification from the list
+    event.pending_modifications = [m for m in mods if m["id"] != body.mod_id]
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(event, "pending_modifications")
+
+    # Notify the requester
     try:
+        owner = db.query(User).filter(User.user_id == user_id).first()
+        owner_name = (owner.name if owner else None) or "The organiser"
         _insert_notification(
-            db, event.user_id, org_id,
-            " ".join(parts),
-            notification_type="calendar_modify_request",
-            title=f"Change request: '{event.title}'",
+            db, uuid.UUID(mod["requester_id"]), org_id,
+            f"{owner_name} accepted your change request for '{event.title}'.",
+            notification_type="calendar_rsvp",
+            title=f"Change accepted: '{event.title}'",
             link="/calendar",
         )
-        db.commit()
     except Exception as e:
-        logger.warning("Modify request notification failed (non-fatal): %s", e)
-        raise HTTPException(500, "Failed to send modify request")
+        logger.warning("Accept notification failed (non-fatal): %s", e)
 
-    return {"ok": True, "message": "Change request sent to the organiser"}
+    db.commit()
+    db.refresh(event)
+    return event
+
+
+@router.post("/{event_id}/modify-reject")
+def reject_modify(
+    event_id: uuid.UUID,
+    body: ModifyRespondBody,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    db: Session = Depends(get_db),
+):
+    event = db.query(CalendarEvent).filter(
+        CalendarEvent.id == event_id,
+        CalendarEvent.org_id == org_id,
+    ).first()
+    if not event:
+        raise HTTPException(404, "Event not found")
+    if event.user_id != user_id:
+        raise HTTPException(403, "Only the event owner can reject changes")
+
+    mods = list(event.pending_modifications or [])
+    mod = next((m for m in mods if m["id"] == body.mod_id), None)
+    if not mod:
+        raise HTTPException(404, "Modification request not found")
+
+    event.pending_modifications = [m for m in mods if m["id"] != body.mod_id]
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(event, "pending_modifications")
+
+    # Notify the requester
+    try:
+        owner = db.query(User).filter(User.user_id == user_id).first()
+        owner_name = (owner.name if owner else None) or "The organiser"
+        _insert_notification(
+            db, uuid.UUID(mod["requester_id"]), org_id,
+            f"{owner_name} declined your change request for '{event.title}'.",
+            notification_type="calendar_modify_request",
+            title=f"Change declined: '{event.title}'",
+            link="/calendar",
+        )
+    except Exception as e:
+        logger.warning("Reject notification failed (non-fatal): %s", e)
+
+    db.commit()
+    return {"ok": True}
 
 

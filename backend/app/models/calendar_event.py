@@ -41,6 +41,9 @@ class CalendarEvent(Base):
     is_completed = Column(Boolean, nullable=False, default=False)
     completed_at = Column(DateTime(timezone=True), nullable=True)
 
+    # Pending modify requests from attendees [{id, requester_id, requester_name, ...}]
+    pending_modifications = Column(JSONB, nullable=False, server_default="[]")
+
     # Google Calendar sync
     source = Column(String(20), nullable=True, default="native", server_default="native")
     external_id = Column(String(500), nullable=True)

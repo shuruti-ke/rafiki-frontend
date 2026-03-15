@@ -102,6 +102,20 @@ export default function CalendarPage() {
     loadEvents();
   };
 
+  const handleModifyAccept = async (eventId, modId) => {
+    await authFetch(`${API}/api/v1/calendar/${eventId}/modify-accept`, {
+      method:"POST", body: JSON.stringify({mod_id: modId}),
+    });
+    loadEvents();
+  };
+
+  const handleModifyReject = async (eventId, modId) => {
+    await authFetch(`${API}/api/v1/calendar/${eventId}/modify-reject`, {
+      method:"POST", body: JSON.stringify({mod_id: modId}),
+    });
+    loadEvents();
+  };
+
   const openCreate = () => { setEditEvent(null); setShowModal(true); };
   const openEdit = (ev) => { setEditEvent(ev); setShowModal(true); };
 
@@ -211,6 +225,34 @@ export default function CalendarPage() {
                           You: {myRsvp.status}
                         </span>
                       )}
+                    </div>
+                  )}
+                  {isOwner && (e.pending_modifications||[]).length > 0 && (
+                    <div style={{marginTop:"8px"}} onClick={ev => ev.stopPropagation()}>
+                      {(e.pending_modifications||[]).map(mod => (
+                        <div key={mod.id} style={{
+                          background:"rgba(245,158,11,0.08)", border:"1px solid rgba(245,158,11,0.35)",
+                          borderRadius:8, padding:"8px 10px", marginTop:6,
+                        }}>
+                          <div style={{fontWeight:600, fontSize:"0.8rem", color:"#f59e0b", marginBottom:4}}>
+                            ✏️ Change request from {mod.requester_name}
+                          </div>
+                          {mod.requested_date && <div style={{fontSize:"0.78rem", color:"var(--text)"}}>📅 Proposed date: <strong>{mod.requested_date}</strong></div>}
+                          {mod.requested_time && <div style={{fontSize:"0.78rem", color:"var(--text)"}}>🕐 Proposed time: <strong>{mod.requested_time}</strong></div>}
+                          {mod.requested_location && <div style={{fontSize:"0.78rem", color:"var(--text)"}}>📍 Proposed location: <strong>{mod.requested_location}</strong></div>}
+                          {mod.note && <div style={{fontSize:"0.78rem", color:"var(--muted)", marginTop:3, fontStyle:"italic"}}>"{mod.note}"</div>}
+                          <div style={{display:"flex", gap:6, marginTop:8}}>
+                            <button onClick={() => handleModifyAccept(e.id, mod.id)} style={{
+                              fontWeight:600, fontSize:"0.75rem", padding:"3px 10px", borderRadius:6,
+                              border:"1.5px solid #10b981", background:"#10b981", color:"#fff", cursor:"pointer",
+                            }}>✓ Accept</button>
+                            <button onClick={() => handleModifyReject(e.id, mod.id)} style={{
+                              fontWeight:600, fontSize:"0.75rem", padding:"3px 10px", borderRadius:6,
+                              border:"1.5px solid #ef4444", background:"transparent", color:"#ef4444", cursor:"pointer",
+                            }}>✕ Decline</button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>

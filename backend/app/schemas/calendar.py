@@ -57,6 +57,7 @@ class CalendarEventResponse(BaseModel):
     recurrence_end: Optional[date] = None
     recurrence_parent: Optional[UUID] = None
     attendees: Optional[list[dict]] = []
+    pending_modifications: Optional[list[dict]] = []
     is_completed: bool = False
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
