@@ -43,13 +43,18 @@ export default function CalendarPage() {
   useEffect(() => { loadEvents(); }, [year, month]);
   useEffect(() => { loadColleagues(); }, []);
 
-  // Refetch when user returns to this tab so coaching follow-ups and other updates appear
+  // Refetch when user returns to this tab or when a coaching session is saved (follow-up date)
   useEffect(() => {
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") loadEvents();
     };
+    const onCalendarRefresh = () => loadEvents();
     document.addEventListener("visibilitychange", onVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("rafiki:calendar-refresh", onCalendarRefresh);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("rafiki:calendar-refresh", onCalendarRefresh);
+    };
   }, [year, month]);
 
   const prevMonth = () => { if(month===0){setMonth(11);setYear(year-1);}else setMonth(month-1); setSelectedDay(null); };

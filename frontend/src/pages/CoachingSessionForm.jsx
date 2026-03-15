@@ -242,6 +242,7 @@ export default function CoachingSessionForm({ prefillData = null, onSessionSaved
       setTimeout(() => setSuccess(false), 3000);
       fetchSessions();
       if (onSessionSaved) onSessionSaved();
+      window.dispatchEvent(new CustomEvent("rafiki:calendar-refresh"));
       resetForm();
     } catch (e) {
       setError(e.message);

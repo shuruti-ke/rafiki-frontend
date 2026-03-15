@@ -353,15 +353,19 @@ def create_session(
     _role: str = Depends(require_manager),
 ):
     """Create a new structured coaching session.
-    Uses columns that exist on coaching_sessions (manager_id, org_id,
-    employee_member_id, concern). Id uses DB default (SERIAL or gen_random_uuid()).
+    Persists concern, notes, action_items, outcome, follow_up_date when provided.
+    Syncs follow-up and action-item due dates to the calendar.
     """
+    action_items_json = json.dumps(
+        [i.dict() if hasattr(i, "dict") else i for i in (payload.action_items or [])]
+    )
     result = db.execute(
         text("""
             INSERT INTO coaching_sessions
-              (org_id, manager_id, employee_member_id, concern)
+              (org_id, manager_id, employee_member_id, concern, notes, action_items, outcome, follow_up_date)
             VALUES
-              (:org_id, :manager_id, :employee_member_id, :concern)
+              (:org_id, :manager_id, :employee_member_id, :concern, :notes,
+               CAST(:action_items AS jsonb), :outcome, :follow_up_date)
             RETURNING id
         """),
         {
@@ -369,6 +373,10 @@ def create_session(
             "manager_id": str(user_id),
             "employee_member_id": str(payload.employee_id),
             "concern": payload.concern,
+            "notes": payload.notes,
+            "action_items": action_items_json,
+            "outcome": payload.outcome,
+            "follow_up_date": payload.follow_up_date,
         },
     )
     db.commit()
@@ -388,8 +396,27 @@ def create_session(
             logger.warning(f"Coaching follow-up notification failed (non-fatal): {_e}")
     # ── end Sprint 5 ─────────────────────────────────────────────────
 
+    # Sync to calendar so follow-up date and action-item due dates appear on main calendar
+    session_out = _get_session_or_404(session_id, user_id, org_id, db)
+    employee_id = session_out.get("employee_id") or session_out.get("employee_member_id")
+    if employee_id:
+        try:
+            emp_uuid = employee_id if isinstance(employee_id, uuid.UUID) else uuid.UUID(str(employee_id))
+            _sync_coaching_to_calendar(
+                db,
+                org_id,
+                _parse_session_id(session_id),
+                user_id,
+                emp_uuid,
+                session_out.get("action_items") or [],
+                _parse_date(session_out.get("follow_up_date")),
+                session_out.get("concern") or "",
+            )
+        except Exception as e:
+            logger.warning("Coaching calendar sync failed (non-fatal): %s", e)
+
     logger.info(f"Coaching session {session_id} created by manager {user_id}")
-    return _get_session_or_404(session_id, user_id, org_id, db)
+    return session_out
 
 
 @router.get("/{session_id}", response_model=CoachingSessionOut)
