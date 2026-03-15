@@ -1,5 +1,6 @@
 """Calendar events router."""
 
+import logging
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -12,7 +13,10 @@ from app.database import get_db
 from app.dependencies import get_current_user_id, get_current_org_id, get_current_role
 from app.models.calendar_event import CalendarEvent
 from app.models.user import User
+from app.routers.notifications import _insert_notification
 from app.schemas.calendar import CalendarEventCreate, CalendarEventUpdate, CalendarEventResponse
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/calendar", tags=["Calendar"])
 
@@ -49,6 +53,31 @@ def create_event(
     db.add(event)
     db.commit()
     db.refresh(event)
+
+    # Notify each invited attendee
+    organiser = db.query(User).filter(User.user_id == user_id).first()
+    organiser_name = (organiser.name if organiser else None) or "Someone"
+    start_label = body.start_time.strftime("%d %b %Y %H:%M") if body.start_time else ""
+    for att in (body.attendees or []):
+        try:
+            att_id = uuid.UUID(str(att.get("id")))
+            if att_id == user_id:
+                continue
+            _insert_notification(
+                db, user_id=att_id, org_id=org_id,
+                kind="calendar_invite",
+                title=f"Meeting invite: {body.title}",
+                body=f"{organiser_name} invited you to '{body.title}' on {start_label}. Open your calendar to accept or decline.",
+                link="/calendar",
+            )
+        except Exception as e:
+            logger.warning("Failed to notify calendar attendee: %s", e)
+    if body.attendees:
+        try:
+            db.commit()
+        except Exception as e:
+            logger.warning("Calendar invite notification commit failed (non-fatal): %s", e)
+
     return event
 
 
@@ -65,6 +94,7 @@ def list_events(
         or_(
             CalendarEvent.user_id == user_id,
             CalendarEvent.is_shared == True,
+            CalendarEvent.attendees.contains([{"id": str(user_id)}]),
         ),
     )
     if start:
@@ -111,7 +141,8 @@ def events_for_date(
 
     return db.query(CalendarEvent).filter(
         CalendarEvent.org_id == org_id,
-        or_(CalendarEvent.user_id == user_id, CalendarEvent.is_shared == True),
+        or_(CalendarEvent.user_id == user_id, CalendarEvent.is_shared == True,
+            CalendarEvent.attendees.contains([{"id": str(user_id)}])),
         CalendarEvent.start_time >= start,
         CalendarEvent.start_time < end,
     ).order_by(CalendarEvent.start_time).all()
