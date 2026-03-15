@@ -121,6 +121,19 @@ class ToolkitModuleResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ToolkitGenerateRequest(BaseModel):
+    prompt: Optional[str] = None
+    category: Optional[str] = None
+    save: bool = False
+    generated: Optional[dict] = None  # when save=True, can send pre-generated {title, category, content} to save without re-calling AI
+
+
+class ToolkitGeneratedItem(BaseModel):
+    title: str
+    category: str
+    content: dict = {}
+
+
 # --- Dashboard ---
 
 class ManagerDashboardData(BaseModel):

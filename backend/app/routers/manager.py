@@ -27,6 +27,7 @@ from app.schemas.manager import (
     TeamMemberResponse,
     CoachingRequest, CoachingResponse, CoachingSessionResponse, CoachingOutcomeUpdate,
     ToolkitModuleCreate, ToolkitModuleUpdate, ToolkitModuleResponse,
+    ToolkitGenerateRequest, ToolkitGeneratedItem,
     ManagerDashboardData,
 )
 from app.services.manager_scope import (
@@ -35,6 +36,7 @@ from app.services.manager_scope import (
 from app.services.toolkit_service import (
     list_modules, get_module, create_module, update_module, seed_default_modules,
 )
+from app.services.toolkit_ai import generate_toolkit_with_ai
 from app.services.manager_ai import generate_coaching_plan
 from app.services.audit import log_action
 
@@ -361,6 +363,67 @@ def get_toolkit_module(
     if not module:
         raise HTTPException(status_code=404, detail="Toolkit module not found")
     return module
+
+
+@router.post("/toolkit/generate")
+def generate_toolkit(
+    data: ToolkitGenerateRequest,
+    db: Session = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    _role: str = Depends(require_manager),
+):
+    """Generate a toolkit module with AI from a prompt, or save a pre-generated one."""
+    if not can_use_feature(db, user_id, org_id, "toolkit"):
+        raise HTTPException(status_code=403, detail="Toolkit feature not enabled for your role")
+
+    if data.save and data.generated:
+        g = data.generated
+        if not isinstance(g, dict) or not g.get("title") or not g.get("category"):
+            raise HTTPException(status_code=400, detail="generated must include title, category, and content")
+        module = create_module(
+            db,
+            org_id,
+            {
+                "title": g["title"],
+                "category": g["category"],
+                "content": g.get("content", {}),
+                "language": "en",
+            },
+            created_by=user_id,
+        )
+        log_action(db, org_id, user_id, "create", "toolkit_module", module.id,
+                   details={"title": module.title, "category": module.category, "ai_generated": True})
+        return {"saved": True, "module": module, "generated": ToolkitGeneratedItem(**g)}
+
+    prompt = (data.prompt or "").strip()
+    if not prompt:
+        raise HTTPException(status_code=400, detail="prompt is required to generate")
+
+    generated = generate_toolkit_with_ai(prompt, data.category)
+    if not generated:
+        raise HTTPException(
+            status_code=503,
+            detail="Toolkit generation is unavailable. Check AI configuration or try again.",
+        )
+
+    if data.save:
+        module = create_module(
+            db,
+            org_id,
+            {
+                "title": generated["title"],
+                "category": generated["category"],
+                "content": generated["content"],
+                "language": "en",
+            },
+            created_by=user_id,
+        )
+        log_action(db, org_id, user_id, "create", "toolkit_module", module.id,
+                   details={"title": module.title, "category": module.category, "ai_generated": True})
+        return {"saved": True, "module": module, "generated": ToolkitGeneratedItem(**generated)}
+
+    return {"saved": False, "generated": ToolkitGeneratedItem(**generated)}
 
 
 # --- Dashboard ---

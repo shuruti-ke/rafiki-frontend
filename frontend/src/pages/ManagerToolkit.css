@@ -94,6 +94,87 @@
   margin-bottom: 16px;
 }
 
+/* ── Create with AI ── */
+.mtk-ai-block {
+  padding: 20px;
+  background: linear-gradient(135deg, rgba(139,92,246,.06), rgba(31,191,184,.06));
+  border: 1px solid rgba(139,92,246,.2);
+  border-radius: 16px;
+  margin-bottom: 24px;
+}
+.mtk-ai-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #6b7280;
+  margin-bottom: 12px;
+}
+.mtk-ai-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.mtk-ai-input {
+  flex: 1;
+  min-width: 220px;
+  padding: 12px 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  font-size: 14px;
+  font-family: inherit;
+  color: #1f2937;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.mtk-ai-input:focus {
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 3px rgba(139,92,246,.12);
+}
+.mtk-ai-input::placeholder { color: #9ca3af; }
+.mtk-ai-generate-btn {
+  padding: 12px 22px;
+  background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.15s;
+}
+.mtk-ai-generate-btn:hover:not(:disabled) { opacity: 0.95; transform: translateY(-1px); }
+.mtk-ai-generate-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.mtk-ai-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.mtk-ai-chip {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.mtk-ai-chip:hover {
+  border-color: #8b5cf6;
+  color: #8b5cf6;
+  background: rgba(139,92,246,.06);
+}
+.mtk-ai-error {
+  margin-top: 10px;
+  font-size: 13px;
+  color: #dc2626;
+  font-weight: 600;
+}
+
 /* ── Category filters ── */
 .mtk-filters {
   display: flex;
@@ -259,7 +340,14 @@
   transform: translateX(3px);
 }
 
-/* ── Back button ── */
+/* ── Detail actions (back + save generated) ── */
+.mtk-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
 .mtk-back-btn {
   all: unset;
   cursor: pointer;
@@ -269,8 +357,25 @@
   font-size: 13px;
   font-weight: 700;
   color: #8b5cf6;
-  margin-bottom: 24px;
   transition: opacity 0.15s;
+}
+.mtk-save-generated-btn {
+  padding: 8px 16px;
+  background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.mtk-save-generated-btn:hover:not(:disabled) { opacity: 0.95; }
+.mtk-save-generated-btn:disabled { opacity: 0.7; cursor: not-allowed; }
+.mtk-card-badge.mtk-badge-ai {
+  background: rgba(251,191,36,.15);
+  color: #b45309;
 }
 .mtk-back-btn:hover { opacity: 0.75; }
 
