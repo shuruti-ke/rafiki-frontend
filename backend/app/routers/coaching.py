@@ -429,7 +429,7 @@ def update_session(
     set_clauses = []
     for k in updates:
         if k == "action_items":
-            set_clauses.append("action_items = :action_items::jsonb")
+            set_clauses.append("action_items = CAST(:action_items AS jsonb)")
         else:
             set_clauses.append(f"{k} = :{k}")
     set_clauses.append("updated_at = :updated_at")
