@@ -40,6 +40,8 @@ router = APIRouter(prefix="/api/v1", tags=["Chat"])
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 OPENAI_BASE_URL = (os.getenv("OPENAI_BASE_URL", "https://api.openai.com").strip().rstrip("/"))
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()
+ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6").strip()
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "").strip()
 
 BACKEND_DIR = Path(__file__).parent.parent.parent
@@ -60,7 +62,7 @@ MAX_TOOL_ITERATIONS = 6
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _should_search(message: str, chat_history: list | None = None) -> bool:
-    if not TAVILY_API_KEY or not OPENAI_API_KEY:
+    if not TAVILY_API_KEY or (not OPENAI_API_KEY and not ANTHROPIC_API_KEY):
         return False
     if len(message.strip()) < 8:
         return False
@@ -422,6 +424,111 @@ def _run_agentic_loop(
     return "I've gathered all the information I need. Let me summarise what I found for you.", action_cards
 
 
+def _run_agentic_loop_claude(
+    messages: list,
+    system_prompt: str,
+    chosen_model: str,
+    user_id: UUID,
+    org_id: UUID,
+    db: Session,
+) -> tuple[str, list]:
+    """
+    Run the Anthropic Claude tool-calling loop.
+    Claude natively uses input_schema for tools (matches TOOL_DEFINITIONS).
+    Returns (final_reply_text, action_cards).
+    """
+    try:
+        import anthropic as _anthropic
+    except ImportError:
+        logger.error("anthropic package not installed — falling back to OpenAI")
+        return _run_agentic_loop(messages, system_prompt, chosen_model, user_id, org_id, db)
+
+    if not ANTHROPIC_API_KEY:
+        return "AI is not configured (set ANTHROPIC_API_KEY).", []
+
+    client = _anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+
+    # Convert OpenAI-style message list to Anthropic format.
+    # Only pass user/assistant text turns; tool turns are rebuilt during the loop.
+    anthropic_messages = []
+    for msg in messages:
+        role = msg.get("role")
+        content = msg.get("content")
+        if role in ("user", "assistant") and isinstance(content, str):
+            anthropic_messages.append({"role": role, "content": content})
+        elif role == "user" and isinstance(content, list):
+            # multimodal message (images)
+            anthropic_messages.append({"role": "user", "content": content})
+
+    # Anthropic tools use input_schema natively — no conversion needed
+    anthropic_tools = [
+        {"name": t["name"], "description": t["description"], "input_schema": t["input_schema"]}
+        for t in TOOL_DEFINITIONS
+    ]
+
+    action_cards: list[dict] = []
+    iteration = 0
+
+    while iteration < MAX_TOOL_ITERATIONS:
+        iteration += 1
+
+        try:
+            response = client.messages.create(
+                model=chosen_model,
+                max_tokens=4096,
+                system=system_prompt,
+                messages=anthropic_messages,
+                tools=anthropic_tools,
+            )
+        except Exception as exc:
+            logger.error("Anthropic API error: %s", exc)
+            return f"AI service error: {exc}", action_cards
+
+        stop_reason = response.stop_reason
+        text_parts: list[str] = []
+        tool_use_blocks: list = []
+
+        for block in response.content:
+            if block.type == "text":
+                text_parts.append(block.text)
+            elif block.type == "tool_use":
+                tool_use_blocks.append(block)
+
+        # No tool calls (or model finished) → return final text
+        if not tool_use_blocks or stop_reason == "end_turn":
+            return ("".join(text_parts).strip() or "..."), action_cards
+
+        # Append assistant turn (raw blocks list)
+        anthropic_messages.append({"role": "assistant", "content": response.content})
+
+        # Execute each tool call and collect results
+        tool_results = []
+        for block in tool_use_blocks:
+            tool_name = block.name
+            tool_input = block.input or {}
+            tool_id = block.id
+
+            logger.info("Claude tool: %s | input: %s", tool_name, json.dumps(tool_input, default=_json_serial_default)[:200])
+            result = execute_tool(tool_name, tool_input, user_id, org_id, db)
+            logger.info("Claude tool result: %s | %s", tool_name, json.dumps(result, default=_json_serial_default)[:200])
+
+            card = _build_action_card(tool_name, tool_input, result)
+            if card:
+                action_cards.append(card)
+
+            tool_results.append({
+                "type": "tool_result",
+                "tool_use_id": tool_id,
+                "content": json.dumps(result, default=_json_serial_default),
+            })
+
+        # Return tool results as a user turn
+        anthropic_messages.append({"role": "user", "content": tool_results})
+
+    logger.warning("Claude tool loop hit MAX_TOOL_ITERATIONS=%d", MAX_TOOL_ITERATIONS)
+    return "I've gathered all the information I need. Let me summarise what I found for you.", action_cards
+
+
 def _build_action_card(tool_name: str, tool_input: dict, result: dict) -> dict | None:
     """
     Convert a tool result into a structured action card for the frontend.
@@ -518,9 +625,27 @@ async def chat(
             for h in req.history:
                 history_dicts.append({"role": h.role, "content": h.content})
 
-        # ── Web search ──
+        # ── KB pre-check: does the company KB have a relevant answer? ──
+        # Run this BEFORE web search so that KB always takes priority.
+        # If KB has results we skip web search entirely for this query —
+        # the model will call search_knowledge_base via the tool loop.
+        # Web search only runs when the KB has nothing (e.g. hotel listings).
+        _kb_has_results = False
+        try:
+            from app.services.knowledge_search import search_chunks as _kbs
+            from app.database import SessionLocal as _KBSL
+            _kdb = _KBSL()
+            try:
+                _kb_has_results = bool(_kbs(_kdb, org_id, content, limit=1))
+                logger.info("KB pre-check for '%s': %s", content[:60], "HIT" if _kb_has_results else "MISS")
+            finally:
+                _kdb.close()
+        except Exception as _kbe:
+            logger.warning("KB pre-check failed: %s", _kbe)
+
+        # ── Web search (only when KB has no relevant content) ──
         web_search_context = ""
-        if _should_search(content, history_dicts):
+        if not _kb_has_results and _should_search(content, history_dicts):
             search_query = _build_search_query(content, history_dicts)
             web_search_context = _tavily_search(search_query)
 
@@ -540,8 +665,10 @@ async def chat(
         if file_context:
             final_user_message = file_context + "\n\n" + content
 
-        # ── Model (OpenAI only) ──
-        chosen = OPENAI_MODEL
+        # ── Model: Claude if key set, otherwise OpenAI ──
+        use_claude = bool(ANTHROPIC_API_KEY)
+        chosen = ANTHROPIC_MODEL if use_claude else OPENAI_MODEL
+        logger.info("AI provider: %s | model: %s", "Claude" if use_claude else "OpenAI", chosen)
 
         # ── Build enhanced user context (direct report data, objectives, etc.) ──
         # IMPORTANT: Use a FRESH database session to avoid transaction state issues
@@ -660,7 +787,8 @@ async def chat(
         from app.database import SessionLocal as _AgentSessionLocal
         agent_db = _AgentSessionLocal()
         try:
-            reply_text, action_cards = _run_agentic_loop(
+            _loop_fn = _run_agentic_loop_claude if use_claude else _run_agentic_loop
+            reply_text, action_cards = _loop_fn(
                 messages=messages,
                 system_prompt=system_prompt,
                 chosen_model=chosen,
