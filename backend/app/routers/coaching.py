@@ -16,7 +16,7 @@ from datetime import date, datetime
 from typing import List, Optional, Union
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
@@ -36,9 +36,16 @@ router = APIRouter(prefix="/api/v1/coaching", tags=["Coaching Sessions"])
 # ── Pydantic schemas ──────────────────────────────────────────────────────────
 
 class ActionItem(BaseModel):
-    text: str
+    text: str = ""
     due_date: Optional[date] = None
     completed: bool = False
+
+    @field_validator("due_date", mode="before")
+    @classmethod
+    def empty_date_to_none(cls, v):
+        if v == "" or v is None:
+            return None
+        return v
 
 
 class CoachingSessionCreate(BaseModel):
@@ -50,6 +57,20 @@ class CoachingSessionCreate(BaseModel):
         None, pattern=r"^(resolved|ongoing|escalated|follow_up)$"
     )
     follow_up_date: Optional[date] = None
+
+    @field_validator("outcome", "notes", mode="before")
+    @classmethod
+    def empty_str_to_none(cls, v):
+        if v == "":
+            return None
+        return v
+
+    @field_validator("follow_up_date", mode="before")
+    @classmethod
+    def empty_follow_up_to_none(cls, v):
+        if v == "" or v is None:
+            return None
+        return v
 
 
 class CoachingSessionUpdate(BaseModel):
