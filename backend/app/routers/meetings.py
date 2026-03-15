@@ -13,6 +13,7 @@ from sqlalchemy import desc
 
 from app.database import get_db
 from app.dependencies import get_current_org_id, get_current_user_id, get_current_role
+from app.models.calendar_event import CalendarEvent
 from app.models.meeting import Meeting, _generate_room_name
 from app.models.user import User
 from app.schemas.meetings import (
@@ -39,6 +40,76 @@ INTERNAL_API_BASE = os.getenv("INTERNAL_API_BASE", "https://rafiki-backend.onren
 
 router = APIRouter(prefix="/api/v1/meetings", tags=["Meetings"])
 _PRIVILEGED_ROLES = {"hr_admin", "super_admin"}
+
+
+# ── Calendar sync helpers ──
+
+def _remove_meeting_from_calendar(db: Session, org_id: uuid.UUID, meeting_id: uuid.UUID) -> None:
+    """Remove all calendar events created from a meeting."""
+    prefix = f"meeting_{meeting_id}_"
+    events = db.query(CalendarEvent).filter(
+        CalendarEvent.org_id == org_id,
+        CalendarEvent.source == "meeting",
+    ).all()
+    for ev in events:
+        if ev.external_id and ev.external_id.startswith(prefix):
+            db.delete(ev)
+
+
+def _sync_meeting_to_calendar(db: Session, org_id: uuid.UUID, meeting: Meeting) -> None:
+    """Create/update calendar events for a scheduled meeting (host + all participants)."""
+    from datetime import timedelta, timezone
+
+    _remove_meeting_from_calendar(db, org_id, meeting.id)
+
+    if not meeting.scheduled_at:
+        try:
+            db.commit()
+        except Exception as e:
+            logger.warning("Meeting calendar remove failed (non-fatal): %s", e)
+            db.rollback()
+        return
+
+    start = meeting.scheduled_at
+    if start.tzinfo is None:
+        start = start.replace(tzinfo=timezone.utc)
+    end = start + timedelta(minutes=meeting.duration_minutes or 60)
+    event_type = "1on1" if meeting.meeting_type == "one_on_one" else "meeting"
+    jitsi_url = _build_jitsi_url(meeting.room_name)
+    prefix = f"meeting_{meeting.id}_"
+
+    def _add(owner_id, ext_suffix):
+        ev = CalendarEvent(
+            org_id=org_id,
+            user_id=owner_id,
+            title=meeting.title,
+            description=meeting.description,
+            start_time=start,
+            end_time=end,
+            is_all_day=False,
+            is_shared=False,
+            event_type=event_type,
+            color="#1fbfb8",
+            is_virtual=True,
+            meeting_link=jitsi_url,
+            source="meeting",
+            external_id=f"{prefix}{ext_suffix}",
+        )
+        db.add(ev)
+
+    _add(meeting.host_id, f"host_{meeting.host_id}")
+    for pid in (meeting.participant_ids or []):
+        try:
+            pid_uuid = pid if isinstance(pid, uuid.UUID) else uuid.UUID(str(pid))
+            _add(pid_uuid, f"participant_{pid_uuid}")
+        except Exception:
+            pass
+
+    try:
+        db.commit()
+    except Exception as e:
+        logger.warning("Meeting calendar sync failed (non-fatal): %s", e)
+        db.rollback()
 
 
 # ── Helpers ──
@@ -136,6 +207,7 @@ def create_meeting(
     db.add(meeting)
     db.commit()
     db.refresh(meeting)
+    _sync_meeting_to_calendar(db, org_id, meeting)
     logger.info("Meeting created: %s by user %s", meeting.id, user_id)
     return _to_response(meeting)
 
@@ -458,6 +530,7 @@ def update_meeting(
         setattr(meeting, field, value)
     db.commit()
     db.refresh(meeting)
+    _sync_meeting_to_calendar(db, org_id, meeting)
     return _to_response(meeting)
 
 
@@ -518,6 +591,7 @@ def delete_meeting(
         raise HTTPException(404, "Meeting not found")
     if role not in _PRIVILEGED_ROLES and meeting.host_id != user_id:
         raise HTTPException(403, "Only the host can delete this meeting")
+    _remove_meeting_from_calendar(db, org_id, meeting_id)
     meeting.is_active = False
     db.commit()
     return {"ok": True, "message": "Meeting cancelled"}

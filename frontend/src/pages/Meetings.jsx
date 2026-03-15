@@ -515,6 +515,7 @@ function ScheduleModal({ onClose, onCreated }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Failed to create meeting');
       onCreated(data);
+      window.dispatchEvent(new CustomEvent('rafiki:calendar-refresh'));
       onClose();
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
@@ -605,6 +606,7 @@ export default function Meetings() {
     if (!window.confirm('Cancel this meeting?')) return;
     await fetch(`${API}/${id}`, { method: 'DELETE', headers: authHeaders() });
     setMeetings(m => m.filter(x => x.id !== id));
+    window.dispatchEvent(new CustomEvent('rafiki:calendar-refresh'));
   };
 
   const handleInstantMeeting = async () => {
@@ -613,7 +615,11 @@ export default function Meetings() {
       body: JSON.stringify({ title: 'Instant Meeting', meeting_type: 'group', duration_minutes: 60 }),
     });
     const data = await res.json();
-    if (res.ok) { setMeetings(m => [data, ...m]); setActiveRoom(data); }
+    if (res.ok) {
+      setMeetings(m => [data, ...m]);
+      setActiveRoom(data);
+      window.dispatchEvent(new CustomEvent('rafiki:calendar-refresh'));
+    }
   };
 
   const now = new Date();

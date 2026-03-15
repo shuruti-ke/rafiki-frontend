@@ -1,5 +1,6 @@
 """Objectives (OKR) router."""
 
+import logging
 import json
 import uuid
 from datetime import datetime, timezone
@@ -9,8 +10,11 @@ from typing import Optional
 
 from app.database import get_db
 from app.dependencies import get_current_user_id, get_current_org_id, require_manager
+from app.models.calendar_event import CalendarEvent
 from app.models.objective import Objective, KeyResult, ObjectiveComment
 from app.models.user import User
+
+logger = logging.getLogger(__name__)
 from app.models.message import DmConversation, DmMessage, ConversationParticipant
 from app.schemas.objectives import (
     ObjectiveCreate, ObjectiveUpdate, ObjectiveResponse,
@@ -19,6 +23,67 @@ from app.schemas.objectives import (
 )
 
 router = APIRouter(prefix="/api/v1/objectives", tags=["Objectives"])
+
+
+# ── Calendar sync helpers ──
+
+def _remove_objective_from_calendar(db: Session, org_id: uuid.UUID, objective_id: uuid.UUID) -> None:
+    """Remove calendar events created from an objective."""
+    ext_id = f"objective_{objective_id}"
+    db.query(CalendarEvent).filter(
+        CalendarEvent.org_id == org_id,
+        CalendarEvent.source == "objective",
+        CalendarEvent.external_id == ext_id,
+    ).delete(synchronize_session=False)
+
+
+def _sync_objective_to_calendar(
+    db: Session,
+    org_id: uuid.UUID,
+    user_id: uuid.UUID,
+    obj: Objective,
+) -> None:
+    """Create/update a calendar event for an objective's target_date."""
+    from datetime import datetime, timezone
+
+    ext_id = f"objective_{obj.id}"
+    _remove_objective_from_calendar(db, org_id, obj.id)
+
+    if not obj.target_date:
+        try:
+            db.commit()
+        except Exception as e:
+            logger.warning("Objective calendar remove failed (non-fatal): %s", e)
+            db.rollback()
+        return
+
+    d = obj.target_date
+    start = datetime(d.year, d.month, d.day, 0, 0, 0, tzinfo=timezone.utc)
+    end = datetime(d.year, d.month, d.day, 23, 59, 59, tzinfo=timezone.utc)
+    title_short = (obj.title or "")[:80]
+    if len(obj.title or "") > 80:
+        title_short += "…"
+
+    ev = CalendarEvent(
+        org_id=org_id,
+        user_id=user_id,
+        title=f"Objective due: {title_short}" if title_short else "Objective due",
+        description=obj.description,
+        start_time=start,
+        end_time=end,
+        is_all_day=True,
+        is_shared=False,
+        event_type="deadline",
+        color="#3b82f6",
+        source="objective",
+        external_id=ext_id,
+    )
+    db.add(ev)
+    try:
+        db.commit()
+    except Exception as e:
+        logger.warning("Objective calendar sync failed (non-fatal): %s", e)
+        db.rollback()
 
 
 def _recompute_progress(db: Session, objective: Objective):
@@ -148,6 +213,7 @@ def create_objective(
     db.commit()
     db.refresh(obj)
     _recompute_progress(db, obj)
+    _sync_objective_to_calendar(db, org_id, user_id, obj)
     return obj
 
 
@@ -211,6 +277,7 @@ def update_objective(
     objective_id: uuid.UUID,
     body: ObjectiveUpdate,
     user_id: uuid.UUID = Depends(get_current_user_id),
+    org_id: uuid.UUID = Depends(get_current_org_id),
     db: Session = Depends(get_db),
 ):
     obj = db.query(Objective).filter(Objective.id == objective_id, Objective.user_id == user_id).first()
@@ -220,6 +287,7 @@ def update_objective(
         setattr(obj, field, val)
     db.commit()
     db.refresh(obj)
+    _sync_objective_to_calendar(db, org_id, user_id, obj)
     return obj
 
 
@@ -227,6 +295,7 @@ def update_objective(
 def delete_objective(
     objective_id: uuid.UUID,
     user_id: uuid.UUID = Depends(get_current_user_id),
+    org_id: uuid.UUID = Depends(get_current_org_id),
     db: Session = Depends(get_db),
 ):
     obj = db.query(Objective).filter(Objective.id == objective_id, Objective.user_id == user_id).first()
@@ -234,6 +303,7 @@ def delete_objective(
         raise HTTPException(404, "Objective not found or not owned by you")
     if obj.status not in ("draft", "cancelled"):
         raise HTTPException(400, "Can only delete draft or cancelled objectives")
+    _remove_objective_from_calendar(db, org_id, objective_id)
     db.delete(obj)
     db.commit()
     return {"ok": True}

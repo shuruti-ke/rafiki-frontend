@@ -62,6 +62,7 @@ export default function ObjectivesPage() {
       setForm({ title: "", description: "", target_date: "" });
       setKrDrafts([{ title: "", target_value: 100, current_value: 0, unit: "%" }]);
       load();
+      if (form.target_date) window.dispatchEvent(new CustomEvent("rafiki:calendar-refresh"));
     }
   };
 
