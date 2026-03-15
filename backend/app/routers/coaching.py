@@ -264,9 +264,8 @@ def _sync_coaching_to_calendar(
         if len((item.get("text") or "").strip()) > 80:
             text_part += "…"
         title = f"Coaching: {text_part}" if text_part else "Coaching action item"
-        ext_id = f"{prefix}action_{i}"
-        _add_event(manager_id, title, item.get("text") or "", due, ext_id, etype="task")
-        _add_event(employee_id, title, item.get("text") or "", due, ext_id, etype="task")
+        _add_event(manager_id, title, item.get("text") or "", due, f"{prefix}action_{i}_mgr", etype="task")
+        _add_event(employee_id, title, item.get("text") or "", due, f"{prefix}action_{i}_emp", etype="task")
 
     # Follow-up date
     if follow_up_date:
@@ -274,9 +273,8 @@ def _sync_coaching_to_calendar(
         if len((concern or "").strip()) > 60:
             concern_short += "…"
         title = f"Coaching follow-up: {concern_short}" if concern_short else "Coaching follow-up"
-        ext_id = f"{prefix}followup"
-        _add_event(manager_id, title, concern or "", follow_up_date, ext_id, etype="reminder")
-        _add_event(employee_id, title, concern or "", follow_up_date, ext_id, etype="reminder")
+        _add_event(manager_id, title, concern or "", follow_up_date, f"{prefix}followup_mgr", etype="reminder")
+        _add_event(employee_id, title, concern or "", follow_up_date, f"{prefix}followup_emp", etype="reminder")
 
     try:
         db.commit()
