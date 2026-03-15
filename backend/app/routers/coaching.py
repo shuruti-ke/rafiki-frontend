@@ -186,35 +186,28 @@ def create_session(
     org_id: uuid.UUID = Depends(get_current_org_id),
     _role: str = Depends(require_manager),
 ):
-    """Create a new structured coaching session."""
-    session_id = uuid.uuid4()
-    now = datetime.utcnow()
-    action_items_json = json.dumps([a.dict() for a in payload.action_items])
-
-    db.execute(
+    """Create a new structured coaching session.
+    Uses columns that exist on coaching_sessions (manager_id, org_id,
+    employee_member_id, concern). Id uses DB default (SERIAL or gen_random_uuid()).
+    """
+    result = db.execute(
         text("""
             INSERT INTO coaching_sessions
-              (id, org_id, manager_id, employee_id, concern, notes,
-               action_items, outcome, follow_up_date, created_at, updated_at)
+              (org_id, manager_id, employee_member_id, concern)
             VALUES
-              (:id, :org_id, :manager_id, :employee_id, :concern, :notes,
-               :action_items::jsonb, :outcome, :follow_up_date, :created_at, :updated_at)
+              (:org_id, :manager_id, :employee_member_id, :concern)
+            RETURNING id
         """),
         {
-            "id": str(session_id),
             "org_id": str(org_id),
             "manager_id": str(user_id),
-            "employee_id": str(payload.employee_id),
+            "employee_member_id": str(payload.employee_id),
             "concern": payload.concern,
-            "notes": payload.notes,
-            "action_items": action_items_json,
-            "outcome": payload.outcome,
-            "follow_up_date": payload.follow_up_date,
-            "created_at": now,
-            "updated_at": now,
         },
     )
     db.commit()
+    row = result.fetchone()
+    session_id = row[0] if row else None
 
     # ── Sprint 5: remind manager when follow-up date arrives ─────────
     if payload.follow_up_date:
