@@ -12,7 +12,7 @@
 import uuid
 import json
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import List, Optional, Union
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -26,6 +26,7 @@ from app.dependencies import (
     get_current_org_id,
     require_manager,
 )
+from app.models.calendar_event import CalendarEvent
 from app.routers.notifications import _insert_notification
 
 logger = logging.getLogger(__name__)
@@ -164,6 +165,106 @@ def _get_session_or_404(
     if not row:
         raise HTTPException(status_code=404, detail="Coaching session not found")
     return _row_to_out(dict(row))
+
+
+def _parse_date(v) -> Optional[date]:
+    """Parse date from string or date object."""
+    if v is None:
+        return None
+    if isinstance(v, date):
+        return v
+    if isinstance(v, str) and v.strip():
+        try:
+            return date.fromisoformat(v.strip()[:10])
+        except ValueError:
+            return None
+    return None
+
+
+def _sync_coaching_to_calendar(
+    db: Session,
+    org_id: uuid.UUID,
+    session_id: Union[int, str],
+    manager_id: uuid.UUID,
+    employee_id: uuid.UUID,
+    action_items: list,
+    follow_up_date: Optional[date],
+    concern: str,
+) -> None:
+    """
+    Create calendar events for coaching action item due dates and follow-up date
+    for both manager and employee. Removes any existing coaching events for this session first.
+    """
+    sid = str(session_id)
+    prefix = f"coaching_{sid}_"
+
+    # Remove existing coaching events for this session
+    existing = (
+        db.query(CalendarEvent)
+        .filter(
+            CalendarEvent.org_id == org_id,
+            CalendarEvent.source == "coaching",
+            CalendarEvent.external_id.isnot(None),
+        )
+        .all()
+    )
+    for ev in existing:
+        if ev.external_id and ev.external_id.startswith(prefix):
+            db.delete(ev)
+
+    def _make_all_day_range(d: date):
+        start = datetime(d.year, d.month, d.day, 0, 0, 0, tzinfo=timezone.utc)
+        end = datetime(d.year, d.month, d.day, 23, 59, 59, tzinfo=timezone.utc)
+        return start, end
+
+    def _add_event(owner_id: uuid.UUID, title: str, desc: str, d: date, ext_id: str):
+        start, end = _make_all_day_range(d)
+        ev = CalendarEvent(
+            org_id=org_id,
+            user_id=owner_id,
+            title=title,
+            description=desc,
+            start_time=start,
+            end_time=end,
+            is_all_day=True,
+            is_shared=False,
+            event_type="coaching",
+            color="#8b5cf6",
+            source="coaching",
+            external_id=ext_id,
+        )
+        db.add(ev)
+
+    # Action items with due dates
+    for i, item in enumerate(action_items or []):
+        if not isinstance(item, dict):
+            item = item.dict() if hasattr(item, "dict") else {}
+        due = _parse_date(item.get("due_date"))
+        if not due:
+            continue
+        text_part = (item.get("text") or "").strip()[:80]
+        if len((item.get("text") or "").strip()) > 80:
+            text_part += "…"
+        title = f"Coaching: {text_part}" if text_part else "Coaching action item"
+        ext_id = f"{prefix}action_{i}"
+        _add_event(manager_id, title, item.get("text") or "", due, ext_id)
+        _add_event(employee_id, title, item.get("text") or "", due, ext_id)
+
+    # Follow-up date
+    if follow_up_date:
+        concern_short = (concern or "").strip()[:60]
+        if len((concern or "").strip()) > 60:
+            concern_short += "…"
+        title = f"Coaching follow-up: {concern_short}" if concern_short else "Coaching follow-up"
+        ext_id = f"{prefix}followup"
+        _add_event(manager_id, title, concern or "", follow_up_date, ext_id)
+        _add_event(employee_id, title, concern or "", follow_up_date, ext_id)
+
+    try:
+        db.commit()
+    except Exception as e:
+        logger.warning("Coaching calendar sync failed (non-fatal): %s", e)
+        db.rollback()
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -306,7 +407,25 @@ def update_session(
     )
     db.commit()
 
-    return _get_session_or_404(session_id, user_id, org_id, db)
+    session_out = _get_session_or_404(session_id, user_id, org_id, db)
+    employee_id = session_out.get("employee_id") or session_out.get("employee_member_id")
+    if employee_id:
+        try:
+            emp_uuid = employee_id if isinstance(employee_id, uuid.UUID) else uuid.UUID(str(employee_id))
+            _sync_coaching_to_calendar(
+                db,
+                org_id,
+                _parse_session_id(session_id),
+                user_id,
+                emp_uuid,
+                session_out.get("action_items") or [],
+                _parse_date(session_out.get("follow_up_date")),
+                session_out.get("concern") or "",
+            )
+        except Exception as e:
+            logger.warning("Coaching calendar sync failed (non-fatal): %s", e)
+
+    return session_out
 
 
 @router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)

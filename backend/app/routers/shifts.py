@@ -1,5 +1,6 @@
+import logging
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -9,8 +10,56 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_current_org_id, get_current_user_id, require_admin, require_manager
+from app.models.calendar_event import CalendarEvent
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/shifts", tags=["Shift Management"])
+
+
+def _parse_time(hhmm: str):
+    """Parse 'HH:MM' to (hour, minute). Returns (0, 0) on failure."""
+    try:
+        parts = hhmm.strip().split(":")
+        return int(parts[0]) % 24, int(parts[1]) % 60
+    except (IndexError, ValueError):
+        return 0, 0
+
+
+def _sync_shift_to_calendar(
+    db: Session,
+    org_id: uuid.UUID,
+    assignment_id: str,
+    user_id: uuid.UUID,
+    shift_date: date,
+    template_name: str,
+    start_time: str,
+    end_time: str,
+    crosses_midnight: bool,
+) -> None:
+    """Create or update one calendar event for this shift assignment (main calendar sync)."""
+    db.query(CalendarEvent).filter(
+        CalendarEvent.org_id == org_id,
+        CalendarEvent.source == "shift",
+        CalendarEvent.external_id == f"shift_{assignment_id}",
+    ).delete(synchronize_session=False)
+    sh, sm = _parse_time(start_time)
+    eh, em = _parse_time(end_time)
+    start_dt = datetime(shift_date.year, shift_date.month, shift_date.day, sh, sm, 0, tzinfo=timezone.utc)
+    end_date = shift_date
+    if crosses_midnight or (eh, em) <= (sh, sm):
+        end_date = shift_date + timedelta(days=1)
+    end_dt = datetime(end_date.year, end_date.month, end_date.day, eh, em, 0, tzinfo=timezone.utc)
+    ev = CalendarEvent(
+        org_id=org_id,
+        user_id=user_id,
+        title=f"Shift: {template_name}",
+        start_time=start_dt,
+        end_time=end_dt,
+        event_type="shift",
+        source="shift",
+        external_id=f"shift_{assignment_id}",
+    )
+    db.add(ev)
 
 
 class ShiftTemplateIn(BaseModel):
@@ -118,6 +167,23 @@ def create_shift_assignment(
         },
     ).mappings().first()
     db.commit()
+    # Sync to main calendar
+    try:
+        template = db.execute(
+            text("SELECT name, start_time, end_time, crosses_midnight FROM shift_templates WHERE id = :id"),
+            {"id": str(body.template_id)},
+        ).mappings().first()
+        if template:
+            _sync_shift_to_calendar(
+                db, org_id, row["id"],
+                row["user_id"], row["shift_date"],
+                template["name"], template["start_time"], template["end_time"],
+                template.get("crosses_midnight") or False,
+            )
+            db.commit()
+    except Exception as e:
+        logger.warning("Shift->calendar sync failed (non-fatal): %s", e)
+        db.rollback()
     return {"assignment": dict(row)}
 
 
@@ -265,6 +331,24 @@ def review_swap_request(
                 text("UPDATE shift_assignments SET user_id=:uid, updated_at=:now WHERE id=:id"),
                 {"uid": str(req["requester_user_id"]), "id": str(target_assignment["id"]), "now": datetime.utcnow()},
             )
+
+    db.commit()
+    # Keep main calendar in sync: reassign calendar events to new owners after swap
+    if body.status == "approved" and req.get("target_assignment_id"):
+        try:
+            for assignment_id, new_user_id in [
+                (str(req["requester_assignment_id"]), str(req["target_user_id"])),
+                (str(req["target_assignment_id"]), str(req["requester_user_id"])),
+            ]:
+                db.query(CalendarEvent).filter(
+                    CalendarEvent.org_id == org_id,
+                    CalendarEvent.source == "shift",
+                    CalendarEvent.external_id == f"shift_{assignment_id}",
+                ).update({"user_id": uuid.UUID(new_user_id)}, synchronize_session=False)
+            db.commit()
+        except Exception as e:
+            logger.warning("Shift swap calendar update failed (non-fatal): %s", e)
+            db.rollback()
 
     db.execute(
         text(

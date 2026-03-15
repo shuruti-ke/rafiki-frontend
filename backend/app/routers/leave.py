@@ -5,7 +5,7 @@ Handles leave policy, balances, applications, and HR approval workflow.
 import os
 import logging
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
 from pydantic import BaseModel, field_validator
@@ -17,6 +17,7 @@ from app.dependencies import (
     require_admin, require_manager, get_current_user,
     require_can_act_for_employee,
 )
+from app.models.calendar_event import CalendarEvent
 from app.routers.notifications import _insert_notification
 
 logger = logging.getLogger(__name__)
@@ -24,10 +25,56 @@ router = APIRouter(prefix="/api/v1/leave", tags=["Leave"])
 
 PRIVILEGED = {"hr_admin", "super_admin"}
 
+TYPE_LABELS = {
+    "annual": "Annual Leave",
+    "sick": "Sick Leave",
+    "maternity": "Maternity Leave",
+    "paternity": "Paternity Leave",
+}
+
 
 # ══════════════════════════════════════════════════════════════
 # HELPERS
 # ══════════════════════════════════════════════════════════════
+
+def _remove_leave_from_calendar(db: Session, org_id: uuid.UUID, app_id: str) -> None:
+    """Remove all calendar events created from a leave application."""
+    db.query(CalendarEvent).filter(
+        CalendarEvent.org_id == org_id,
+        CalendarEvent.source == "leave",
+        CalendarEvent.external_id.startswith(f"leave_{app_id}_"),
+    ).delete(synchronize_session=False)
+
+
+def _sync_leave_to_calendar(
+    db: Session,
+    org_id: uuid.UUID,
+    app_id: str,
+    user_id: uuid.UUID,
+    start_date: date,
+    end_date: date,
+    leave_type: str,
+) -> None:
+    """Create all-day calendar events for each day of approved leave (main calendar sync)."""
+    _remove_leave_from_calendar(db, org_id, app_id)
+    title_label = TYPE_LABELS.get(leave_type, f"{leave_type.title()} Leave")
+    current = start_date
+    while current <= end_date:
+        start_dt = datetime(current.year, current.month, current.day, 0, 0, 0, tzinfo=timezone.utc)
+        end_dt = datetime(current.year, current.month, current.day, 23, 59, 59, tzinfo=timezone.utc)
+        ev = CalendarEvent(
+            org_id=org_id,
+            user_id=user_id,
+            title=title_label,
+            start_time=start_dt,
+            end_time=end_dt,
+            event_type="leave",
+            source="leave",
+            external_id=f"leave_{app_id}_{current.isoformat()}",
+        )
+        db.add(ev)
+        current += timedelta(days=1)
+
 
 def _working_days(start: date, end: date) -> float:
     """Count working days (Mon–Fri) between two dates inclusive."""
@@ -823,6 +870,31 @@ def review_amendment_request(
         },
     )
     db.commit()
+
+    # Keep main calendar in sync: remove leave events when cancelled; re-sync when dates change
+    if data.decision == "approved":
+        app_id_str = str(app["id"])
+        if amend["cancel_leave"]:
+            try:
+                _remove_leave_from_calendar(db, org_id, app_id_str)
+                db.commit()
+            except Exception as _e:
+                logger.warning("Leave calendar removal on cancel failed (non-fatal): %s", _e)
+                db.rollback()
+        else:
+            try:
+                _sync_leave_to_calendar(
+                    db, org_id, app_id_str,
+                    app["user_id"],
+                    amend["requested_start_date"],
+                    amend["requested_end_date"],
+                    app["leave_type"],
+                )
+                db.commit()
+            except Exception as _e:
+                logger.warning("Leave calendar re-sync on amendment failed (non-fatal): %s", _e)
+                db.rollback()
+
     return {"message": f"Amendment {data.decision}."}
 
 
@@ -964,6 +1036,18 @@ def review_application(
 
         except Exception as _sync_err:
             logger.warning(f"Leave->timesheet sync failed (non-fatal): {_sync_err}")
+            db.rollback()
+
+        # ── Sync approved leave to main calendar ────────────────────────────
+        try:
+            _sync_leave_to_calendar(
+                db, org_id, app_id,
+                row["user_id"], row["start_date"], row["end_date"], row["leave_type"],
+            )
+            db.commit()
+            logger.info(f"Leave calendar sync: added events for user {row['user_id']} ({row['start_date']} → {row['end_date']})")
+        except Exception as _cal_err:
+            logger.warning(f"Leave->calendar sync failed (non-fatal): {_cal_err}")
             db.rollback()
     # ── end Sprint 1 leave sync ─────────────────────────────────────────────
 
