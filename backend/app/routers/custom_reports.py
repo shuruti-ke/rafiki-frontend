@@ -20,12 +20,15 @@ _openai_client = None
 def _get_openai():
     global _openai_client
     if _openai_client is None:
-        base_url = os.getenv("OPENAI_BASE_URL", "").strip().rstrip("/")
-        kwargs = {"api_key": os.getenv("OPENAI_API_KEY")}
-        # Only set base_url if it's a non-standard endpoint (not the default OpenAI API)
-        if base_url and base_url not in ("https://api.openai.com", "https://api.openai.com/v1"):
-            kwargs["base_url"] = base_url
-        _openai_client = OpenAI(**kwargs
+        raw = os.getenv("OPENAI_BASE_URL", "").strip().rstrip("/")
+        # SDK auto-reads OPENAI_BASE_URL from env; override to guarantee /v1 is present
+        if raw in ("", "https://api.openai.com"):
+            base_url = "https://api.openai.com/v1"
+        else:
+            base_url = raw
+        _openai_client = OpenAI(
+            api_key=os.getenv("OPENAI_API_KEY"),
+            base_url=base_url,
         )
     return _openai_client
 
