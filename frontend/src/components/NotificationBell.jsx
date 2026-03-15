@@ -14,12 +14,15 @@ import "./NotificationBell.css";
 
 /* ── Kind metadata — icon + accent colour ─────────────────────────── */
 const KIND_META = {
-  timesheet_overdue:    { icon: "⏱", color: "#f87171", label: "Timesheets"  },
-  session_reminder:     { icon: "📅", color: "#3b82f6", label: "Calendar"    },
-  announcement_unread:  { icon: "📣", color: "#8b5cf6", label: "News"        },
-  guided_path_assigned: { icon: "🗺", color: "#1fbfb8", label: "Guided Path" },
-  coaching_followup_due:{ icon: "🎯", color: "#fbbf24", label: "Coaching"    },
-  leave_pending:        { icon: "🌿", color: "#34d399", label: "Leave"       },
+  timesheet_overdue:      { icon: "⏱", color: "#f87171", label: "Timesheets"  },
+  session_reminder:       { icon: "📅", color: "#3b82f6", label: "Calendar"    },
+  announcement_unread:    { icon: "📣", color: "#8b5cf6", label: "News"        },
+  guided_path_assigned:   { icon: "🗺", color: "#1fbfb8", label: "Guided Path" },
+  coaching_followup_due:  { icon: "🎯", color: "#fbbf24", label: "Coaching"    },
+  leave_pending:          { icon: "🌿", color: "#34d399", label: "Leave"       },
+  calendar_invite:        { icon: "📨", color: "#3b82f6", label: "Calendar"    },
+  calendar_rsvp:          { icon: "✅", color: "#10b981", label: "Calendar"    },
+  calendar_modify_request:{ icon: "✏️", color: "#f59e0b", label: "Calendar"    },
 };
 
 function kindMeta(kind) {

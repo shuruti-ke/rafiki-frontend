@@ -67,6 +67,8 @@ def create_event(
                 db, att_id, org_id,
                 f"{organiser_name} invited you to '{body.title}' on {start_label}. Open your calendar to accept or decline.",
                 notification_type="calendar_invite",
+                title=f"Meeting invite: {body.title}",
+                link="/calendar",
             )
         except Exception as e:
             logger.warning("Failed to notify calendar attendee: %s", e)
@@ -282,6 +284,8 @@ def rsvp_event(
                 db, event.user_id, org_id,
                 f"{responder_name} {status_label} '{event.title}'. Go to your calendar to see the updated attendee list.",
                 notification_type="calendar_rsvp",
+                title=f"{responder_name} {status_label} '{event.title}'",
+                link="/calendar",
             )
             db.commit()
         except Exception as e:
@@ -332,6 +336,8 @@ def request_modify(
             db, event.user_id, org_id,
             " ".join(parts),
             notification_type="calendar_modify_request",
+            title=f"Change request: '{event.title}'",
+            link="/calendar",
         )
         db.commit()
     except Exception as e:
