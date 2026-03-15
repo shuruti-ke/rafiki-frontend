@@ -548,26 +548,49 @@ export default function AdminEmployeeDetail() {
       </p>
 
       <div className="emp-detail-body">
-        {/* Overview stats — same idea as employee dashboard */}
+        {/* Overview stats — clickable to dive deeper */}
         <div className="emp-detail-overview">
-          <div className="emp-overview-card">
+          <button
+            type="button"
+            className="emp-overview-card emp-overview-card--clickable"
+            onClick={() => document.getElementById("section-evaluations")?.scrollIntoView({ behavior: "smooth" })}
+            aria-label="View objectives and performance"
+          >
             <div className="emp-overview-icon">🎯</div>
             <div className="emp-overview-value">{dashboardSummary?.objectives_count ?? "—"}</div>
             <div className="emp-overview-label">Objectives</div>
-          </div>
-          <div className="emp-overview-card">
+            <span className="emp-overview-hint">View →</span>
+          </button>
+          <button
+            type="button"
+            className="emp-overview-card emp-overview-card--clickable"
+            onClick={() => document.getElementById("section-documents")?.scrollIntoView({ behavior: "smooth" })}
+            aria-label="View documents"
+          >
             <div className="emp-overview-icon">📄</div>
             <div className="emp-overview-value">{dashboardSummary?.documents_count ?? documents?.length ?? "—"}</div>
             <div className="emp-overview-label">Documents</div>
-          </div>
-          <div className="emp-overview-card">
+            <span className="emp-overview-hint">View →</span>
+          </button>
+          <button
+            type="button"
+            className="emp-overview-card emp-overview-card--clickable"
+            onClick={() => document.getElementById("section-evaluations")?.scrollIntoView({ behavior: "smooth" })}
+            aria-label="View performance evaluations"
+          >
             <div className="emp-overview-icon">⭐</div>
             <div className="emp-overview-value">
               {dashboardSummary?.last_evaluation_rating != null ? `${dashboardSummary.last_evaluation_rating}/5` : "—"}
             </div>
             <div className="emp-overview-label">Last rating</div>
-          </div>
-          <div className="emp-overview-card">
+            <span className="emp-overview-hint">View →</span>
+          </button>
+          <button
+            type="button"
+            className="emp-overview-card emp-overview-card--clickable"
+            onClick={() => document.getElementById("section-leave")?.scrollIntoView({ behavior: "smooth" })}
+            aria-label="View leave balances"
+          >
             <div className="emp-overview-icon">🌴</div>
             <div className="emp-overview-value">
               {leaveBalance?.balances?.length
@@ -575,11 +598,49 @@ export default function AdminEmployeeDetail() {
                 : "—"}
             </div>
             <div className="emp-overview-label">Leave (annual)</div>
-          </div>
+            <span className="emp-overview-hint">View →</span>
+          </button>
+        </div>
+
+        {/* Manager view — coaching, toolkit, dashboard (dive deeper) */}
+        <div className="emp-detail-overview emp-detail-overview--manager">
+          <button
+            type="button"
+            className="emp-overview-card emp-overview-card--clickable emp-overview-card--manager"
+            onClick={() => navigate("/manager/coaching")}
+            aria-label="Open manager coaching sessions"
+          >
+            <div className="emp-overview-icon">🧠</div>
+            <div className="emp-overview-value">Coaching</div>
+            <div className="emp-overview-label">Manager coaching sessions</div>
+            <span className="emp-overview-hint">Open →</span>
+          </button>
+          <button
+            type="button"
+            className="emp-overview-card emp-overview-card--clickable emp-overview-card--manager"
+            onClick={() => navigate("/manager/toolkit")}
+            aria-label="Open HR Toolkit"
+          >
+            <div className="emp-overview-icon">🛠️</div>
+            <div className="emp-overview-value">Toolkit</div>
+            <div className="emp-overview-label">HR Toolkit</div>
+            <span className="emp-overview-hint">Open →</span>
+          </button>
+          <button
+            type="button"
+            className="emp-overview-card emp-overview-card--clickable emp-overview-card--manager"
+            onClick={() => navigate("/manager")}
+            aria-label="Open manager dashboard for reports"
+          >
+            <div className="emp-overview-icon">📊</div>
+            <div className="emp-overview-value">Reports</div>
+            <div className="emp-overview-label">Manager dashboard</div>
+            <span className="emp-overview-hint">Insights →</span>
+          </button>
         </div>
 
         {/* Performance evaluations */}
-        <div className="emp-detail-card">
+        <div id="section-evaluations" className="emp-detail-card">
           <div className="emp-card-title">Performance evaluations</div>
           <p className="emp-section-desc">Evaluation history. Wellbeing and chat data are never shown here.</p>
           {evaluations.length === 0 ? (
@@ -1020,7 +1081,7 @@ export default function AdminEmployeeDetail() {
         </div>
 
         {/* Document management */}
-        <div className="emp-detail-card">
+        <div id="section-documents" className="emp-detail-card">
           <div className="emp-card-title">Document management</div>
           <p className="emp-section-desc">Upload and manage personal documents: ID copies, contracts, certificates, NDAs, letters. Employees can also upload from their profile.</p>
           {sectionsLoading ? <p className="emp-muted">Loading…</p> : (
@@ -1053,7 +1114,7 @@ export default function AdminEmployeeDetail() {
 
         {/* Leave Balance Card */}
         {leaveBalance && (
-          <div className="emp-detail-card">
+          <div id="section-leave" className="emp-detail-card">
             <div className="emp-card-title">
               Leave Balances — {leaveBalance.year}
               {leaveBalance.gender && (

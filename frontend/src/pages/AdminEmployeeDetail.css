@@ -75,6 +75,22 @@
   border-radius: 12px; padding: 16px; text-align: center;
   box-shadow: 0 2px 6px rgba(0,0,0,0.04);
 }
+.emp-overview-card--clickable {
+  cursor: pointer; transition: border-color 0.2s, box-shadow 0.2s;
+  position: relative;
+}
+.emp-overview-card--clickable:hover {
+  border-color: var(--purple); box-shadow: 0 4px 12px rgba(123, 47, 190, 0.12);
+}
+.emp-overview-card--clickable:focus {
+  outline: 2px solid var(--purple); outline-offset: 2px;
+}
+.emp-overview-card--manager .emp-overview-value { font-size: 1rem; }
+.emp-overview-hint {
+  display: block; font-size: 0.7rem; color: var(--purple); font-weight: 600;
+  margin-top: 6px; opacity: 0.85;
+}
+.emp-detail-overview--manager { margin-top: 8px; }
 .emp-overview-icon { font-size: 1.5rem; margin-bottom: 6px; }
 .emp-overview-value {
   font-size: 1.35rem; font-weight: 800; color: var(--purple); line-height: 1.2;
