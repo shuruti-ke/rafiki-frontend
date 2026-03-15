@@ -39,12 +39,26 @@ const DATASET_META = {
     accent: "#14b8a6",
     groupOptions: ["department", "job_title", "employment_type", "employee_name"],
   },
+  attendance: {
+    label: "Attendance",
+    description: "Analyse check-in patterns, hours worked, and presence trends across teams.",
+    accent: "#10b981",
+    groupOptions: ["department", "work_date", "employee_name"],
+  },
 };
 const CHART_LABELS = {
   bar: "Bar Chart",
   pie: "Pie Chart",
   table: "Table Only",
 };
+
+const TEMPLATES = [
+  { name: "Headcount by Department", dataset: "employees", group_by: "department", chart_type: "bar" },
+  { name: "Leave by Type", dataset: "leave", group_by: "leave_type", chart_type: "pie" },
+  { name: "Leave Utilization by Dept", dataset: "leave", group_by: "department", chart_type: "bar" },
+  { name: "Attendance Trends", dataset: "attendance", group_by: "work_date", chart_type: "bar" },
+  { name: "Payroll Summary", dataset: "payroll", group_by: "", chart_type: "table" },
+];
 
 function cardStyle({ gap = 12, padding = 18, background = "var(--panel)" } = {}) {
   return {
@@ -115,6 +129,10 @@ export default function AdminReportsBuilder() {
     dashboard_widget: true,
     scheduled_email: "",
   });
+  const [aiQuery, setAiQuery] = useState("");
+  const [aiQuerying, setAiQuerying] = useState(false);
+  const [aiInsights, setAiInsights] = useState("");
+  const [aiInsightsLoading, setAiInsightsLoading] = useState(false);
 
   const datasetMeta = DATASET_META[cfg.dataset] || DATASET_META.employees;
 
@@ -226,6 +244,65 @@ export default function AdminReportsBuilder() {
     }));
   }
 
+  const applyTemplate = (tpl) => {
+    setCfg(c => ({ ...c, name: tpl.name, dataset: tpl.dataset, group_by: tpl.group_by, chart_type: tpl.chart_type }));
+    setAiInsights("");
+    setResult(null);
+  };
+
+  const runAiQuery = async () => {
+    if (!aiQuery.trim()) return;
+    setAiQuerying(true);
+    setAiInsights("");
+    try {
+      const res = await authFetch(`${API}/api/v1/custom-reports/ai-query`, {
+        method: "POST",
+        body: JSON.stringify({ question: aiQuery }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setCfg(c => ({
+          ...c,
+          dataset: data.dataset || c.dataset,
+          group_by: data.group_by || c.group_by,
+          start_date: data.start_date || c.start_date,
+          end_date: data.end_date || c.end_date,
+          chart_type: data.chart_type || c.chart_type,
+          name: data.name || c.name,
+        }));
+        setMsg("AI configured your report. Click Run Report to see results.");
+      } else {
+        setMsg(data.detail || "AI query failed");
+      }
+    } catch {
+      setMsg("AI query failed");
+    }
+    setAiQuerying(false);
+  };
+
+  const loadAiInsights = async () => {
+    if (!rows.length) return;
+    setAiInsightsLoading(true);
+    try {
+      const res = await authFetch(`${API}/api/v1/custom-reports/ai-insights`, {
+        method: "POST",
+        body: JSON.stringify({
+          dataset: cfg.dataset,
+          group_by: cfg.group_by,
+          start_date: cfg.start_date || null,
+          end_date: cfg.end_date || null,
+          rows,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) setAiInsights(data.insights || "");
+      else setMsg(data.detail || "AI insights failed");
+    } catch {
+      setMsg("AI insights failed");
+    }
+    setAiInsightsLoading(false);
+  };
+
   return (
     <div style={{ maxWidth: 1320, display: "grid", gap: 18 }}>
       <div
@@ -262,6 +339,42 @@ export default function AdminReportsBuilder() {
             {msg}
           </div>
         ) : null}
+      </div>
+
+      {/* AI Query Bar */}
+      <div style={{ ...cardStyle({ gap: 12, padding: 20, background: "linear-gradient(135deg, rgba(59,130,246,0.08), rgba(139,92,246,0.08))" }) }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 20 }}>✨</span>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>Ask AI to build your report</div>
+            <div style={{ color: "var(--muted)", fontSize: 12 }}>e.g. "Show leave by department for Q1 2026" or "Attendance trends last month"</div>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input
+            className="search"
+            style={{ flex: 1 }}
+            placeholder="Describe the report you want..."
+            value={aiQuery}
+            onChange={e => setAiQuery(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && runAiQuery()}
+          />
+          <button className="btn btnPrimary" onClick={runAiQuery} disabled={aiQuerying || !aiQuery.trim()} style={{ whiteSpace: "nowrap" }}>
+            {aiQuerying ? "Thinking..." : "✨ Ask AI"}
+          </button>
+        </div>
+      </div>
+
+      {/* Pre-built Templates */}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>Templates:</span>
+        {TEMPLATES.map(tpl => (
+          <button key={tpl.name} className="btn" onClick={() => applyTemplate(tpl)} style={{
+            borderRadius: 999, fontSize: 12, padding: "5px 14px",
+            background: cfg.name === tpl.name ? "rgba(139,92,246,0.12)" : "#fff",
+            border: `1px solid ${cfg.name === tpl.name ? "rgba(139,92,246,0.4)" : "var(--border)"}`,
+          }}>{tpl.name}</button>
+        ))}
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
@@ -526,6 +639,39 @@ export default function AdminReportsBuilder() {
               </>
             )}
           </div>
+
+          {result && rows.length > 0 && (
+            <div style={{ ...cardStyle({ gap: 14, padding: 20, background: "linear-gradient(135deg, rgba(59,130,246,0.06), rgba(139,92,246,0.06))" }) }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                  <span style={{ fontSize: 20 }}>🤖</span>
+                  <div>
+                    <div style={{ fontWeight: 700 }}>AI Insights</div>
+                    <div style={{ fontSize: 12, color: "var(--muted)" }}>AI-generated analysis of your report data</div>
+                  </div>
+                </div>
+                {!aiInsights && (
+                  <button className="btn btnPrimary" onClick={loadAiInsights} disabled={aiInsightsLoading} style={{ whiteSpace: "nowrap" }}>
+                    {aiInsightsLoading ? "Analysing..." : "✨ Generate Insights"}
+                  </button>
+                )}
+                {aiInsights && (
+                  <button className="btn btnGhost" onClick={() => { setAiInsights(""); }} style={{ fontSize: 12 }}>Refresh</button>
+                )}
+              </div>
+              {aiInsightsLoading && (
+                <div style={{ color: "var(--muted)", fontStyle: "italic", fontSize: 14 }}>Analysing your report data...</div>
+              )}
+              {aiInsights && (
+                <div style={{ fontSize: 14, lineHeight: 1.7, color: "var(--text)", background: "rgba(255,255,255,0.7)", borderRadius: 10, padding: "14px 16px", border: "1px solid rgba(139,92,246,0.15)" }}>
+                  {aiInsights}
+                </div>
+              )}
+              {!aiInsights && !aiInsightsLoading && (
+                <div style={{ fontSize: 13, color: "var(--muted)" }}>Click "Generate Insights" to get an AI-powered narrative analysis of this report.</div>
+              )}
+            </div>
+          )}
 
           {result && (
             <div style={cardStyle()}>
