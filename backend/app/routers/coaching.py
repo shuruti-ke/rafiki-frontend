@@ -357,7 +357,8 @@ def create_session(
     Syncs follow-up and action-item due dates to the calendar.
     """
     action_items_json = json.dumps(
-        [i.dict() if hasattr(i, "dict") else i for i in (payload.action_items or [])]
+        [i.dict() if hasattr(i, "dict") else i for i in (payload.action_items or [])],
+        default=str,
     )
     result = db.execute(
         text("""
@@ -450,7 +451,8 @@ def update_session(
     # Serialise action_items list to JSON string for the JSONB cast
     if "action_items" in updates:
         updates["action_items"] = json.dumps(
-            [i.dict() if hasattr(i, "dict") else i for i in updates["action_items"]]
+            [i.dict() if hasattr(i, "dict") else i for i in updates["action_items"]],
+            default=str,
         )
 
     set_clauses = []
