@@ -259,6 +259,26 @@ TOOL_DEFINITIONS = [
         },
     },
     {
+        "name": "web_search",
+        "description": (
+            "Search the internet for any real-time or external information that is not available "
+            "in the company knowledge base or platform data. Use whenever the user needs information "
+            "from the wider world — news, prices, places, contacts, research, regulations, how-tos, "
+            "or anything else. Always search the company KB first for internal topics, then use "
+            "web_search to enrich or supplement with external data."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Search query for the web",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+    {
         "name": "get_employee_profile",
         "description": (
             "Look up an employee's profile by name. Use immediately when a manager or HR admin "
@@ -472,6 +492,7 @@ def execute_tool(
         "check_timesheet":           _check_timesheet,
         "submit_timesheet_entry":    _submit_timesheet_entry,
         "check_objectives":          _check_objectives,
+        "web_search":                _web_search,
         "get_employee_profile":      _get_employee_profile,
         "search_knowledge_base":     _search_knowledge_base,
         "search_my_documents":       _search_my_documents,
@@ -1090,6 +1111,52 @@ def _check_objectives(args: dict, user_id: UUID, org_id: UUID, db: Session) -> d
         return {"objectives": [], "note": "Could not retrieve objectives data."}
 
 
+def _web_search(args: dict, user_id: UUID, org_id: UUID, db: Session) -> dict:
+    """Call Tavily web search and return structured results."""
+    import os
+    import httpx as _httpx
+
+    query = (args.get("query") or "").strip()
+    if not query:
+        return {"error": "query is required."}
+
+    tavily_key = os.getenv("TAVILY_API_KEY", "").strip()
+    if not tavily_key:
+        return {"error": "Web search is not configured (TAVILY_API_KEY missing)."}
+
+    try:
+        resp = _httpx.post(
+            "https://api.tavily.com/search",
+            json={
+                "api_key": tavily_key,
+                "query": query,
+                "search_depth": "basic",
+                "max_results": 5,
+                "include_answer": True,
+                "include_raw_content": False,
+            },
+            timeout=15,
+        )
+        if resp.status_code != 200:
+            return {"error": f"Web search failed ({resp.status_code})."}
+
+        data = resp.json()
+        results = []
+        if data.get("answer"):
+            results.append({"type": "summary", "content": data["answer"]})
+        for r in data.get("results", []):
+            results.append({
+                "title":   r.get("title", ""),
+                "url":     r.get("url", ""),
+                "snippet": r.get("content", "")[:400],
+            })
+        logger.info("web_search: %d results for '%s'", len(results), query[:60])
+        return {"results": results, "query": query}
+    except Exception as exc:
+        logger.warning("web_search error: %s", exc)
+        return {"error": f"Web search failed: {exc}"}
+
+
 def _get_employee_profile(args: dict, user_id: UUID, org_id: UUID, db: Session) -> dict:
     """Find an employee by name and return their profile. Enforces manager/HR scope."""
     from app.models.user import User
@@ -1159,11 +1226,27 @@ def _get_employee_profile(args: dict, user_id: UUID, org_id: UUID, db: Session) 
     return {"found": True, "employees": results, "count": len(results)}
 
 
+_KB_STOP_WORDS = {
+    "i", "me", "my", "the", "a", "an", "is", "are", "was", "were", "do", "does",
+    "did", "have", "has", "had", "can", "could", "will", "would", "should",
+    "how", "what", "when", "where", "who", "which", "many", "much", "in", "on",
+    "at", "to", "for", "of", "and", "or", "but", "not", "this", "that", "it",
+    "be", "been", "being", "am", "your", "our", "their", "its", "with", "give",
+    "three", "two", "some", "about", "get", "find", "within", "fall", "falls",
+    "rates", "please", "tell", "show", "list", "organization", "company",
+}
+
+
 def _search_knowledge_base(args: dict, user_id: UUID, org_id: UUID, db: Session) -> dict:
-    """Search the `documents` table (KB uploads) + `document_chunks` (extracted text)."""
+    """Search the `documents` table (KB uploads) + `document_chunks` (extracted text).
+    Uses OR-style fulltext so any matching keyword finds the document."""
     query = (args.get("query") or "").strip()
     if not query:
         return {"results": [], "error": "Query is required."}
+
+    # Build OR-style tsquery from meaningful keywords
+    words = [w for w in query.lower().split() if w.isalpha() and w not in _KB_STOP_WORDS]
+    or_query = " | ".join(words[:10]) if words else query
 
     try:
         rows = db.execute(
@@ -1179,11 +1262,11 @@ def _search_knowledge_base(args: dict, user_id: UUID, org_id: UUID, db: Session)
                         FROM document_chunks dc
                         WHERE dc.document_id = d.id
                           AND (
-                              to_tsvector('english', dc.content) @@ plainto_tsquery('english', :q)
+                              to_tsvector('english', dc.content) @@ to_tsquery('english', :orq)
                               OR dc.content ILIKE :ql
                           )
                         ORDER BY
-                            ts_rank(to_tsvector('english', dc.content), plainto_tsquery('english', :q)) DESC,
+                            ts_rank(to_tsvector('english', dc.content), to_tsquery('english', :orq)) DESC,
                             dc.chunk_index
                         LIMIT 1
                     ) AS matching_chunk
@@ -1193,14 +1276,14 @@ def _search_knowledge_base(args: dict, user_id: UUID, org_id: UUID, db: Session)
                   AND (
                       to_tsvector('english',
                           COALESCE(d.title, '') || ' ' || COALESCE(d.description, ''))
-                      @@ plainto_tsquery('english', :q)
+                      @@ to_tsquery('english', :orq)
                       OR d.title       ILIKE :ql
                       OR d.description ILIKE :ql
                       OR EXISTS (
                           SELECT 1 FROM document_chunks dc2
                           WHERE dc2.document_id = d.id
                             AND (
-                                to_tsvector('english', dc2.content) @@ plainto_tsquery('english', :q)
+                                to_tsvector('english', dc2.content) @@ to_tsquery('english', :orq)
                                 OR dc2.content ILIKE :ql
                             )
                       )
@@ -1209,11 +1292,11 @@ def _search_knowledge_base(args: dict, user_id: UUID, org_id: UUID, db: Session)
                     ts_rank(
                         to_tsvector('english',
                             COALESCE(d.title, '') || ' ' || COALESCE(d.description, '')),
-                        plainto_tsquery('english', :q)
+                        to_tsquery('english', :orq)
                     ) DESC
                 LIMIT 5
             """),
-            {"oid": str(org_id), "q": query, "ql": f"%{query}%"},
+            {"oid": str(org_id), "orq": or_query, "ql": f"%{query}%"},
         ).fetchall()
 
         results = []
