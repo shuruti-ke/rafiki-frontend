@@ -9,8 +9,9 @@
 - **Rafiki** — HR/local-first app: FastAPI backend, React (Vite) frontend.
 - **Repos:** This workspace is `rafiki-local`. Git has two remotes:
   - `origin` → https://github.com/shuruti-ke/rafiki-at-work.git
-  - `vercel` → https://github.com/shuruti-ke/rafiki-frontend.git
-- **Push:** Often “push to both” means `git push origin master && git push vercel master`.
+  - `vercel` → https://github.com/shuruti-ke/rafiki-frontend.git (**frontend source of truth**)
+- **Frontend:** Rafiki-frontend is the source of truth for frontend code. To sync this repo's `frontend/` from it: `git fetch vercel` then replace `frontend/` with vercel's root (e.g. `git rm -r --cached frontend`, then `git read-tree --prefix=frontend/ -u vercel/master`).
+- **Push:** Often “push to both” means Push full stack to origin: `git push origin master`. Push only frontend to Vercel: use subtree or copy `frontend/` into a clone of rafiki-frontend and push there.
 
 ---
 
