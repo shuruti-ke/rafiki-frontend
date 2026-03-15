@@ -13,7 +13,7 @@ import uuid
 import json
 import logging
 from datetime import date, datetime
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -63,17 +63,18 @@ class CoachingSessionUpdate(BaseModel):
 
 
 class CoachingSessionOut(BaseModel):
-    id: uuid.UUID
+    """Matches DB row; id may be int (serial) or UUID depending on migration."""
+    id: Union[int, uuid.UUID]
     org_id: uuid.UUID
     manager_id: uuid.UUID
     employee_id: uuid.UUID
     concern: str
-    notes: Optional[str]
-    action_items: List[ActionItem]
-    outcome: Optional[str]
-    follow_up_date: Optional[date]
+    notes: Optional[str] = None
+    action_items: List[ActionItem] = []
+    outcome: Optional[str] = None
+    follow_up_date: Optional[date] = None
     created_at: datetime
-    updated_at: datetime
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -82,23 +83,53 @@ class CoachingSessionOut(BaseModel):
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _row_to_out(row: dict) -> dict:
-    """Normalise a raw DB row — parse action_items JSON if it comes back as string."""
+    """
+    Normalise a raw DB row to CoachingSessionOut shape.
+    DB may be AI schema (id int, employee_member_id, manager_notes, outcome_logged)
+    or CRUD schema (id uuid, employee_id, notes, outcome). Map both.
+    """
     items = row.get("action_items") or []
     if isinstance(items, str):
         try:
             items = json.loads(items)
         except Exception:
             items = []
-    row["action_items"] = items
-    return row
+
+    return {
+        "id": row.get("id"),
+        "org_id": row.get("org_id"),
+        "manager_id": row.get("manager_id"),
+        "employee_id": row.get("employee_id") or row.get("employee_member_id"),
+        "concern": row.get("concern", ""),
+        "notes": row.get("notes") if row.get("notes") is not None else row.get("manager_notes"),
+        "action_items": items,
+        "outcome": row.get("outcome") if row.get("outcome") is not None else row.get("outcome_logged"),
+        "follow_up_date": row.get("follow_up_date"),
+        "created_at": row.get("created_at"),
+        "updated_at": row.get("updated_at") or row.get("created_at"),
+    }
+
+
+def _parse_session_id(session_id: Union[int, str, uuid.UUID]) -> Union[int, str]:
+    """Return value suitable for DB id column (int or UUID string)."""
+    if isinstance(session_id, int):
+        return session_id
+    if isinstance(session_id, uuid.UUID):
+        return str(session_id)
+    s = str(session_id).strip()
+    try:
+        return int(s)
+    except ValueError:
+        return s
 
 
 def _get_session_or_404(
-    session_id: uuid.UUID,
+    session_id: Union[int, str, uuid.UUID],
     manager_id: uuid.UUID,
     org_id: uuid.UUID,
     db: Session,
 ) -> dict:
+    id_param = _parse_session_id(session_id)
     result = db.execute(
         text("""
             SELECT * FROM coaching_sessions
@@ -106,7 +137,7 @@ def _get_session_or_404(
               AND manager_id = :manager_id
               AND org_id = :org_id
         """),
-        {"id": str(session_id), "manager_id": str(manager_id), "org_id": str(org_id)},
+        {"id": id_param, "manager_id": str(manager_id), "org_id": str(org_id)},
     )
     row = result.mappings().first()
     if not row:
@@ -136,7 +167,8 @@ def list_sessions(
     params: dict = {"manager_id": str(user_id), "org_id": str(org_id)}
 
     if employee_id:
-        query += " AND employee_id = :employee_id"
+        # Table may have employee_id or employee_member_id
+        query += " AND (employee_id = :employee_id OR employee_member_id = :employee_id)"
         params["employee_id"] = str(employee_id)
 
     query += " ORDER BY created_at DESC"
@@ -203,7 +235,7 @@ def create_session(
 
 @router.get("/{session_id}", response_model=CoachingSessionOut)
 def get_session(
-    session_id: uuid.UUID,
+    session_id: str,
     db: Session = Depends(get_db),
     user_id: uuid.UUID = Depends(get_current_user_id),
     org_id: uuid.UUID = Depends(get_current_org_id),
@@ -214,7 +246,7 @@ def get_session(
 
 @router.put("/{session_id}", response_model=CoachingSessionOut)
 def update_session(
-    session_id: uuid.UUID,
+    session_id: str,
     payload: CoachingSessionUpdate,
     db: Session = Depends(get_db),
     user_id: uuid.UUID = Depends(get_current_user_id),
@@ -246,7 +278,7 @@ def update_session(
     params = {k: str(v) if isinstance(v, (uuid.UUID, date, datetime)) else v
               for k, v in updates.items()}
     params["updated_at"] = datetime.utcnow()
-    params["id"] = str(session_id)
+    params["id"] = _parse_session_id(session_id)
     params["manager_id"] = str(user_id)
     params["org_id"] = str(org_id)
 
@@ -265,7 +297,7 @@ def update_session(
 
 @router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_session(
-    session_id: uuid.UUID,
+    session_id: str,
     db: Session = Depends(get_db),
     user_id: uuid.UUID = Depends(get_current_user_id),
     org_id: uuid.UUID = Depends(get_current_org_id),
@@ -279,7 +311,7 @@ def delete_session(
             DELETE FROM coaching_sessions
             WHERE id = :id AND manager_id = :manager_id AND org_id = :org_id
         """),
-        {"id": str(session_id), "manager_id": str(user_id), "org_id": str(org_id)},
+        {"id": _parse_session_id(session_id), "manager_id": str(user_id), "org_id": str(org_id)},
     )
     db.commit()
     logger.info(f"Coaching session {session_id} deleted by manager {user_id}")
