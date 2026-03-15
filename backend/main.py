@@ -119,6 +119,7 @@ from app.routers.workflows import router as workflows_router
 from app.routers.custom_reports import router as custom_reports_router
 from app.routers.payroll_statutory import router as payroll_statutory_router
 from app.routers.kiosk import router as kiosk_router
+from app.routers.coaching import router as coaching_router
 
 app.include_router(auth_router)
 app.include_router(kb_router)
@@ -128,6 +129,7 @@ app.include_router(chat_router)
 app.include_router(gp_router)
 app.include_router(org_router)
 app.include_router(mgr_router)
+app.include_router(coaching_router)
 app.include_router(sa_router)
 app.include_router(obj_router)
 app.include_router(cal_router)
@@ -201,10 +203,9 @@ OPENAI_MODEL_VISION = os.getenv("OPENAI_MODEL_VISION", "gpt-4o-mini").strip()
 vision_client = OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL) if OPENAI_API_KEY else None
 
 SUPPORTED_MODELS = [
-    "claude-sonnet-4-5-20250929",
-    "claude-opus-4-20250514",
-    "anthropic/claude-sonnet-4.5",
-    "anthropic/claude-opus-4",
+    "gpt-4o-mini",
+    "gpt-4o",
+    "gpt-4-turbo",
 ]
 
 @app.get("/models")

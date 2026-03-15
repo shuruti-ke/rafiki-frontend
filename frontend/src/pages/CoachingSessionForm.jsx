@@ -146,7 +146,7 @@ export default function CoachingSessionForm({ prefillData = null, onSessionSaved
   async function fetchSessions() {
     setLoading(true);
     try {
-      const res = await authFetch(`${API}/coaching/`);
+      const res = await authFetch(`${API}/api/v1/coaching/`);
       if (!res.ok) throw new Error("Failed to load sessions");
       const data = await res.json();
       setSessions(data);
@@ -223,8 +223,8 @@ export default function CoachingSessionForm({ prefillData = null, onSessionSaved
     setError(null);
     try {
       const url = editingId
-        ? `${API}/coaching/${editingId}`
-        : `${API}/coaching/`;
+        ? `${API}/api/v1/coaching/${editingId}`
+        : `${API}/api/v1/coaching/`;
       const method = editingId ? "PUT" : "POST";
 
       const res = await authFetch(url, {
@@ -254,7 +254,7 @@ export default function CoachingSessionForm({ prefillData = null, onSessionSaved
     if (!editingId) return;
     if (!window.confirm("Delete this coaching session? This cannot be undone.")) return;
     try {
-      const res = await authFetch(`${API}/coaching/${editingId}`, { method: "DELETE" });
+      const res = await authFetch(`${API}/api/v1/coaching/${editingId}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Delete failed");
       fetchSessions();
       resetForm();
