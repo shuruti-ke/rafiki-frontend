@@ -27,6 +27,7 @@ export default function CalendarPage() {
 
   const currentUser = JSON.parse(localStorage.getItem("rafiki_user") || "{}");
   const currentUserId = currentUser.user_id || currentUser.id;
+  const userRole = localStorage.getItem("rafiki_role") || currentUser.role || "";
 
   const loadEvents = async () => {
     const start = new Date(year, month, 1).toISOString();
@@ -218,6 +219,7 @@ export default function CalendarPage() {
           event={editEvent}
           colleagues={colleagues}
           currentUserId={currentUserId}
+          userRole={userRole}
           selectedDate={selectedDay ? fmtDate(year,month,selectedDay) : null}
           onClose={() => setShowModal(false)}
           onSaved={() => { setShowModal(false); loadEvents(); }}
@@ -293,8 +295,9 @@ function AttendeePicker({ colleagues, selected, onChange, currentUserId }) {
 }
 
 /* ─── Event Modal ─── */
-function EventModal({ event, colleagues, currentUserId, selectedDate, onClose, onSaved }) {
+function EventModal({ event, colleagues, currentUserId, selectedDate, onClose, onSaved, userRole }) {
   const isEdit = !!event;
+  const canShare = ["hr_admin", "super_admin", "manager"].includes(userRole);
   const [title, setTitle] = useState(event?.title || "");
   const [description, setDescription] = useState(event?.description || "");
   const [eventType, setEventType] = useState(event?.event_type || "meeting");
@@ -400,10 +403,12 @@ function EventModal({ event, colleagues, currentUserId, selectedDate, onClose, o
           </div>
         )}
 
-        <div className="calp-form-check">
-          <input type="checkbox" id="calp-shared" checked={isShared} onChange={e => setIsShared(e.target.checked)} disabled={!isOwner} />
-          <label htmlFor="calp-shared">Share with org</label>
-        </div>
+        {canShare && (
+          <div className="calp-form-check">
+            <input type="checkbox" id="calp-shared" checked={isShared} onChange={e => setIsShared(e.target.checked)} disabled={!isOwner} />
+            <label htmlFor="calp-shared">Share with org</label>
+          </div>
+        )}
 
         <div className="calp-form-row">
           <label>Invite Colleagues</label>
