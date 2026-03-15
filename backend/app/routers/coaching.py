@@ -83,6 +83,20 @@ class CoachingSessionUpdate(BaseModel):
     )
     follow_up_date: Optional[date] = None
 
+    @field_validator("concern", "notes", "outcome", mode="before")
+    @classmethod
+    def empty_str_to_none(cls, v):
+        if v == "":
+            return None
+        return v
+
+    @field_validator("follow_up_date", mode="before")
+    @classmethod
+    def empty_follow_up_to_none(cls, v):
+        if v == "" or v is None:
+            return None
+        return v
+
 
 class CoachingSessionOut(BaseModel):
     """Matches DB row; id may be int (serial) or UUID depending on migration."""
