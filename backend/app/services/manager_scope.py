@@ -27,9 +27,15 @@ def _get_user_role(db: Session, user_id: UUID) -> Optional[str]:
     return str(user.role) if user and getattr(user, "role", None) else None
 
 
+def _role_is(db: Session, user_id: UUID, role_name: str) -> bool:
+    """Case-insensitive role check (DB may store 'Manager' or 'manager')."""
+    r = _get_user_role(db, user_id)
+    return r is not None and r.strip().lower() == role_name.lower()
+
+
 def _is_super_admin(db: Session, user_id: UUID) -> bool:
     """Check if a user has super_admin role."""
-    return _get_user_role(db, user_id) == "super_admin"
+    return _role_is(db, user_id, "super_admin")
 
 
 def get_manager_config(db: Session, user_id: UUID, org_id: UUID) -> ManagerConfig | None:
@@ -76,7 +82,7 @@ def validate_employee_access(
         return True
 
     # hr_admin can access any employee in their org (same as /manager/team behaviour)
-    if _get_user_role(db, manager_user_id) == "hr_admin":
+    if _role_is(db, manager_user_id, "hr_admin"):
         emp = db.query(User).filter(User.user_id == employee_user_id).first()
         if emp and (emp.org_id is None or emp.org_id == org_id):
             return True
@@ -84,10 +90,17 @@ def validate_employee_access(
 
     config = get_manager_config(db, manager_user_id, org_id)
     if not config:
-        # Manager without config: allow if employee is a direct report (manager_id points to this manager)
-        if _get_user_role(db, manager_user_id) == "manager":
+        # Manager without config: allow if employee is a direct report or in same org
+        if _role_is(db, manager_user_id, "manager"):
             emp = db.query(User).filter(User.user_id == employee_user_id).first()
-            if emp and emp.manager_id == manager_user_id and (emp.org_id is None or emp.org_id == org_id):
+            if not emp:
+                return False
+            if emp.org_id is not None and emp.org_id != org_id:
+                return False
+            # Direct report (manager_id points to this manager) or same org
+            if emp.manager_id == manager_user_id:
+                return True
+            if emp.org_id == org_id:
                 return True
         return False
 
@@ -115,8 +128,9 @@ def get_allowed_features(db: Session, user_id: UUID, org_id: UUID) -> list[str]:
 
 def can_use_feature(db: Session, user_id: UUID, org_id: UUID, feature: str) -> bool:
     # hr_admin, super_admin, and manager can use coaching_ai and toolkit without a ManagerConfig
-    # (managers use it for their direct reports)
     role = _get_user_role(db, user_id)
-    if role in ("hr_admin", "super_admin", "manager") and feature in ("coaching_ai", "toolkit"):
-        return True
+    if role is not None and feature in ("coaching_ai", "toolkit"):
+        r = role.strip().lower()
+        if r in ("hr_admin", "super_admin", "manager"):
+            return True
     return feature in get_allowed_features(db, user_id, org_id)

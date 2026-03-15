@@ -62,7 +62,8 @@ def get_team(
 
     config = get_manager_config(db, user_id, org_id)
     # Manager with direct reports can use toolkits even without a ManagerConfig row
-    if not config and not is_elevated and _role != "manager":
+    is_manager = _role and str(_role).strip().lower() == "manager"
+    if not config and not is_elevated and not is_manager:
         raise HTTPException(status_code=403, detail="No active manager configuration found")
 
     # super_admin: all users platform-wide
