@@ -1,711 +1,590 @@
 import { useEffect, useMemo, useState } from "react";
 import { API, authFetch } from "../api.js";
 import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  PieChart,
-  Pie,
-  Cell,
+  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  Tooltip, PieChart, Pie, Cell, Legend,
 } from "recharts";
 
-const CHART_COLORS = ["#8b5cf6", "#1fbfb8", "#3b82f6", "#fbbf24", "#34d399", "#f87171"];
+/* ── Design tokens ── */
+const CHART_COLORS = ["#8b5cf6","#1fbfb8","#3b82f6","#fbbf24","#34d399","#f87171","#ec4899","#f97316"];
+
 const DATASET_META = {
-  employees: {
-    label: "Employees",
-    description: "Track workforce shape, team distribution, and people trends.",
-    accent: "#8b5cf6",
-    groupOptions: ["department", "job_title", "employment_type", "work_location"],
-  },
-  leave: {
-    label: "Leave",
-    description: "Review request patterns, approvals, and leave usage by team or type.",
-    accent: "#f59e0b",
-    groupOptions: ["status", "leave_type", "department", "employment_type"],
-  },
-  timesheets: {
-    label: "Timesheets",
-    description: "Understand hours worked, utilization, and attendance-related reporting.",
-    accent: "#3b82f6",
-    groupOptions: ["department", "job_title", "work_location", "employee_name"],
-  },
-  payroll: {
-    label: "Payroll",
-    description: "Analyze payroll totals, pay distribution, and compensation reporting.",
-    accent: "#14b8a6",
-    groupOptions: ["department", "job_title", "employment_type", "employee_name"],
-  },
-  attendance: {
-    label: "Attendance",
-    description: "Analyse check-in patterns, hours worked, and presence trends across teams.",
-    accent: "#10b981",
-    groupOptions: ["department", "work_date", "employee_name"],
-  },
+  employees:  { label:"Employees",  icon:"👥", accent:"#8b5cf6", groupOptions:["department","job_title","employment_type","work_location"], description:"Workforce shape, team distribution, headcount trends." },
+  leave:      { label:"Leave",      icon:"🌿", accent:"#f59e0b", groupOptions:["status","leave_type","department","employment_type"],       description:"Request patterns, approvals, leave usage by team." },
+  timesheets: { label:"Timesheets", icon:"⏱",  accent:"#3b82f6", groupOptions:["department","job_title","work_location","employee_name"],   description:"Hours worked, utilization, attendance patterns." },
+  payroll:    { label:"Payroll",    icon:"💰", accent:"#14b8a6", groupOptions:["department","job_title","employment_type","employee_name"],  description:"Pay distribution, payroll totals, compensation." },
+  attendance: { label:"Attendance", icon:"📍", accent:"#10b981", groupOptions:["department","work_date","employee_name"],                   description:"Check-in patterns, hours worked, presence trends." },
 };
-const CHART_LABELS = {
-  bar: "Bar Chart",
-  pie: "Pie Chart",
-  table: "Table Only",
+
+const CHART_META = {
+  bar:   { label:"Bar Chart",  icon:"▐▌" },
+  pie:   { label:"Pie Chart",  icon:"◑"  },
+  table: { label:"Table",      icon:"≡"  },
 };
 
 const TEMPLATES = [
-  { name: "Headcount by Department", dataset: "employees", group_by: "department", chart_type: "bar" },
-  { name: "Leave by Type", dataset: "leave", group_by: "leave_type", chart_type: "pie" },
-  { name: "Leave Utilization by Dept", dataset: "leave", group_by: "department", chart_type: "bar" },
-  { name: "Attendance Trends", dataset: "attendance", group_by: "work_date", chart_type: "bar" },
-  { name: "Payroll Summary", dataset: "payroll", group_by: "", chart_type: "table" },
+  { name:"Headcount by Dept",       dataset:"employees",  group_by:"department",  chart_type:"bar"   },
+  { name:"Leave by Type",           dataset:"leave",      group_by:"leave_type",  chart_type:"pie"   },
+  { name:"Leave by Department",     dataset:"leave",      group_by:"department",  chart_type:"bar"   },
+  { name:"Attendance Trends",       dataset:"attendance", group_by:"work_date",   chart_type:"bar"   },
+  { name:"Payroll Summary",         dataset:"payroll",    group_by:"",            chart_type:"table" },
 ];
 
-function cardStyle({ gap = 12, padding = 18, background = "var(--panel)" } = {}) {
-  return {
-    display: "grid",
-    gap,
-    border: "1px solid var(--border)",
-    borderRadius: 18,
-    padding,
-    background,
-    boxShadow: "0 8px 24px rgba(15, 23, 42, 0.04)",
-  };
-}
-
-function SectionHeader({ title, subtitle, action }) {
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
-      <div>
-        <h3 style={{ margin: 0 }}>{title}</h3>
-        {subtitle ? <p style={{ margin: "6px 0 0", color: "var(--muted)" }}>{subtitle}</p> : null}
-      </div>
-      {action}
-    </div>
-  );
-}
-
-function MetricCard({ label, value, accent }) {
-  return (
-    <div style={{ ...cardStyle({ gap: 6, padding: 16, background: "#fff" }), minWidth: 150 }}>
-      <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)" }}>{label}</div>
-      <div style={{ fontSize: 28, fontWeight: 800, color: accent || "var(--text)" }}>{value}</div>
-    </div>
-  );
-}
-
+/* ── Helpers ── */
 function downloadCsv(filename, rows) {
   if (!rows?.length) return;
-  const headers = Array.from(new Set(rows.flatMap((row) => Object.keys(row))));
-  const csv = [
-    headers.join(","),
-    ...rows.map((row) =>
-      headers.map((key) => `"${String(row[key] ?? "").replaceAll('"', '""')}"`).join(",")
-    ),
-  ].join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
+  const headers = Array.from(new Set(rows.flatMap(r => Object.keys(r))));
+  const csv = [headers.join(","), ...rows.map(r =>
+    headers.map(k => `"${String(r[k] ?? "").replaceAll('"','""')}"`).join(",")
+  )].join("\n");
+  const url = URL.createObjectURL(new Blob([csv], { type:"text/csv;charset=utf-8;" }));
+  const a = document.createElement("a"); a.href = url; a.download = filename; a.click();
   URL.revokeObjectURL(url);
 }
 
+const label = (txt) => (
+  <div style={{ fontSize:12, fontWeight:600, color:"var(--muted)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:6 }}>{txt}</div>
+);
+
+const Divider = () => <div style={{ height:1, background:"var(--border)", margin:"4px 0" }} />;
+
+/* ── Main component ── */
 export default function AdminReportsBuilder() {
-  const [saved, setSaved] = useState([]);
-  const [result, setResult] = useState(null);
-  const [msg, setMsg] = useState("");
-  const [loadingSaved, setLoadingSaved] = useState(true);
-  const [running, setRunning] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [saved,         setSaved]         = useState([]);
+  const [result,        setResult]        = useState(null);
+  const [toast,         setToast]         = useState("");
+  const [loadingSaved,  setLoadingSaved]  = useState(true);
+  const [running,       setRunning]       = useState(false);
+  const [saving,        setSaving]        = useState(false);
   const [activeSavedId, setActiveSavedId] = useState("");
+  const [aiQuery,       setAiQuery]       = useState("");
+  const [aiQuerying,    setAiQuerying]    = useState(false);
+  const [aiInsights,    setAiInsights]    = useState("");
+  const [aiLoading,     setAiLoading]     = useState(false);
+
   const [cfg, setCfg] = useState({
-    name: "",
-    dataset: "employees",
-    group_by: "",
-    start_date: "",
-    end_date: "",
-    chart_type: "bar",
-    dashboard_widget: true,
-    scheduled_email: "",
+    name:"", dataset:"employees", group_by:"", start_date:"", end_date:"",
+    chart_type:"bar", dashboard_widget:true, scheduled_email:"",
   });
-  const [aiQuery, setAiQuery] = useState("");
-  const [aiQuerying, setAiQuerying] = useState(false);
-  const [aiInsights, setAiInsights] = useState("");
-  const [aiInsightsLoading, setAiInsightsLoading] = useState(false);
 
-  const datasetMeta = DATASET_META[cfg.dataset] || DATASET_META.employees;
+  const meta = DATASET_META[cfg.dataset] || DATASET_META.employees;
+  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 4000); };
 
-  async function load() {
+  /* ── Data loading ── */
+  const loadSaved = async () => {
     setLoadingSaved(true);
     const res = await authFetch(`${API}/api/v1/custom-reports/`);
     if (res.ok) setSaved((await res.json()).reports || []);
     setLoadingSaved(false);
-  }
-  useEffect(() => { load(); }, []);
-
-  const saveReport = async () => {
-    setSaving(true);
-    const payload = {
-      name: cfg.name || `${cfg.dataset} report`,
-      description: "",
-      config: {
-        dataset: cfg.dataset,
-        group_by: cfg.group_by,
-        start_date: cfg.start_date || undefined,
-        end_date: cfg.end_date || undefined,
-        chart_type: cfg.chart_type,
-        dashboard_widget: cfg.dashboard_widget,
-        scheduled_email: cfg.scheduled_email || undefined,
-      },
-    };
-    const res = await authFetch(`${API}/api/v1/custom-reports/`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json();
-    setMsg(res.ok ? "Report saved." : (data.detail || "Failed to save report"));
-    if (res.ok) load();
-    setSaving(false);
   };
+  useEffect(() => { loadSaved(); }, []);
 
+  /* ── Actions ── */
   const runAdhoc = async () => {
-    setRunning(true);
-    setActiveSavedId("");
+    setRunning(true); setActiveSavedId(""); setAiInsights("");
     const res = await authFetch(`${API}/api/v1/custom-reports/run`, {
-      method: "POST",
-      body: JSON.stringify({
-        config: {
-          dataset: cfg.dataset,
-          group_by: cfg.group_by,
-          start_date: cfg.start_date || undefined,
-          end_date: cfg.end_date || undefined,
-          chart_type: cfg.chart_type,
-          dashboard_widget: cfg.dashboard_widget,
-          scheduled_email: cfg.scheduled_email || undefined,
-        },
-      }),
+      method:"POST", body:JSON.stringify({ config:{
+        dataset:cfg.dataset, group_by:cfg.group_by,
+        start_date:cfg.start_date||undefined, end_date:cfg.end_date||undefined,
+        chart_type:cfg.chart_type,
+      }}),
     });
     const data = await res.json();
-    if (res.ok) setResult(data);
-    else setMsg(data.detail || "Failed to run report");
+    if (res.ok) setResult(data); else showToast(data.detail || "Failed to run report");
     setRunning(false);
   };
 
   const runSaved = async (id) => {
-    const selected = saved.find((report) => report.id === id);
-    setActiveSavedId(id);
-    if (selected?.config) {
-      setCfg((prev) => ({ ...prev, ...selected.config, name: selected.name || prev.name }));
-    }
+    const sel = saved.find(r => r.id === id);
+    setActiveSavedId(id); setAiInsights("");
+    if (sel?.config) setCfg(p => ({ ...p, ...sel.config, name:sel.name||p.name }));
     setRunning(true);
     const res = await authFetch(`${API}/api/v1/custom-reports/run`, {
-      method: "POST",
-      body: JSON.stringify({ saved_report_id: id }),
+      method:"POST", body:JSON.stringify({ saved_report_id:id }),
     });
     const data = await res.json();
-    if (res.ok) setResult(data);
-    else setMsg(data.detail || "Failed to run saved report");
+    if (res.ok) setResult(data); else showToast(data.detail || "Failed");
     setRunning(false);
   };
 
-  const rows = result?.rows || [];
-  const columns = useMemo(() => Array.from(new Set(rows.flatMap((row) => Object.keys(row)))), [rows]);
-  const chartData = useMemo(() => {
-    if (!rows.length) return [];
-    if (cfg.group_by) {
-      return rows.map((row, idx) => ({
-        name: row[cfg.group_by] ?? `Group ${idx + 1}`,
-        value: Number(row.count ?? row.total ?? row.sum_hours ?? row.net_pay_total ?? 0),
-      }));
-    }
-    const firstKey = columns.find((col) => typeof rows[0]?.[col] === "string") || columns[0];
-    const valueKey = columns.find((col) => typeof rows[0]?.[col] === "number") || columns[1];
-    return rows.slice(0, 12).map((row, idx) => ({
-      name: row[firstKey] ?? `Row ${idx + 1}`,
-      value: Number(row[valueKey] ?? idx + 1),
-    }));
-  }, [rows, cfg.group_by, columns]);
-
-  const numericColumns = useMemo(
-    () => columns.filter((col) => rows.some((row) => typeof row[col] === "number")),
-    [columns, rows]
-  );
-  const previewValueColumn = numericColumns[0] || "—";
-  const topChartRow = chartData[0];
-
-  function applyDataset(dataset) {
-    const options = DATASET_META[dataset]?.groupOptions || [];
-    setCfg((current) => ({
-      ...current,
-      dataset,
-      group_by: options.includes(current.group_by) ? current.group_by : current.group_by,
-      name: current.name || `${dataset} report`,
-    }));
-  }
-
-  const applyTemplate = (tpl) => {
-    setCfg(c => ({ ...c, name: tpl.name, dataset: tpl.dataset, group_by: tpl.group_by, chart_type: tpl.chart_type }));
-    setAiInsights("");
-    setResult(null);
+  const saveReport = async () => {
+    setSaving(true);
+    const res = await authFetch(`${API}/api/v1/custom-reports/`, {
+      method:"POST", body:JSON.stringify({
+        name:cfg.name || `${cfg.dataset} report`, description:"",
+        config:{ dataset:cfg.dataset, group_by:cfg.group_by, start_date:cfg.start_date||undefined,
+          end_date:cfg.end_date||undefined, chart_type:cfg.chart_type, dashboard_widget:cfg.dashboard_widget },
+      }),
+    });
+    const data = await res.json();
+    showToast(res.ok ? "Report saved." : (data.detail || "Failed to save"));
+    if (res.ok) loadSaved();
+    setSaving(false);
   };
 
   const runAiQuery = async () => {
     if (!aiQuery.trim()) return;
-    setAiQuerying(true);
-    setAiInsights("");
+    setAiQuerying(true); setAiInsights("");
     try {
       const res = await authFetch(`${API}/api/v1/custom-reports/ai-query`, {
-        method: "POST",
-        body: JSON.stringify({ question: aiQuery }),
+        method:"POST", body:JSON.stringify({ question:aiQuery }),
       });
       const data = await res.json();
       if (res.ok) {
         setCfg(c => ({
           ...c,
-          dataset: data.dataset || c.dataset,
-          group_by: data.group_by || c.group_by,
-          start_date: data.start_date || c.start_date,
-          end_date: data.end_date || c.end_date,
-          chart_type: data.chart_type || c.chart_type,
-          name: data.name || c.name,
+          dataset:   data.dataset    || c.dataset,
+          group_by:  data.group_by   || c.group_by,
+          start_date:data.start_date || c.start_date,
+          end_date:  data.end_date   || c.end_date,
+          chart_type:data.chart_type || c.chart_type,
+          name:      data.name       || c.name,
         }));
-        setMsg("AI configured your report. Click Run Report to see results.");
+        showToast("✨ Report configured by AI — click Run to see results.");
       } else {
-        setMsg(data.detail || "AI query failed");
+        showToast(data.detail || "AI query failed");
       }
-    } catch {
-      setMsg("AI query failed");
-    }
+    } catch { showToast("AI query failed"); }
     setAiQuerying(false);
   };
 
   const loadAiInsights = async () => {
     if (!rows.length) return;
-    setAiInsightsLoading(true);
+    setAiLoading(true);
     try {
       const res = await authFetch(`${API}/api/v1/custom-reports/ai-insights`, {
-        method: "POST",
-        body: JSON.stringify({
-          dataset: cfg.dataset,
-          group_by: cfg.group_by,
-          start_date: cfg.start_date || null,
-          end_date: cfg.end_date || null,
-          rows,
+        method:"POST", body:JSON.stringify({
+          dataset:cfg.dataset, group_by:cfg.group_by,
+          start_date:cfg.start_date||null, end_date:cfg.end_date||null, rows,
         }),
       });
       const data = await res.json();
-      if (res.ok) setAiInsights(data.insights || "");
-      else setMsg(data.detail || "AI insights failed");
-    } catch {
-      setMsg("AI insights failed");
-    }
-    setAiInsightsLoading(false);
+      if (res.ok) setAiInsights(data.insights || ""); else showToast(data.detail || "Failed");
+    } catch { showToast("AI insights failed"); }
+    setAiLoading(false);
   };
 
-  return (
-    <div style={{ maxWidth: 1320, display: "grid", gap: 18 }}>
-      <div
-        style={{
-          ...cardStyle({ gap: 14, padding: 22, background: "linear-gradient(135deg, rgba(139,92,246,0.10), rgba(31,191,184,0.10))" }),
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
-          <div>
-            <h1 style={{ margin: 0 }}>Custom Reports Builder</h1>
-            <p style={{ color: "var(--muted)", margin: "8px 0 0", maxWidth: 780 }}>
-              Build polished workforce reports faster with saved layouts, chart-ready summaries, exports, and dashboard-ready widgets in one reporting studio.
-            </p>
-          </div>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <div className="btn" style={{ background: "#fff", borderRadius: 999 }}>
-              {saved.length} saved report{saved.length === 1 ? "" : "s"}
-            </div>
-            <div className="btn" style={{ background: "#fff", borderRadius: 999 }}>
-              {rows.length} result row{rows.length === 1 ? "" : "s"}
-            </div>
-          </div>
-        </div>
+  /* ── Derived chart data ── */
+  const rows = result?.rows || [];
+  const columns = useMemo(() => Array.from(new Set(rows.flatMap(r => Object.keys(r)))), [rows]);
+  const chartData = useMemo(() => {
+    if (!rows.length) return [];
+    const nameKey = cfg.group_by || columns.find(c => typeof rows[0]?.[c] === "string") || columns[0];
+    const valKey  = columns.find(c => typeof rows[0]?.[c] === "number") || columns[1];
+    return rows.slice(0,20).map((r,i) => ({
+      name:  String(r[nameKey] ?? `Row ${i+1}`),
+      value: Number(r[valKey]  ?? 0),
+    }));
+  }, [rows, cfg.group_by, columns]);
 
-        {msg ? (
-          <div
-            style={{
-              padding: "12px 14px",
-              borderRadius: 14,
-              background: "rgba(255,255,255,0.82)",
-              border: "1px solid rgba(139,92,246,0.12)",
-            }}
-          >
-            {msg}
-          </div>
-        ) : null}
+  const topRow = chartData[0];
+
+  /* ── Render ── */
+  return (
+    <div style={{ display:"grid", gap:20, maxWidth:1400 }}>
+
+      {/* ── Toast ── */}
+      {toast && (
+        <div style={{
+          padding:"12px 16px", borderRadius:12, fontSize:14,
+          background:"rgba(139,92,246,0.09)", border:"1px solid rgba(139,92,246,0.2)",
+          color:"var(--text)", animation:"fadeIn 0.2s",
+        }}>
+          {toast}
+        </div>
+      )}
+
+      {/* ── Page header ── */}
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", flexWrap:"wrap", gap:12 }}>
+        <div>
+          <h1 style={{ margin:0 }}>Reports Builder</h1>
+          <p style={{ margin:"6px 0 0", color:"var(--muted)", fontSize:14 }}>
+            Build custom workforce reports, visualize data, and get AI-powered insights.
+          </p>
+        </div>
+        <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+          <span style={{ fontSize:13, color:"var(--muted)" }}>{saved.length} saved</span>
+          {result && <span style={{ fontSize:13, color:"var(--muted)" }}>· {rows.length} rows</span>}
+        </div>
       </div>
 
-      {/* AI Query Bar */}
-      <div style={{ ...cardStyle({ gap: 12, padding: 20, background: "linear-gradient(135deg, rgba(59,130,246,0.08), rgba(139,92,246,0.08))" }) }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 20 }}>✨</span>
+      {/* ── AI Query bar ── */}
+      <div style={{
+        background:"linear-gradient(135deg, rgba(139,92,246,0.07) 0%, rgba(31,191,184,0.07) 100%)",
+        border:"1px solid rgba(139,92,246,0.18)", borderRadius:16, padding:"16px 20px",
+        display:"grid", gap:12,
+      }}>
+        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+          <span style={{ fontSize:22, lineHeight:1 }}>✨</span>
           <div>
-            <div style={{ fontWeight: 700, fontSize: 15 }}>Ask AI to build your report</div>
-            <div style={{ color: "var(--muted)", fontSize: 12 }}>e.g. "Show leave by department for Q1 2026" or "Attendance trends last month"</div>
+            <div style={{ fontWeight:700, fontSize:15 }}>Ask AI to build your report</div>
+            <div style={{ fontSize:13, color:"var(--muted)" }}>
+              e.g. "Leave by department for Q1 2026" · "Payroll totals last 3 months" · "Attendance trends by team"
+            </div>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display:"flex", gap:8 }}>
           <input
             className="search"
-            style={{ flex: 1 }}
-            placeholder="Describe the report you want..."
+            style={{ flex:1, fontSize:14 }}
+            placeholder="Describe the report you need..."
             value={aiQuery}
             onChange={e => setAiQuery(e.target.value)}
             onKeyDown={e => e.key === "Enter" && runAiQuery()}
           />
-          <button className="btn btnPrimary" onClick={runAiQuery} disabled={aiQuerying || !aiQuery.trim()} style={{ whiteSpace: "nowrap" }}>
-            {aiQuerying ? "Thinking..." : "✨ Ask AI"}
+          <button
+            className="btn btnPrimary"
+            onClick={runAiQuery}
+            disabled={aiQuerying || !aiQuery.trim()}
+            style={{ whiteSpace:"nowrap", padding:"10px 18px", fontSize:14 }}
+          >
+            {aiQuerying ? "Thinking…" : "✨ Ask AI"}
           </button>
+        </div>
+
+        {/* Quick templates */}
+        <div style={{ display:"flex", gap:6, flexWrap:"wrap", alignItems:"center" }}>
+          <span style={{ fontSize:12, color:"var(--muted)", fontWeight:600 }}>Quick start:</span>
+          {TEMPLATES.map(tpl => (
+            <button
+              key={tpl.name}
+              className="btn"
+              onClick={() => { setCfg(c => ({...c, name:tpl.name, dataset:tpl.dataset, group_by:tpl.group_by, chart_type:tpl.chart_type})); setAiInsights(""); setResult(null); }}
+              style={{
+                borderRadius:999, fontSize:12, padding:"4px 12px",
+                background: cfg.name === tpl.name ? "rgba(139,92,246,0.12)" : "var(--panel)",
+                border:`1px solid ${cfg.name === tpl.name ? "rgba(139,92,246,0.4)" : "var(--border)"}`,
+                color: cfg.name === tpl.name ? "#7c3aed" : "var(--text)",
+                fontWeight: cfg.name === tpl.name ? 600 : 400,
+              }}
+            >
+              {tpl.name}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Pre-built Templates */}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>Templates:</span>
-        {TEMPLATES.map(tpl => (
-          <button key={tpl.name} className="btn" onClick={() => applyTemplate(tpl)} style={{
-            borderRadius: 999, fontSize: 12, padding: "5px 14px",
-            background: cfg.name === tpl.name ? "rgba(139,92,246,0.12)" : "#fff",
-            border: `1px solid ${cfg.name === tpl.name ? "rgba(139,92,246,0.4)" : "var(--border)"}`,
-          }}>{tpl.name}</button>
-        ))}
-      </div>
+      {/* ── Two-column layout ── */}
+      <div style={{ display:"grid", gridTemplateColumns:"360px minmax(0,1fr)", gap:20, alignItems:"start" }}>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
-        <MetricCard label="Dataset" value={datasetMeta.label} accent={datasetMeta.accent} />
-        <MetricCard label="Visualization" value={CHART_LABELS[cfg.chart_type]} accent="#2563eb" />
-        <MetricCard label="Grouped By" value={cfg.group_by || "Ungrouped"} accent="#0f766e" />
-        <MetricCard label="Dashboard Widget" value={cfg.dashboard_widget ? "Pinned" : "Not Pinned"} accent={cfg.dashboard_widget ? "#7c3aed" : "#6b7280"} />
-        <MetricCard label="Primary Value" value={previewValueColumn} accent="#b45309" />
-      </div>
+        {/* ── LEFT: Config panel ── */}
+        <div style={{ display:"grid", gap:16 }}>
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(340px, 420px) minmax(0, 1fr)", gap: 20, alignItems: "start" }}>
-        <div style={{ display: "grid", gap: 16 }}>
-          <div style={cardStyle()}>
-            <SectionHeader
-              title="Report Studio"
-              subtitle="Choose a dataset, define the grouping, and decide how the report should be visualized and shared."
-            />
-
-            <div style={{ display: "grid", gap: 10 }}>
-              <div style={{ fontWeight: 700 }}>Choose dataset</div>
-              <div style={{ display: "grid", gap: 10 }}>
-                {Object.entries(DATASET_META).map(([key, meta]) => (
-                  <button
-                    key={key}
-                    type="button"
-                    className="btn"
-                    onClick={() => applyDataset(key)}
-                    style={{
-                      textAlign: "left",
-                      background: cfg.dataset === key ? `${meta.accent}12` : "#fff",
-                      border: `1px solid ${cfg.dataset === key ? `${meta.accent}55` : "var(--border)"}`,
-                      borderRadius: 16,
-                      padding: 14,
-                    }}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
-                      <strong style={{ color: meta.accent }}>{meta.label}</strong>
-                      <span style={{ fontSize: 12, color: "var(--muted)" }}>{meta.groupOptions.length} suggested dimensions</span>
-                    </div>
-                    <div style={{ color: "var(--muted)", marginTop: 6, fontSize: 13 }}>{meta.description}</div>
-                  </button>
-                ))}
-              </div>
+          {/* Dataset picker */}
+          <div style={{ background:"var(--panel)", border:"1px solid var(--border)", borderRadius:16, padding:18, display:"grid", gap:12 }}>
+            <div style={{ fontWeight:700, fontSize:15 }}>Dataset</div>
+            <div style={{ display:"grid", gap:6 }}>
+              {Object.entries(DATASET_META).map(([key, m]) => (
+                <button
+                  key={key}
+                  onClick={() => setCfg(c => ({ ...c, dataset:key, name:c.name||`${key} report` }))}
+                  style={{
+                    display:"flex", alignItems:"center", gap:12, padding:"10px 12px",
+                    borderRadius:12, border:`1.5px solid ${cfg.dataset===key ? m.accent+"66" : "var(--border)"}`,
+                    background: cfg.dataset===key ? m.accent+"10" : "transparent",
+                    cursor:"pointer", textAlign:"left", width:"100%",
+                  }}
+                >
+                  <span style={{ fontSize:20, lineHeight:1 }}>{m.icon}</span>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontWeight:600, fontSize:14, color: cfg.dataset===key ? m.accent : "var(--text)" }}>{m.label}</div>
+                    <div style={{ fontSize:12, color:"var(--muted)", marginTop:2 }}>{m.description}</div>
+                  </div>
+                  {cfg.dataset===key && (
+                    <span style={{ width:8, height:8, borderRadius:"50%", background:m.accent, flexShrink:0 }} />
+                  )}
+                </button>
+              ))}
             </div>
+          </div>
 
-            <div style={{ display: "grid", gap: 10 }}>
-              <div>
-                <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>Report name</div>
-                <input className="search" placeholder="Report name" value={cfg.name} onChange={(e) => setCfg((c) => ({ ...c, name: e.target.value }))} />
-              </div>
-              <div>
-                <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>Grouping field</div>
-                <input className="search" placeholder="Group by (optional)" value={cfg.group_by} onChange={(e) => setCfg((c) => ({ ...c, group_by: e.target.value }))} />
-              </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {datasetMeta.groupOptions.map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    className="btn"
-                    onClick={() => setCfg((current) => ({ ...current, group_by: option }))}
-                    style={{
-                      background: cfg.group_by === option ? `${datasetMeta.accent}14` : "#fff",
-                      borderRadius: 999,
-                      border: `1px solid ${cfg.group_by === option ? `${datasetMeta.accent}55` : "var(--border)"}`,
-                    }}
-                  >
-                    {option}
-                  </button>
-                ))}
-                {cfg.group_by ? (
-                  <button type="button" className="btn btnGhost" onClick={() => setCfg((current) => ({ ...current, group_by: "" }))}>
-                    Clear grouping
-                  </button>
-                ) : null}
-              </div>
-            </div>
+          {/* Config options */}
+          <div style={{ background:"var(--panel)", border:"1px solid var(--border)", borderRadius:16, padding:18, display:"grid", gap:14 }}>
+            <div style={{ fontWeight:700, fontSize:15 }}>Report Settings</div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <div>
-                <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>Start date</div>
-                <input className="search" type="date" value={cfg.start_date} onChange={(e) => setCfg((c) => ({ ...c, start_date: e.target.value }))} />
-              </div>
-              <div>
-                <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>End date</div>
-                <input className="search" type="date" value={cfg.end_date} onChange={(e) => setCfg((c) => ({ ...c, end_date: e.target.value }))} />
-              </div>
-            </div>
-
-            <div style={{ display: "grid", gap: 8 }}>
-              <div style={{ fontSize: 12, color: "var(--muted)" }}>Visualization</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
-                {Object.entries(CHART_LABELS).map(([value, label]) => (
-                  <button
-                    key={value}
-                    type="button"
-                    className="btn"
-                    onClick={() => setCfg((current) => ({ ...current, chart_type: value }))}
-                    style={{
-                      background: cfg.chart_type === value ? "rgba(139,92,246,.12)" : "#fff",
-                      borderRadius: 14,
-                      border: `1px solid ${cfg.chart_type === value ? "rgba(139,92,246,.35)" : "var(--border)"}`,
-                      padding: 12,
-                    }}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
+            <div>
+              {label("Report name")}
+              <input
+                className="search"
+                placeholder={`${meta.label} report`}
+                value={cfg.name}
+                onChange={e => setCfg(c => ({...c, name:e.target.value}))}
+                style={{ fontSize:14 }}
+              />
             </div>
 
             <div>
-              <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>Scheduled email label or recipient list</div>
-              <input className="search" placeholder="Optional email routing or schedule label" value={cfg.scheduled_email} onChange={(e) => setCfg((c) => ({ ...c, scheduled_email: e.target.value }))} />
+              {label("Group by")}
+              <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                {meta.groupOptions.map(opt => (
+                  <button
+                    key={opt}
+                    onClick={() => setCfg(c => ({...c, group_by: c.group_by===opt ? "" : opt}))}
+                    style={{
+                      padding:"5px 12px", borderRadius:999, fontSize:13, cursor:"pointer",
+                      border:`1.5px solid ${cfg.group_by===opt ? meta.accent+"66" : "var(--border)"}`,
+                      background: cfg.group_by===opt ? meta.accent+"12" : "transparent",
+                      color: cfg.group_by===opt ? meta.accent : "var(--text)",
+                      fontWeight: cfg.group_by===opt ? 600 : 400,
+                    }}
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            <label style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--muted)", fontSize: 14 }}>
-              <input type="checkbox" checked={cfg.dashboard_widget} onChange={(e) => setCfg((c) => ({ ...c, dashboard_widget: e.target.checked }))} />
-              Pin this report as a dashboard widget
-            </label>
+            <Divider />
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <button className="btn btnPrimary" onClick={runAdhoc} disabled={running}>
-                {running ? "Running..." : "Run Report"}
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+              <div>
+                {label("From")}
+                <input className="search" type="date" value={cfg.start_date} style={{ fontSize:14 }}
+                  onChange={e => setCfg(c => ({...c, start_date:e.target.value}))} />
+              </div>
+              <div>
+                {label("To")}
+                <input className="search" type="date" value={cfg.end_date} style={{ fontSize:14 }}
+                  onChange={e => setCfg(c => ({...c, end_date:e.target.value}))} />
+              </div>
+            </div>
+
+            <Divider />
+
+            <div>
+              {label("Visualization")}
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8 }}>
+                {Object.entries(CHART_META).map(([val, m]) => (
+                  <button
+                    key={val}
+                    onClick={() => setCfg(c => ({...c, chart_type:val}))}
+                    style={{
+                      padding:"10px 8px", borderRadius:12, cursor:"pointer", textAlign:"center",
+                      border:`1.5px solid ${cfg.chart_type===val ? "rgba(139,92,246,0.5)" : "var(--border)"}`,
+                      background: cfg.chart_type===val ? "rgba(139,92,246,0.08)" : "transparent",
+                    }}
+                  >
+                    <div style={{ fontSize:18, marginBottom:4 }}>{m.icon}</div>
+                    <div style={{ fontSize:12, fontWeight:600, color: cfg.chart_type===val ? "#7c3aed" : "var(--muted)" }}>{m.label}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <Divider />
+
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+              <button className="btn btnPrimary" onClick={runAdhoc} disabled={running}
+                style={{ fontSize:14, padding:"10px" }}>
+                {running ? "Running…" : "▶ Run Report"}
               </button>
-              <button className="btn btnGhost" onClick={saveReport} disabled={saving}>
-                {saving ? "Saving..." : "Save Report"}
+              <button className="btn btnGhost" onClick={saveReport} disabled={saving}
+                style={{ fontSize:14, padding:"10px" }}>
+                {saving ? "Saving…" : "⊕ Save"}
               </button>
             </div>
           </div>
 
-          <div style={cardStyle()}>
-            <SectionHeader
-              title="Saved Reports"
-              subtitle="Reuse recurring reports, launch them instantly, and keep the most useful ones on the dashboard."
-            />
+          {/* Saved reports */}
+          <div style={{ background:"var(--panel)", border:"1px solid var(--border)", borderRadius:16, padding:18, display:"grid", gap:10 }}>
+            <div style={{ fontWeight:700, fontSize:15 }}>Saved Reports</div>
             {loadingSaved ? (
-              <div style={{ color: "var(--muted)" }}>Loading saved reports...</div>
+              <div style={{ color:"var(--muted)", fontSize:14 }}>Loading…</div>
             ) : saved.length === 0 ? (
-              <div style={{ color: "var(--muted)" }}>No saved reports yet. Save your most-used layouts here for quick reuse.</div>
-            ) : saved.map((report) => (
-              <div
-                key={report.id}
-                style={{
-                  ...cardStyle({ gap: 8, padding: 14, background: activeSavedId === report.id ? "rgba(139,92,246,.08)" : "#fff" }),
-                  borderColor: activeSavedId === report.id ? "rgba(139,92,246,.28)" : "var(--border)",
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
-                  <div>
-                    <strong>{report.name}</strong>
-                    <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 4 }}>
-                      {(DATASET_META[report.config?.dataset]?.label || report.config?.dataset || "Custom")} · {(CHART_LABELS[report.config?.chart_type] || "Table Only")}
+              <div style={{ color:"var(--muted)", fontSize:14 }}>No saved reports yet. Save your most-used layouts for quick reuse.</div>
+            ) : saved.map(r => {
+              const rm = DATASET_META[r.config?.dataset];
+              return (
+                <div
+                  key={r.id}
+                  style={{
+                    display:"flex", justifyContent:"space-between", alignItems:"center",
+                    padding:"10px 12px", borderRadius:12,
+                    border:`1px solid ${activeSavedId===r.id ? "rgba(139,92,246,0.3)" : "var(--border)"}`,
+                    background: activeSavedId===r.id ? "rgba(139,92,246,0.06)" : "var(--panel2)",
+                    gap:10,
+                  }}
+                >
+                  <div style={{ minWidth:0 }}>
+                    <div style={{ fontWeight:600, fontSize:14, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                      {rm?.icon && <span style={{ marginRight:6 }}>{rm.icon}</span>}{r.name}
+                    </div>
+                    <div style={{ fontSize:12, color:"var(--muted)", marginTop:2 }}>
+                      {rm?.label || r.config?.dataset} · {r.config?.group_by || "no grouping"}
                     </div>
                   </div>
-                  {report.config?.dashboard_widget ? (
-                    <span style={{ padding: "6px 10px", borderRadius: 999, background: "rgba(139,92,246,.12)", color: "#7c3aed", fontSize: 12, fontWeight: 700 }}>
-                      Widget
-                    </span>
-                  ) : null}
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-                  <div style={{ color: "var(--muted)", fontSize: 13 }}>
-                    Grouped by: {report.config?.group_by || "none"}{report.config?.scheduled_email ? ` · Email: ${report.config.scheduled_email}` : ""}
-                  </div>
-                  <button className="btn btnTiny" onClick={() => runSaved(report.id)}>
+                  <button className="btn btnTiny" onClick={() => runSaved(r.id)}
+                    style={{ flexShrink:0, fontSize:13 }}>
                     Run
                   </button>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
-        <div style={{ display: "grid", gap: 16 }}>
-          <div style={cardStyle()}>
-            <SectionHeader
-              title="Result Workspace"
-              subtitle="Review a visual summary, inspect the raw rows, and export the report when it is ready to share."
-              action={
-                result ? (
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button className="btn btnGhost" onClick={() => downloadCsv(`${cfg.name || cfg.dataset}-report.csv`, rows)}>Export CSV</button>
-                    <button className="btn btnGhost" onClick={() => setResult(null)}>Clear Results</button>
-                  </div>
-                ) : null
-              }
-            />
+        {/* ── RIGHT: Results workspace ── */}
+        <div style={{ display:"grid", gap:16 }}>
 
-            {!result ? (
-              <div style={{ ...cardStyle({ gap: 8, padding: 18, background: "#fff" }) }}>
-                <strong>No report results yet</strong>
-                <div style={{ color: "var(--muted)" }}>
-                  Configure a dataset on the left, choose a grouping or chart style, and run the report to generate your workspace preview.
-                </div>
+          {/* Empty state */}
+          {!result && (
+            <div style={{
+              background:"var(--panel)", border:"1px solid var(--border)", borderRadius:16,
+              padding:"56px 24px", textAlign:"center", display:"grid", gap:10,
+            }}>
+              <div style={{ fontSize:40 }}>📊</div>
+              <div style={{ fontWeight:700, fontSize:16 }}>No report yet</div>
+              <div style={{ fontSize:14, color:"var(--muted)", maxWidth:400, margin:"0 auto" }}>
+                Choose a dataset, set your filters, and click <strong>Run Report</strong> — or use the AI bar above to describe what you need.
               </div>
-            ) : null}
-
-            {result && (
-              <>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
-                  <MetricCard label="Rows" value={rows.length} accent="#7c3aed" />
-                  <MetricCard label="Columns" value={columns.length} accent="#14b8a6" />
-                  <MetricCard label="Chart Data Points" value={chartData.length} accent="#2563eb" />
-                  <MetricCard label="Top Segment" value={topChartRow?.name || "—"} accent="#b45309" />
-                </div>
-
-                {cfg.chart_type !== "table" && chartData.length > 0 ? (
-                  <div style={{ ...cardStyle({ gap: 10, padding: 16, background: "#fff" }) }}>
-                    <SectionHeader
-                      title={CHART_LABELS[cfg.chart_type]}
-                      subtitle={cfg.group_by ? `Grouped by ${cfg.group_by}` : "Visualization based on returned report rows"}
-                    />
-                    <div style={{ height: 320 }}>
-                      <ResponsiveContainer width="100%" height="100%">
-                        {cfg.chart_type === "pie" ? (
-                          <PieChart>
-                            <Pie data={chartData} dataKey="value" nameKey="name" outerRadius={110}>
-                              {chartData.map((_, idx) => <Cell key={idx} fill={CHART_COLORS[idx % CHART_COLORS.length]} />)}
-                            </Pie>
-                            <Tooltip />
-                          </PieChart>
-                        ) : (
-                          <BarChart data={chartData}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                            <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                            <YAxis tick={{ fontSize: 12 }} />
-                            <Tooltip />
-                            <Bar dataKey="value" fill={datasetMeta.accent} radius={[8, 8, 0, 0]} />
-                          </BarChart>
-                        )}
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                ) : null}
-
-                <div style={{ ...cardStyle({ gap: 12, padding: 16, background: "#fff" }) }}>
-                  <SectionHeader title={`Results Table (${rows.length})`} subtitle="Raw rows returned from the custom report runner." />
-                  <div style={{ overflow: "auto" }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                      <thead>
-                        <tr>
-                          {columns.map((col) => (
-                            <th key={col} style={{ textAlign: "left", padding: "10px 8px", borderBottom: "1px solid var(--border)", background: "rgba(139,92,246,.04)" }}>{col}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {rows.map((row, idx) => (
-                          <tr key={idx}>
-                            {columns.map((col) => (
-                              <td key={col} style={{ padding: "10px 8px", borderBottom: "1px solid var(--border)", verticalAlign: "top" }}>
-                                {typeof row[col] === "object" ? JSON.stringify(row[col]) : String(row[col] ?? "—")}
-                              </td>
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-
-          {result && rows.length > 0 && (
-            <div style={{ ...cardStyle({ gap: 14, padding: 20, background: "linear-gradient(135deg, rgba(59,130,246,0.06), rgba(139,92,246,0.06))" }) }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
-                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                  <span style={{ fontSize: 20 }}>🤖</span>
-                  <div>
-                    <div style={{ fontWeight: 700 }}>AI Insights</div>
-                    <div style={{ fontSize: 12, color: "var(--muted)" }}>AI-generated analysis of your report data</div>
-                  </div>
-                </div>
-                {!aiInsights && (
-                  <button className="btn btnPrimary" onClick={loadAiInsights} disabled={aiInsightsLoading} style={{ whiteSpace: "nowrap" }}>
-                    {aiInsightsLoading ? "Analysing..." : "✨ Generate Insights"}
-                  </button>
-                )}
-                {aiInsights && (
-                  <button className="btn btnGhost" onClick={() => { setAiInsights(""); }} style={{ fontSize: 12 }}>Refresh</button>
-                )}
+              <div style={{ display:"flex", gap:8, justifyContent:"center", marginTop:8 }}>
+                <button className="btn btnPrimary" onClick={runAdhoc} disabled={running}
+                  style={{ fontSize:14, padding:"10px 20px" }}>
+                  {running ? "Running…" : "▶ Run Report"}
+                </button>
               </div>
-              {aiInsightsLoading && (
-                <div style={{ color: "var(--muted)", fontStyle: "italic", fontSize: 14 }}>Analysing your report data...</div>
-              )}
-              {aiInsights && (
-                <div style={{ fontSize: 14, lineHeight: 1.7, color: "var(--text)", background: "rgba(255,255,255,0.7)", borderRadius: 10, padding: "14px 16px", border: "1px solid rgba(139,92,246,0.15)" }}>
-                  {aiInsights}
-                </div>
-              )}
-              {!aiInsights && !aiInsightsLoading && (
-                <div style={{ fontSize: 13, color: "var(--muted)" }}>Click "Generate Insights" to get an AI-powered narrative analysis of this report.</div>
-              )}
             </div>
           )}
 
+          {/* Results */}
           {result && (
-            <div style={cardStyle()}>
-              <SectionHeader
-                title="Current Report Summary"
-                subtitle="Quick-read metadata for the report currently loaded in the workspace."
-              />
-              <div style={{ display: "grid", gap: 10 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
-                  <div style={{ ...cardStyle({ gap: 6, padding: 14, background: "#fff" }) }}>
-                    <div style={{ color: "var(--muted)", fontSize: 12 }}>Dataset</div>
-                    <strong>{datasetMeta.label}</strong>
+            <>
+              {/* Result header */}
+              <div style={{
+                background:"var(--panel)", border:"1px solid var(--border)", borderRadius:16, padding:"16px 20px",
+                display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:10,
+              }}>
+                <div>
+                  <div style={{ fontWeight:700, fontSize:15 }}>
+                    {meta.icon} {cfg.name || `${meta.label} report`}
                   </div>
-                  <div style={{ ...cardStyle({ gap: 6, padding: 14, background: "#fff" }) }}>
-                    <div style={{ color: "var(--muted)", fontSize: 12 }}>Chart Type</div>
-                    <strong>{CHART_LABELS[cfg.chart_type]}</strong>
-                  </div>
-                </div>
-                <div style={{ ...cardStyle({ gap: 6, padding: 14, background: "#fff" }) }}>
-                  <div style={{ color: "var(--muted)", fontSize: 12 }}>Applied Filters</div>
-                  <div style={{ color: "var(--text)" }}>
-                    Group by: {cfg.group_by || "none"} · Date range: {cfg.start_date || "any"} to {cfg.end_date || "any"}
+                  <div style={{ fontSize:13, color:"var(--muted)", marginTop:3 }}>
+                    {rows.length} rows · grouped by {cfg.group_by || "none"}
+                    {cfg.start_date && ` · ${cfg.start_date} → ${cfg.end_date||"now"}`}
+                    {topRow && ` · top: ${topRow.name}`}
                   </div>
                 </div>
-                <div style={{ ...cardStyle({ gap: 6, padding: 14, background: "#fff" }) }}>
-                  <div style={{ color: "var(--muted)", fontSize: 12 }}>Distribution Insight</div>
-                  <div style={{ color: "var(--text)" }}>
-                    {topChartRow
-                      ? `${topChartRow.name} is currently the top segment in the preview with a value of ${topChartRow.value}.`
-                      : "Run a grouped report to surface a quick chart insight here."}
-                  </div>
+                <div style={{ display:"flex", gap:8 }}>
+                  <button className="btn btnGhost" style={{ fontSize:13 }}
+                    onClick={() => downloadCsv(`${cfg.name||cfg.dataset}.csv`, rows)}>
+                    ↓ CSV
+                  </button>
+                  <button className="btn btnGhost" style={{ fontSize:13 }}
+                    onClick={() => { setResult(null); setAiInsights(""); }}>
+                    ✕ Clear
+                  </button>
                 </div>
               </div>
-            </div>
+
+              {/* Chart */}
+              {cfg.chart_type !== "table" && chartData.length > 0 && (
+                <div style={{ background:"var(--panel)", border:"1px solid var(--border)", borderRadius:16, padding:"18px 20px" }}>
+                  <div style={{ fontWeight:600, fontSize:14, marginBottom:16 }}>
+                    {CHART_META[cfg.chart_type]?.label} — {meta.label}
+                    {cfg.group_by && <span style={{ fontWeight:400, color:"var(--muted)" }}> by {cfg.group_by}</span>}
+                  </div>
+                  <div style={{ height:300 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      {cfg.chart_type === "pie" ? (
+                        <PieChart>
+                          <Pie data={chartData} dataKey="value" nameKey="name" outerRadius={110} label={({name,percent}) => `${name} ${(percent*100).toFixed(0)}%`} labelLine={false}>
+                            {chartData.map((_,i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
+                          </Pie>
+                          <Tooltip formatter={v => v.toLocaleString()} />
+                          <Legend />
+                        </PieChart>
+                      ) : (
+                        <BarChart data={chartData} margin={{ top:4, right:8, left:0, bottom:4 }}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
+                          <XAxis dataKey="name" tick={{ fontSize:12, fill:"var(--muted)" }} axisLine={false} tickLine={false} />
+                          <YAxis tick={{ fontSize:12, fill:"var(--muted)" }} axisLine={false} tickLine={false} />
+                          <Tooltip formatter={v => v.toLocaleString()} contentStyle={{ borderRadius:10, border:"1px solid var(--border)", fontSize:13 }} />
+                          <Bar dataKey="value" fill={meta.accent} radius={[6,6,0,0]} />
+                        </BarChart>
+                      )}
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+
+              {/* AI Insights */}
+              <div style={{
+                background:"linear-gradient(135deg, rgba(139,92,246,0.06), rgba(31,191,184,0.06))",
+                border:"1px solid rgba(139,92,246,0.15)", borderRadius:16, padding:"16px 20px",
+                display:"grid", gap:10,
+              }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:10, flexWrap:"wrap" }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                    <span style={{ fontSize:18 }}>🤖</span>
+                    <div>
+                      <div style={{ fontWeight:700, fontSize:14 }}>AI Insights</div>
+                      <div style={{ fontSize:12, color:"var(--muted)" }}>AI-generated analysis of your report</div>
+                    </div>
+                  </div>
+                  {!aiInsights && !aiLoading && (
+                    <button className="btn btnPrimary" onClick={loadAiInsights}
+                      style={{ fontSize:13, padding:"8px 14px", whiteSpace:"nowrap" }}>
+                      ✨ Generate Insights
+                    </button>
+                  )}
+                  {aiInsights && (
+                    <button className="btn btnGhost" onClick={() => setAiInsights("")}
+                      style={{ fontSize:13 }}>Regenerate</button>
+                  )}
+                </div>
+                {aiLoading && (
+                  <div style={{ fontSize:14, color:"var(--muted)", fontStyle:"italic" }}>Analysing your data…</div>
+                )}
+                {aiInsights && (
+                  <div style={{
+                    fontSize:14, lineHeight:1.75, color:"var(--text)",
+                    background:"rgba(255,255,255,0.6)", borderRadius:10,
+                    padding:"12px 14px", border:"1px solid rgba(139,92,246,0.1)",
+                  }}>
+                    {aiInsights}
+                  </div>
+                )}
+                {!aiInsights && !aiLoading && (
+                  <div style={{ fontSize:13, color:"var(--muted)" }}>
+                    Click "Generate Insights" to get an AI narrative of this report — trends, anomalies, and recommendations.
+                  </div>
+                )}
+              </div>
+
+              {/* Data table */}
+              <div style={{ background:"var(--panel)", border:"1px solid var(--border)", borderRadius:16, padding:"18px 20px" }}>
+                <div style={{ fontWeight:600, fontSize:14, marginBottom:14 }}>
+                  Data Table <span style={{ fontWeight:400, color:"var(--muted)", fontSize:13 }}>({rows.length} rows)</span>
+                </div>
+                <div style={{ overflowX:"auto" }}>
+                  <table style={{ width:"100%", borderCollapse:"collapse", fontSize:14 }}>
+                    <thead>
+                      <tr>
+                        {columns.map(col => (
+                          <th key={col} style={{
+                            textAlign:"left", padding:"9px 12px", fontSize:12, fontWeight:600,
+                            color:"var(--muted)", textTransform:"uppercase", letterSpacing:"0.05em",
+                            borderBottom:"2px solid var(--border)", whiteSpace:"nowrap",
+                            background:"var(--panel2)",
+                          }}>{col.replace(/_/g," ")}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((row,i) => (
+                        <tr key={i} style={{ background: i%2===0 ? "transparent" : "rgba(0,0,0,0.015)" }}>
+                          {columns.map(col => (
+                            <td key={col} style={{ padding:"9px 12px", borderBottom:"1px solid var(--border)", verticalAlign:"top", color:"var(--text)" }}>
+                              {typeof row[col] === "object" ? JSON.stringify(row[col]) : String(row[col] ?? "—")}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
           )}
         </div>
       </div>
