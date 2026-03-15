@@ -60,6 +60,44 @@
 .emp-edit-btn--cancel { border-color: #94A3B8; color: var(--gray); }
 .emp-edit-btn--cancel:hover { background: #F1F5F9; color: var(--navy); }
 
+/* HR note */
+.emp-detail-hr-note {
+  font-size: 0.8rem; color: var(--gray); margin: -8px 0 20px;
+}
+
+/* Overview stats — dashboard-style */
+.emp-detail-overview {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 14px; margin-bottom: 8px;
+}
+.emp-overview-card {
+  background: var(--white); border: 1px solid var(--border);
+  border-radius: 12px; padding: 16px; text-align: center;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+}
+.emp-overview-icon { font-size: 1.5rem; margin-bottom: 6px; }
+.emp-overview-value {
+  font-size: 1.35rem; font-weight: 800; color: var(--purple); line-height: 1.2;
+}
+.emp-overview-label { font-size: 0.75rem; color: var(--gray); font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; margin-top: 4px; }
+
+/* Evaluations list (matches Manager team style) */
+.emp-eval-list { display: flex; flex-direction: column; gap: 8px; }
+.emp-eval-card {
+  padding: 14px 16px; border: 1px solid #ede9fe; border-radius: 12px;
+  background: #faf9ff;
+}
+.emp-eval-header {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;
+}
+.emp-eval-header strong { font-size: 13px; color: #1f2937; }
+.emp-eval-badge {
+  font-size: 12px; font-weight: 700; padding: 4px 12px; border-radius: 999px;
+  background: rgba(31,191,184,.12); color: #1fbfb8; border: 1px solid rgba(31,191,184,.2);
+}
+.emp-eval-field { font-size: 13px; color: #6b7280; margin-top: 6px; line-height: 1.5; }
+.emp-eval-label { color: #374151; font-weight: 700; }
+
 /* Cards */
 .emp-detail-body { display: flex; flex-direction: column; gap: 20px; }
 .emp-detail-card {

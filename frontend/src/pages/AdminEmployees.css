@@ -52,22 +52,20 @@
 .admin-emp-msg--ok { background: rgba(52, 211, 153, 0.12); color: #059669; }
 .admin-emp-msg--err { background: rgba(248, 113, 113, 0.12); color: #dc2626; }
 
-/* Card grid */
-.admin-emp-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 14px;
+/* List — matches Manager Team layout (single column, card per row) */
+.admin-emp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .admin-emp-card {
   background: #fff;
   border: 1px solid #ede9fe;
-  border-radius: 14px;
+  border-radius: 16px;
   overflow: hidden;
   box-shadow: 0 1px 6px rgba(139, 92, 246, 0.05);
   transition: box-shadow 0.15s;
-  display: flex;
-  flex-direction: column;
 }
 
 .admin-emp-card:hover {
@@ -83,10 +81,18 @@
 .admin-emp-card-header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 16px;
-  flex: 1;
-  min-width: 0;
+  gap: 14px;
+  padding: 16px 20px;
+  width: 100%;
+  box-sizing: border-box;
+  transition: background 0.15s;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.admin-emp-card-header:hover {
+  background: #faf9ff;
 }
 
 .admin-emp-card-avatar {
@@ -107,25 +113,45 @@
 
 .admin-emp-card-name {
   font-weight: 700;
-  font-size: 0.95rem;
+  font-size: 15px;
   color: #1f2937;
   margin: 0 0 2px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.admin-emp-inactive-tag {
+  font-size: 10px;
+  font-weight: 600;
+  color: #dc2626;
 }
 
 .admin-emp-card-meta {
-  color: #6b7280;
-  font-size: 0.75rem;
+  color: #9ca3af;
+  font-size: 12px;
   margin: 0;
 }
 
+.admin-emp-card-rating { flex-shrink: 0; }
+
 .admin-emp-card-role {
-  font-size: 0.7rem;
+  font-size: 11px;
   font-weight: 600;
-  padding: 3px 8px;
+  padding: 4px 10px;
   border-radius: 999px;
   background: rgba(139, 92, 246, 0.12);
   color: #6d28d9;
+}
+
+.admin-emp-card-arrow {
+  color: #c4b5fd;
+  font-size: 14px;
   flex-shrink: 0;
+  transition: transform 0.2s;
+}
+.admin-emp-card-header:hover .admin-emp-card-arrow {
+  transform: translateX(3px);
 }
 
 .admin-emp-card-actions {
@@ -196,6 +222,5 @@
 .admin-emp-add-form .admin-emp-add-full { grid-column: 1 / -1; }
 
 @media (max-width: 640px) {
-  .admin-emp-grid { grid-template-columns: 1fr; }
   .admin-emp-add-form { grid-template-columns: 1fr; }
 }

@@ -261,6 +261,8 @@ export default function AdminEmployeeDetail() {
 
   const [employee, setEmployee] = useState(null);
   const [leaveBalance, setLeaveBalance] = useState(null);
+  const [dashboardSummary, setDashboardSummary] = useState(null);
+  const [evaluations, setEvaluations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
@@ -367,6 +369,17 @@ export default function AdminEmployeeDetail() {
   }, [userId]);
 
   useEffect(() => { fetchSections(); }, [fetchSections]);
+
+  useEffect(() => {
+    if (!userId) return;
+    Promise.all([
+      authFetch(`${API}/api/v1/employees/${userId}/dashboard-summary`),
+      authFetch(`${API}/api/v1/employee-docs/${userId}/evaluations`),
+    ]).then(([sumRes, evRes]) => {
+      if (sumRes?.ok) sumRes.json().then(setDashboardSummary).catch(() => {});
+      if (evRes?.ok) evRes.json().then((d) => setEvaluations(Array.isArray(d) ? d : [])).catch(() => {});
+    }).catch(() => {});
+  }, [userId]);
 
   useEffect(() => {
     authFetch(`${API}/api/v1/employees/meta/options`)
@@ -530,7 +543,76 @@ export default function AdminEmployeeDetail() {
         </div>
       </div>
 
+      <p className="emp-detail-hr-note">
+        Employee dashboard (HR view). Everything the employee sees except chat.
+      </p>
+
       <div className="emp-detail-body">
+        {/* Overview stats — same idea as employee dashboard */}
+        <div className="emp-detail-overview">
+          <div className="emp-overview-card">
+            <div className="emp-overview-icon">🎯</div>
+            <div className="emp-overview-value">{dashboardSummary?.objectives_count ?? "—"}</div>
+            <div className="emp-overview-label">Objectives</div>
+          </div>
+          <div className="emp-overview-card">
+            <div className="emp-overview-icon">📄</div>
+            <div className="emp-overview-value">{dashboardSummary?.documents_count ?? documents?.length ?? "—"}</div>
+            <div className="emp-overview-label">Documents</div>
+          </div>
+          <div className="emp-overview-card">
+            <div className="emp-overview-icon">⭐</div>
+            <div className="emp-overview-value">
+              {dashboardSummary?.last_evaluation_rating != null ? `${dashboardSummary.last_evaluation_rating}/5` : "—"}
+            </div>
+            <div className="emp-overview-label">Last rating</div>
+          </div>
+          <div className="emp-overview-card">
+            <div className="emp-overview-icon">🌴</div>
+            <div className="emp-overview-value">
+              {leaveBalance?.balances?.length
+                ? leaveBalance.balances.find((b) => b.leave_type === "annual")?.available_days ?? "—"
+                : "—"}
+            </div>
+            <div className="emp-overview-label">Leave (annual)</div>
+          </div>
+        </div>
+
+        {/* Performance evaluations */}
+        <div className="emp-detail-card">
+          <div className="emp-card-title">Performance evaluations</div>
+          <p className="emp-section-desc">Evaluation history. Wellbeing and chat data are never shown here.</p>
+          {evaluations.length === 0 ? (
+            <p className="emp-muted">No evaluations on record.</p>
+          ) : (
+            <div className="emp-eval-list">
+              {evaluations.map((ev) => (
+                <div key={ev.id} className="emp-eval-card">
+                  <div className="emp-eval-header">
+                    <strong>{ev.evaluation_period}</strong>
+                    <span className="emp-eval-badge">{ev.overall_rating}/5</span>
+                  </div>
+                  {ev.strengths && (
+                    <div className="emp-eval-field">
+                      <span className="emp-eval-label">Strengths:</span> {ev.strengths}
+                    </div>
+                  )}
+                  {ev.areas_for_improvement && (
+                    <div className="emp-eval-field">
+                      <span className="emp-eval-label">Areas for improvement:</span> {ev.areas_for_improvement}
+                    </div>
+                  )}
+                  {ev.goals_for_next_period && (
+                    <div className="emp-eval-field">
+                      <span className="emp-eval-label">Goals:</span> {ev.goals_for_next_period}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* Profile Card */}
         <div className="emp-detail-card">
           <div className="emp-card-title">Profile Information</div>

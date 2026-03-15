@@ -28,6 +28,7 @@ from app.models.calendar_event import CalendarEvent
 from app.models.document import Document
 from app.models.employee_document import EmployeeDocument
 from app.models.announcement import Announcement
+from app.models.performance import PerformanceEvaluation
 from app.services.auth import get_password_hash
 
 router = APIRouter(prefix="/api/v1/employees", tags=["Employee Management"])
@@ -715,6 +716,49 @@ def employee_analytics(
         result["timesheet_submissions"] = None
 
     return result
+
+
+@router.get("/{user_id}/dashboard-summary")
+def get_employee_dashboard_summary(
+    user_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    _role: str = Depends(require_admin),
+):
+    """HR: summary counts for an employee's dashboard (objectives, documents, last evaluation). No chat data."""
+    u = db.query(User).filter(User.user_id == user_id, User.org_id == org_id).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    objectives_count = db.query(Objective).filter(
+        Objective.user_id == user_id,
+        Objective.org_id == org_id,
+    ).count()
+
+    documents_count = db.query(EmployeeDocument).filter(
+        EmployeeDocument.user_id == user_id,
+        EmployeeDocument.org_id == org_id,
+    ).count()
+
+    latest_eval = (
+        db.query(PerformanceEvaluation)
+        .filter(
+            PerformanceEvaluation.user_id == user_id,
+            PerformanceEvaluation.org_id == org_id,
+        )
+        .order_by(PerformanceEvaluation.created_at.desc())
+        .first()
+    )
+
+    return {
+        "objectives_count": objectives_count,
+        "documents_count": documents_count,
+        "last_evaluation_rating": latest_eval.overall_rating if latest_eval else None,
+        "evaluations_count": db.query(PerformanceEvaluation).filter(
+            PerformanceEvaluation.user_id == user_id,
+            PerformanceEvaluation.org_id == org_id,
+        ).count(),
+    }
 
 
 @router.get("/{user_id}")

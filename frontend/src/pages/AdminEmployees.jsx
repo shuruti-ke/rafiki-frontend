@@ -237,7 +237,7 @@ export default function AdminEmployees() {
           {employees.length === 0 ? "No employees found." : "No matches for your search."}
         </div>
       ) : (
-        <div className="admin-emp-grid">
+        <div className="admin-emp-list">
           {list.map((e) => {
             const u = e.user || {};
             const profile = e.profile || {};
@@ -251,40 +251,32 @@ export default function AdminEmployees() {
                 key={u.user_id}
                 className={`admin-emp-card ${isInactive ? "admin-emp-card-inactive" : ""}`}
               >
-                <div className="admin-emp-card-header">
+                <Link to={`/admin/employees/${u.user_id}`} className="admin-emp-card-header">
                   <div className="admin-emp-card-avatar">
                     {name.charAt(0).toUpperCase()}
                   </div>
                   <div className="admin-emp-card-info">
-                    <p className="admin-emp-card-name">
+                    <div className="admin-emp-card-name">
                       {name}
-                      {isInactive && (
-                        <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 600, color: "#dc2626" }}>Inactive</span>
-                      )}
-                    </p>
-                    <p className="admin-emp-card-meta">
-                      {jobTitle || "—"}{dept ? ` · ${dept}` : ""}
-                    </p>
+                      {isInactive && <span className="admin-emp-inactive-tag">Inactive</span>}
+                    </div>
+                    <div className="admin-emp-card-meta">
+                      {jobTitle || "No title"}{dept ? ` · ${dept}` : ""}
+                    </div>
                   </div>
-                  <span className="admin-emp-card-role">{roleLabel}</span>
-                </div>
+                  <div className="admin-emp-card-rating">
+                    <span className="admin-emp-card-role">{roleLabel}</span>
+                  </div>
+                  <span className="admin-emp-card-arrow">→</span>
+                </Link>
                 <div className="admin-emp-card-actions">
-                  <Link
-                    to={`/admin/employees/${u.user_id}`}
-                    className="admin-emp-card-btn admin-emp-card-btn--view"
-                  >
-                    View profile
-                  </Link>
-                  <Link
-                    to={`/admin/employees/${u.user_id}`}
-                    className="admin-emp-card-btn admin-emp-card-btn--edit"
-                  >
-                    Edit
+                  <Link to={`/admin/employees/${u.user_id}`} className="admin-emp-card-btn admin-emp-card-btn--view">
+                    View dashboard
                   </Link>
                   <button
                     type="button"
                     className={`admin-emp-card-btn ${isInactive ? "admin-emp-card-btn--activate" : "admin-emp-card-btn--deactivate"}`}
-                    onClick={() => handleToggleActive(u.user_id, !isInactive)}
+                    onClick={(ev) => { ev.preventDefault(); handleToggleActive(u.user_id, !isInactive); }}
                     disabled={statusLoadingId === u.user_id}
                   >
                     {statusLoadingId === u.user_id ? "…" : isInactive ? "Activate" : "Deactivate"}
