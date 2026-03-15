@@ -13,6 +13,8 @@ const LEAVE_TYPES = [
   { value: "paternity", label: "Paternity Leave" },
 ];
 
+const LEAVE_LABELS = { annual: "Annual", sick: "Sick", maternity: "Maternity", paternity: "Paternity" };
+
 export default function ManagerOnBehalf() {
   const [team, setTeam] = useState([]);
   const [selectedId, setSelectedId] = useState("");
@@ -30,6 +32,10 @@ export default function ManagerOnBehalf() {
   const [leaveSubmitting, setLeaveSubmitting] = useState(false);
   const [attendanceSubmitting, setAttendanceSubmitting] = useState(false);
   const [message, setMessage] = useState({ type: "", text: "" });
+  const [amendments, setAmendments] = useState([]);
+  const [amendmentsLoading, setAmendmentsLoading] = useState(false);
+  const [amendmentReviewComment, setAmendmentReviewComment] = useState("");
+  const [reviewingAmendmentId, setReviewingAmendmentId] = useState(null);
 
   const fetchTeam = useCallback(async () => {
     setLoadingTeam(true);
@@ -72,6 +78,43 @@ export default function ManagerOnBehalf() {
   useEffect(() => {
     fetchAttendanceStatus();
   }, [fetchAttendanceStatus]);
+
+  const fetchAmendments = useCallback(async () => {
+    setAmendmentsLoading(true);
+    try {
+      const r = await authFetch(`${API}/api/v1/leave/manager/amendments`);
+      const data = await r.json();
+      setAmendments(Array.isArray(data?.amendments) ? data.amendments : []);
+    } catch {
+      setAmendments([]);
+    }
+    setAmendmentsLoading(false);
+  }, []);
+
+  useEffect(() => {
+    fetchAmendments();
+  }, [fetchAmendments]);
+
+  const handleManagerAmendmentReview = async (amendmentId, decision) => {
+    setReviewingAmendmentId(amendmentId);
+    try {
+      const res = await authFetch(`${API}/api/v1/leave/manager/amendments/${amendmentId}/review`, {
+        method: "POST",
+        body: JSON.stringify({ decision, comment: amendmentReviewComment || null }),
+      });
+      if (res.ok) {
+        setAmendmentReviewComment("");
+        setMessage({ type: "success", text: `Amendment ${decision}.` });
+        fetchAmendments();
+      } else {
+        const d = await res.json();
+        setMessage({ type: "error", text: d.detail || "Failed to review amendment." });
+      }
+    } catch {
+      setMessage({ type: "error", text: "Network error." });
+    }
+    setReviewingAmendmentId(null);
+  };
 
   const selectedEmployee = team.find((m) => m.user_id === selectedId);
 
@@ -171,6 +214,60 @@ export default function ManagerOnBehalf() {
       <p className="mgr-ob-desc">
         Submit leave and record attendance for team members who don’t have direct access to the system (e.g. field staff, support staff).
       </p>
+
+      {/* Leave amendments — pending requests from direct reports */}
+      {amendments.length > 0 && (
+        <section className="mgr-ob-card mgr-ob-amendments">
+          <h2 className="mgr-ob-card-title">Leave amendments pending your review</h2>
+          {amendmentsLoading ? (
+            <p className="mgr-ob-muted">Loading…</p>
+          ) : (
+            <>
+              <input
+                type="text"
+                className="mgr-ob-amendment-comment"
+                placeholder="Comment for your decision (optional, applies to next action)"
+                value={amendmentReviewComment}
+                onChange={(e) => setAmendmentReviewComment(e.target.value)}
+              />
+              <ul className="mgr-ob-amendments-list">
+                {amendments.map((am) => (
+                  <li key={am.id} className="mgr-ob-amendment-item">
+                    <div className="mgr-ob-amendment-info">
+                      <strong>{am.employee_name || am.employee_email || "Employee"}</strong>
+                      <span className="mgr-ob-amendment-type">{LEAVE_LABELS[am.leave_type] || am.leave_type} leave</span>
+                      {am.cancel_leave ? (
+                        <span>Requested: <strong>Cancel</strong> approved leave (was {am.current_start_date} → {am.current_end_date})</span>
+                      ) : (
+                        <span>Requested: change to {am.requested_start_date} → {am.requested_end_date} ({am.requested_working_days} days)</span>
+                      )}
+                      {am.requested_reason && <span className="mgr-ob-amendment-reason">Reason: {am.requested_reason}</span>}
+                    </div>
+                    <div className="mgr-ob-amendment-actions">
+                      <button
+                        type="button"
+                        className="mgr-ob-btn mgr-ob-btn--approve"
+                        disabled={reviewingAmendmentId !== null}
+                        onClick={() => handleManagerAmendmentReview(am.id, "approved")}
+                      >
+                        {reviewingAmendmentId === am.id ? "…" : "Approve"}
+                      </button>
+                      <button
+                        type="button"
+                        className="mgr-ob-btn mgr-ob-btn--reject"
+                        disabled={reviewingAmendmentId !== null}
+                        onClick={() => handleManagerAmendmentReview(am.id, "rejected")}
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </section>
+      )}
 
       <div className="mgr-ob-select-section">
         <label className="mgr-ob-label">Select employee</label>

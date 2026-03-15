@@ -47,6 +47,14 @@
 }
 .calp-btn-ghost:hover { background: #f8f7ff; color: #1f2937; }
 
+.calp-link-leave {
+  color: #7b2fbe;
+  font-weight: 600;
+  text-decoration: none;
+  font-size: 13px;
+}
+.calp-link-leave:hover { text-decoration: underline; }
+
 /* Month nav */
 .calp-month-nav {
   display: flex;

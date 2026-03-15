@@ -23,6 +23,8 @@ const STATUS_BADGE = {
   approved: { label: "Approved", cls: "badge-approved" },
   rejected: { label: "Rejected", cls: "badge-rejected" },
   cancelled: { label: "Cancelled", cls: "badge-cancelled" },
+  amendment_pending: { label: "Amendment Pending", cls: "badge-amendment-pending" },
+  amended: { label: "Amended", cls: "badge-amended" },
 };
 
 function workingDays(start, end) {
@@ -187,7 +189,7 @@ export default function LeaveApplication() {
     <div className="leave-page">
       <div className="leave-header">
         <h1>Leave Management</h1>
-        <p>Apply for leave, track your balance, and view application history</p>
+        <p>Apply for leave, track your balance, and view application history. Need to change or cancel approved leave? Request an amendment — your manager will be notified for re-approval. Approved leave appears on your <a href="/calendar" className="leave-link">Calendar</a>.</p>
       </div>
 
       {/* Balance Cards */}
@@ -331,8 +333,11 @@ export default function LeaveApplication() {
           ) : (
             <div className="apps-list">
               {applications.map(app => {
-                const badge = STATUS_BADGE[app.status] || { label: app.status, cls: "badge-pending" };
+                const effectiveStatus = app.effective_status ?? app.status;
+                const badge = STATUS_BADGE[effectiveStatus] || STATUS_BADGE[app.status] || { label: effectiveStatus, cls: "badge-pending" };
                 const pendingAmend = amendments.find(a => a.leave_application_id === app.id && a.status === "pending");
+                const history = app.amendment_history || [];
+                const isOnCalendar = app.status === "approved" || effectiveStatus === "amended";
                 return (
                   <div key={app.id} className="app-card">
                     <div className="app-card-top">
@@ -346,12 +351,29 @@ export default function LeaveApplication() {
                         <div className="app-days">{app.working_days} working day{app.working_days !== 1 ? "s" : ""}</div>
                         {app.reason && <div className="app-reason">"{app.reason}"</div>}
                         {app.review_comment && <div className="app-comment">💬 {app.review_comment}</div>}
+                        {history.length > 0 && (
+                          <div className="app-audit">
+                            <strong>Amendment history:</strong>
+                            {history.map((h, i) => (
+                              <div key={i} className="app-audit-item">
+                                {h.cancel_leave ? "Requested cancellation" : `Requested ${h.requested_start_date} → ${h.requested_end_date} (${h.requested_working_days} days)`}
+                                {" — "}
+                                <span className={h.status === "approved" ? "audit-approved" : "audit-rejected"}>{h.status}</span>
+                                {h.reviewed_at && ` by manager/HR on ${new Date(h.reviewed_at).toLocaleDateString()}`}
+                                {h.review_comment && `: ${h.review_comment}`}
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                       <div className="app-card-right">
                         <span className={`status-badge ${badge.cls}`}>{badge.label}</span>
                         <div className="app-submitted">Submitted {new Date(app.created_at).toLocaleDateString()}</div>
+                        {isOnCalendar && (
+                          <a href="/calendar" className="leave-link leave-link-btn">View in Calendar</a>
+                        )}
                         {pendingAmend && (
-                          <div className="app-comment">🛠 Amendment pending review</div>
+                          <div className="app-comment">🛠 Amendment pending manager/HR review</div>
                         )}
                         {app.status === "pending" && (
                           <button className="cancel-btn" onClick={() => handleCancel(app.id)}>Cancel</button>

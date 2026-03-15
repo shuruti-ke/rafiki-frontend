@@ -616,13 +616,40 @@ def apply_for_leave_on_behalf(
     }
 
 
+def _enrich_app_with_amendments(db: Session, app_dict: dict) -> dict:
+    """Add effective_status and amendment_history for clear UI and audit trail."""
+    app_id = str(app_dict.get("id"))
+    pending = db.execute(
+        text("""SELECT id FROM leave_amendment_requests
+                WHERE leave_application_id = :app AND status = 'pending' LIMIT 1"""),
+        {"app": app_id},
+    ).first()
+    history = db.execute(
+        text("""SELECT id, status, requested_start_date, requested_end_date, requested_working_days,
+                       cancel_leave, requested_reason, reviewed_by, reviewed_at, review_comment, created_at
+                FROM leave_amendment_requests WHERE leave_application_id = :app ORDER BY created_at ASC"""),
+        {"app": app_id},
+    ).mappings().all()
+    effective = app_dict.get("status")
+    if effective == "approved" and pending:
+        effective = "amendment_pending"
+    elif effective == "cancelled" and history:
+        effective = "cancelled"
+    elif effective == "approved" and history and any(h.get("status") == "approved" for h in history):
+        effective = "amended"
+    out = dict(app_dict)
+    out["effective_status"] = effective
+    out["amendment_history"] = [dict(h) for h in history]
+    return out
+
+
 @router.get("/my-applications")
 def get_my_applications(
     status: Optional[str] = None,
     db: Session = Depends(get_db),
     user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    """Get all my leave applications."""
+    """Get all my leave applications with effective_status and amendment_history for audit trail."""
     q = "SELECT * FROM leave_applications WHERE user_id = :uid"
     params = {"uid": str(user_id)}
     if status:
@@ -630,7 +657,8 @@ def get_my_applications(
         params["status"] = status
     q += " ORDER BY created_at DESC"
     rows = db.execute(text(q), params).mappings().all()
-    return {"applications": [dict(r) for r in rows]}
+    applications = [_enrich_app_with_amendments(db, dict(r)) for r in rows]
+    return {"applications": applications}
 
 
 @router.delete("/cancel/{app_id}")
@@ -717,7 +745,39 @@ def request_leave_amendment(
         },
     )
     db.commit()
-    return {"message": "Amendment request submitted and pending HR review."}
+
+    # Notify employee's manager (re-approval step) and HR
+    try:
+        from app.models.user import User as _User
+        emp_row = db.execute(
+            text("SELECT manager_id FROM users_legacy WHERE user_id = :uid"),
+            {"uid": str(user_id)},
+        ).first()
+        manager_id = emp_row[0] if emp_row and emp_row[0] else None
+        hr_users = db.query(_User.user_id).filter(
+            _User.org_id == org_id,
+            _User.role.in_(["hr_admin", "super_admin"]),
+            _User.is_active == True,
+        ).all()
+        notify_ids = set()
+        if manager_id:
+            notify_ids.add(manager_id)
+        for (mgr_id,) in hr_users:
+            notify_ids.add(mgr_id)
+        amend_label = "Cancel leave" if data.cancel_leave else f"Change to {requested_start} → {requested_end} ({requested_days} days)"
+        for uid in notify_ids:
+            _insert_notification(
+                db, user_id=uid, org_id=org_id,
+                kind="leave_pending",
+                title="Leave amendment requested",
+                body=f"Employee requested: {amend_label}. Review in Leave.",
+                link="/admin/leave" if uid in {m[0] for m in hr_users} else "/manager/on-behalf",
+            )
+        db.commit()
+    except Exception as _e:
+        logger.warning("Leave amendment notification failed (non-fatal): %s", _e)
+
+    return {"message": "Amendment request submitted. Your manager and HR have been notified for re-approval."}
 
 
 @router.get("/amendments/my")
@@ -737,6 +797,125 @@ def my_leave_amendments(
     return {"amendments": [dict(r) for r in rows]}
 
 
+@router.get("/manager/amendments")
+def manager_pending_amendments(
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    manager_id: uuid.UUID = Depends(get_current_user_id),
+    _role: str = Depends(require_manager),
+):
+    """Managers: list pending leave amendment requests for their direct reports."""
+    rows = db.execute(
+        text("""
+            SELECT ar.*, la.leave_type, la.start_date AS current_start_date, la.end_date AS current_end_date,
+                   la.working_days AS current_working_days, u.name AS employee_name, u.email AS employee_email
+            FROM leave_amendment_requests ar
+            JOIN leave_applications la ON la.id = ar.leave_application_id AND la.org_id = ar.org_id
+            JOIN users_legacy u ON u.user_id = la.user_id AND u.manager_id = :mgr
+            WHERE ar.org_id = :org AND ar.status = 'pending'
+            ORDER BY ar.created_at DESC
+        """),
+        {"org": str(org_id), "mgr": str(manager_id)},
+    ).mappings().all()
+    return {"amendments": [dict(r) for r in rows]}
+
+
+@router.post("/manager/amendments/{amendment_id}/review")
+def manager_review_amendment(
+    amendment_id: str,
+    data: LeaveAmendmentReviewIn,
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    reviewer_id: uuid.UUID = Depends(get_current_user_id),
+    _role: str = Depends(require_manager),
+):
+    """Managers: approve or reject a leave amendment for a direct report (same logic as HR review)."""
+    amend = db.execute(
+        text("""SELECT ar.*, la.user_id AS app_user_id, la.status AS app_status, la.leave_type, la.start_date, la.end_date, la.working_days
+                FROM leave_amendment_requests ar
+                JOIN leave_applications la ON la.id = ar.leave_application_id AND la.org_id = ar.org_id
+                JOIN users_legacy u ON u.user_id = la.user_id AND u.manager_id = :mgr
+                WHERE ar.id = :id AND ar.org_id = :org"""),
+        {"id": amendment_id, "org": str(org_id), "mgr": str(reviewer_id)},
+    ).mappings().first()
+    if not amend:
+        raise HTTPException(status_code=404, detail="Amendment not found or you are not the manager of this employee")
+    if amend["status"] != "pending":
+        raise HTTPException(status_code=400, detail="Amendment already reviewed")
+
+    app = db.execute(
+        text("SELECT * FROM leave_applications WHERE id = :id AND org_id = :org"),
+        {"id": amend["leave_application_id"], "org": str(org_id)},
+    ).mappings().first()
+    if not app:
+        raise HTTPException(status_code=404, detail="Leave application not found")
+
+    if data.decision == "approved":
+        if app["status"] == "approved":
+            yr = app["start_date"].year
+            policy = _get_policy(db, org_id) or DEFAULT_POLICY
+            entitled = _entitled_for_type(policy, app["leave_type"])
+            _get_or_create_balance(db, app["user_id"], org_id, yr, app["leave_type"], entitled, policy)
+            if amend["cancel_leave"]:
+                delta = -float(app["working_days"])
+            else:
+                delta = float(amend["requested_working_days"]) - float(app["working_days"])
+            if delta != 0:
+                db.execute(
+                    text("""UPDATE leave_balances SET used_days = used_days + :delta
+                            WHERE user_id = :uid AND leave_year = :yr AND leave_type = :lt"""),
+                    {"delta": delta, "uid": str(app["user_id"]), "yr": yr, "lt": app["leave_type"]},
+                )
+        if amend["cancel_leave"]:
+            db.execute(
+                text("UPDATE leave_applications SET status='cancelled', updated_at=now() WHERE id=:id"),
+                {"id": app["id"]},
+            )
+        else:
+            db.execute(
+                text("""UPDATE leave_applications SET start_date=:sd, end_date=:ed, working_days=:wd,
+                        reason=:reason, half_day=:half_day, half_day_period=:half_day_period, updated_at=now() WHERE id=:id"""),
+                {
+                    "sd": amend["requested_start_date"], "ed": amend["requested_end_date"],
+                    "wd": amend["requested_working_days"],
+                    "reason": amend["requested_reason"] or app.get("reason"),
+                    "half_day": amend["half_day"], "half_day_period": amend["half_day_period"],
+                    "id": app["id"],
+                },
+            )
+    db.execute(
+        text("""UPDATE leave_amendment_requests SET status=:status, reviewed_by=:rb, reviewed_at=now(), review_comment=:comment, updated_at=now() WHERE id=:id"""),
+        {"status": data.decision, "rb": str(reviewer_id), "comment": data.comment, "id": amendment_id},
+    )
+    db.commit()
+
+    if data.decision == "approved":
+        app_id_str = str(app["id"])
+        if amend["cancel_leave"]:
+            try:
+                _remove_leave_from_calendar(db, org_id, app_id_str)
+                db.commit()
+            except Exception as _e:
+                logger.warning("Leave calendar removal on manager amendment cancel: %s", _e)
+                db.rollback()
+        else:
+            try:
+                _sync_leave_to_calendar(db, org_id, app_id_str, app["user_id"], amend["requested_start_date"], amend["requested_end_date"], app["leave_type"])
+                db.commit()
+            except Exception as _e:
+                logger.warning("Leave calendar re-sync on manager amendment: %s", _e)
+                db.rollback()
+        try:
+            _insert_notification(db, user_id=app["user_id"], org_id=org_id, kind="leave_pending",
+                title=f"Leave amendment {data.decision} by manager",
+                body=data.comment or None, link="/leave")
+            db.commit()
+        except Exception:
+            pass
+
+    return {"message": f"Amendment {data.decision}."}
+
+
 # ══════════════════════════════════════════════════════════════
 # APPLICATIONS — HR ADMIN
 # ══════════════════════════════════════════════════════════════
@@ -748,7 +927,7 @@ def get_all_applications(
     org_id: uuid.UUID = Depends(get_current_org_id),
     role: str = Depends(require_admin),
 ):
-    """HR admin: get all leave applications for the org with employee info."""
+    """HR admin: get all leave applications with effective_status and amendment_history."""
     q = """
         SELECT la.*, u.name AS full_name, u.email, u.department
         FROM leave_applications la
@@ -761,7 +940,8 @@ def get_all_applications(
         params["status"] = status
     q += " ORDER BY la.created_at DESC"
     rows = db.execute(text(q), params).mappings().all()
-    return {"applications": [dict(r) for r in rows]}
+    applications = [_enrich_app_with_amendments(db, dict(r)) for r in rows]
+    return {"applications": applications}
 
 
 @router.get("/admin/amendments")

@@ -36,3 +36,22 @@
 .mgr-ob-field select { width: 100%; padding: 8px 10px; border: 1.5px solid #e2e8f0; border-radius: 6px; font-size: 0.9rem; }
 .mgr-ob-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .mgr-ob-empty { padding: 20px; background: #f8fafc; border-radius: 10px; color: #64748b; font-size: 0.9rem; }
+
+/* Leave amendments */
+.mgr-ob-amendments { margin-bottom: 24px; }
+.mgr-ob-amendment-comment {
+  width: 100%; max-width: 400px; padding: 8px 10px; margin-bottom: 12px;
+  border: 1.5px solid #e2e8f0; border-radius: 6px; font-size: 0.9rem;
+}
+.mgr-ob-amendments-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.mgr-ob-amendment-item {
+  padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fafafa;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.mgr-ob-amendment-info { display: flex; flex-direction: column; gap: 4px; font-size: 0.88rem; color: #374151; }
+.mgr-ob-amendment-info strong { color: #1e1b4b; }
+.mgr-ob-amendment-type { font-weight: 600; color: #7b2fbe; }
+.mgr-ob-amendment-reason { font-style: italic; color: #64748b; }
+.mgr-ob-amendment-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.mgr-ob-btn--approve { background: #10b981; color: #fff; }
+.mgr-ob-btn--reject { background: #ef4444; color: #fff; }

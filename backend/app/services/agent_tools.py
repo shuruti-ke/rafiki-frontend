@@ -615,7 +615,7 @@ def _submit_leave_request(args: dict, user_id: UUID, org_id: UUID, db: Session) 
 
 
 def _get_my_leave_applications(args: dict, user_id: UUID, org_id: UUID, db: Session) -> dict:
-    """Mirrors GET /api/v1/leave/my-applications."""
+    """Mirrors GET /api/v1/leave/my-applications. Includes effective_status and amendment_history."""
     status = args.get("status")
     q = "SELECT * FROM leave_applications WHERE user_id = :uid"
     params: dict = {"uid": str(user_id)}
@@ -627,12 +627,35 @@ def _get_my_leave_applications(args: dict, user_id: UUID, org_id: UUID, db: Sess
     applications = []
     for r in rows:
         d = dict(r)
-        # Serialise date/datetime fields
+        app_id = str(d.get("id"))
         for k in ("start_date", "end_date", "created_at", "updated_at", "reviewed_at"):
             if d.get(k) is not None:
                 d[k] = str(d[k])
+        pending = db.execute(
+            text("SELECT id FROM leave_amendment_requests WHERE leave_application_id = :app AND status = 'pending' LIMIT 1"),
+            {"app": app_id},
+        ).first()
+        history = db.execute(
+            text("""SELECT status, requested_start_date, requested_end_date, requested_working_days, cancel_leave, reviewed_at, review_comment, created_at
+                    FROM leave_amendment_requests WHERE leave_application_id = :app ORDER BY created_at ASC"""),
+            {"app": app_id},
+        ).mappings().all()
+        effective = d.get("status")
+        if effective == "approved" and pending:
+            effective = "amendment_pending"
+        elif effective == "approved" and history and any(h.get("status") == "approved" for h in history):
+            effective = "amended"
+        d["effective_status"] = effective
+        d["amendment_history"] = [dict(h) for h in history]
+        for h in d["amendment_history"]:
+            for k in list(h):
+                if h[k] is not None:
+                    h[k] = str(h[k])
         applications.append(d)
-    return {"applications": applications}
+    return {
+        "applications": applications,
+        "note": "To request a change or cancel approved leave, use the Leave page. Approved leave appears on your Calendar.",
+    }
 
 
 def _check_calendar_events(args: dict, user_id: UUID, org_id: UUID, db: Session) -> dict:

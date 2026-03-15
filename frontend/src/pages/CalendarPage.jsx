@@ -98,7 +98,8 @@ export default function CalendarPage() {
     <div className="calp-page">
       <div className="calp-header">
         <h1>Calendar</h1>
-        <div style={{display:"flex",gap:"0.5rem"}}>
+        <div style={{display:"flex",gap:"0.5rem",alignItems:"center",flexWrap:"wrap"}}>
+          <a href="/leave" className="calp-link-leave">Manage leave</a>
           <button className="calp-btn calp-btn-ghost" onClick={goToday}>Today</button>
           <button className="calp-btn calp-btn-primary" onClick={openCreate}>+ New Event</button>
         </div>

@@ -7,6 +7,8 @@ const STATUS_BADGE = {
   approved:  { label: "Approved", cls: "badge-approved" },
   rejected:  { label: "Rejected", cls: "badge-rejected" },
   cancelled: { label: "Cancelled", cls: "badge-cancelled" },
+  amendment_pending: { label: "Amendment Pending", cls: "badge-amendment-pending" },
+  amended:   { label: "Amended", cls: "badge-amended" },
 };
 
 const LEAVE_LABELS = {
@@ -194,9 +196,10 @@ export default function AdminLeave() {
           ) : (
             <div className="admin-apps-list">
               {filteredApps.map(app => {
-                const badge = STATUS_BADGE[app.status] || { label: app.status, cls: "badge-pending" };
+                const status = app.effective_status ?? app.status;
+                const badge = STATUS_BADGE[status] || { label: status, cls: "badge-pending" };
                 return (
-                  <div key={app.id} className={`admin-app-card ${app.status === "pending" ? "admin-app-card--pending" : ""}`}>
+                  <div key={app.id} className={`admin-app-card ${status === "pending" || status === "amendment_pending" ? "admin-app-card--pending" : ""}`}>
                     <div className="admin-app-main">
                       <div className="admin-app-employee">
                         <div className="employee-avatar">{(app.full_name || "?")[0]}</div>
@@ -213,10 +216,26 @@ export default function AdminLeave() {
                         </div>
                         <div className="app-days-info">⏱ {app.working_days} working day{app.working_days !== 1 ? "s" : ""}{app.half_day ? ` (${app.half_day_period} half-day)` : ""}</div>
                         {app.reason && <div className="app-reason-text">💬 "{app.reason}"</div>}
+                        {Array.isArray(app.amendment_history) && app.amendment_history.length > 0 && (
+                          <div className="app-audit">
+                            <strong>Amendment history</strong>
+                            {app.amendment_history.map((ah, idx) => (
+                              <div key={idx} className="app-audit-item">
+                                {ah.cancel_leave ? "Cancel requested" : `Change to ${ah.requested_start_date} → ${ah.requested_end_date} (${ah.requested_working_days} days)`}
+                                {" — "}
+                                <span className={ah.status === "approved" ? "audit-approved" : ah.status === "rejected" ? "audit-rejected" : ""}>
+                                  {ah.status}
+                                </span>
+                                {ah.reviewed_at && ` · ${new Date(ah.reviewed_at).toLocaleDateString()}`}
+                                {ah.review_comment && ` — ${ah.review_comment}`}
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                       <div className="admin-app-actions">
                         <span className={`status-badge ${badge.cls}`}>{badge.label}</span>
-                        {app.status === "pending" && (
+                        {(app.status === "pending" || status === "amendment_pending") && (
                           <div className="action-btns">
                             <button className="approve-btn" onClick={() => { setReviewModal(app); setReviewComment(""); }}>
                               Review →

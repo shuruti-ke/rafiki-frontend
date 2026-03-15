@@ -65,6 +65,14 @@
 .badge-approved { background: #D1FAE5; color: #065F46; }
 .badge-rejected { background: #FEE2E2; color: #991B1B; }
 .badge-cancelled{ background: #F1F5F9; color: #475569; }
+.badge-amendment-pending { background: #E0E7FF; color: #3730A3; }
+.badge-amended { background: #CFFAFE; color: #0E7490; }
+
+.app-audit { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 0.82rem; color: var(--gray); }
+.app-audit strong { color: var(--navy); }
+.app-audit-item { margin-top: 4px; }
+.audit-approved { color: #059669; font-weight: 600; }
+.audit-rejected { color: #dc2626; font-weight: 600; }
 
 /* Policy Tab */
 .policy-tab { display: flex; flex-direction: column; gap: 28px; }
