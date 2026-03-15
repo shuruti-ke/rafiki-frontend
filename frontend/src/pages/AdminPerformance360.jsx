@@ -10,6 +10,17 @@ const REVIEWER_TYPES = [
   ["cross_functional", "Cross-functional"],
 ];
 
+const DEFAULT_TEMPLATE = {
+  criteria: [
+    { id: "c1", label: "Quality of work", weight: 1 },
+    { id: "c2", label: "Meeting objectives", weight: 1 },
+    { id: "c3", label: "Communication & collaboration", weight: 1 },
+    { id: "c4", label: "Initiative & growth", weight: 1 },
+  ],
+  rating_scale: { min: 1, max: 5, labels: ["Needs improvement", "Developing", "Meets expectations", "Exceeds expectations", "Exceptional"] },
+  period_type: "quarterly",
+};
+
 export default function AdminPerformance360() {
   const [cycles, setCycles] = useState([]);
   const [employees, setEmployees] = useState([]);
@@ -22,6 +33,7 @@ export default function AdminPerformance360() {
     period_start: "",
     period_end: "",
     due_date: "",
+    period_type: "quarterly",
   });
   const [req, setReq] = useState({
     cycle_id: "",
@@ -30,6 +42,9 @@ export default function AdminPerformance360() {
     reviewer_type: "manager",
   });
   const [summaryTarget, setSummaryTarget] = useState({ cycle_id: "", employee_user_id: "" });
+  const [selectedCycle, setSelectedCycle] = useState(null);
+  const [editingTemplate, setEditingTemplate] = useState(null);
+  const [launchingId, setLaunchingId] = useState(null);
 
   async function load() {
     const [r, e] = await Promise.all([
@@ -45,18 +60,84 @@ export default function AdminPerformance360() {
 
   useEffect(() => { load(); }, []);
 
+  async function loadCycle(cycleId) {
+    if (!cycleId) { setSelectedCycle(null); setEditingTemplate(null); return; }
+    const res = await authFetch(`${API}/api/v1/performance-360/cycles/${cycleId}`);
+    const data = await res.json();
+    if (res.ok && data.cycle) {
+      setSelectedCycle(data.cycle);
+      const t = data.cycle.template || {};
+      setEditingTemplate({
+        criteria: Array.isArray(t.criteria) && t.criteria.length ? t.criteria : DEFAULT_TEMPLATE.criteria,
+        rating_scale: t.rating_scale && t.rating_scale.min != null ? t.rating_scale : DEFAULT_TEMPLATE.rating_scale,
+        period_type: t.period_type || "quarterly",
+      });
+    } else {
+      setSelectedCycle(null);
+      setEditingTemplate(null);
+    }
+  }
+
   const createCycle = async () => {
     setMsg("");
+    const template = {
+      ...DEFAULT_TEMPLATE,
+      period_type: cycle.period_type || "quarterly",
+    };
     const res = await authFetch(`${API}/api/v1/performance-360/cycles`, {
       method: "POST",
-      body: JSON.stringify({ ...cycle, template: {} }),
+      body: JSON.stringify({
+        name: cycle.name,
+        period_start: cycle.period_start,
+        period_end: cycle.period_end,
+        due_date: cycle.due_date || null,
+        template,
+      }),
     });
     const data = await res.json();
-    setMsg(res.ok ? "Performance cycle created." : (data.detail || "Failed to create cycle"));
+    setMsg(res.ok ? "Performance cycle created (draft). Edit template below and launch when ready." : (data.detail || "Failed to create cycle"));
     if (res.ok) {
-      setCycle({ name: "", period_start: "", period_end: "", due_date: "" });
-      load();
+      setCycle({ name: "", period_start: "", period_end: "", due_date: "", period_type: "quarterly" });
+      await load();
+      if (data.cycle?.id) loadCycle(data.cycle.id);
     }
+  };
+
+  const saveTemplate = async () => {
+    if (!selectedCycle?.id || !editingTemplate) return;
+    setMsg("");
+    const res = await authFetch(`${API}/api/v1/performance-360/cycles/${selectedCycle.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ template: editingTemplate }),
+    });
+    const data = await res.json();
+    setMsg(res.ok ? "Template saved." : (data.detail || "Failed to save template"));
+    if (res.ok) { await load(); setSelectedCycle((prev) => prev && { ...prev, template: editingTemplate }); }
+  };
+
+  const launchCycle = async (cycleId) => {
+    setMsg("");
+    setLaunchingId(cycleId);
+    const res = await authFetch(`${API}/api/v1/performance-360/cycles/${cycleId}/launch`, { method: "POST" });
+    const data = await res.json();
+    setMsg(res.ok ? `Cycle launched. ${data.created_requests || 0} review request(s) created (self + manager for each employee).` : (data.detail || "Failed to launch"));
+    setLaunchingId(null);
+    if (res.ok) { await load(); loadCycle(cycleId); }
+  };
+
+  const addCriterion = () => {
+    if (!editingTemplate) return;
+    const id = `c${Date.now()}`;
+    setEditingTemplate((t) => ({ ...t, criteria: [...(t.criteria || []), { id, label: "New criterion", weight: 1 }] }));
+  };
+  const removeCriterion = (id) => {
+    setEditingTemplate((t) => ({ ...t, criteria: (t.criteria || []).filter((c) => c.id !== id) }));
+  };
+  const updateCriterion = (id, field, value) => {
+    setEditingTemplate((t) => ({
+      ...t,
+      criteria: (t.criteria || []).map((c) => (c.id === id ? { ...c, [field]: value } : c)),
+    }));
   };
 
   const addReviewerRequest = async () => {
@@ -118,13 +199,18 @@ export default function AdminPerformance360() {
         <div style={{ display: "grid", gap: 18 }}>
           <div style={{ display: "grid", gap: 8, border: "1px solid var(--border)", borderRadius: 12, padding: 16, background: "var(--panel)" }}>
             <h3 style={{ margin: 0 }}>Create Review Cycle</h3>
-            <input className="search" placeholder="Cycle name" value={cycle.name} onChange={(e) => setCycle(c => ({ ...c, name: e.target.value }))} />
-            <div style={{ display: "flex", gap: 8 }}>
-              <input className="search" type="date" value={cycle.period_start} onChange={(e) => setCycle(c => ({ ...c, period_start: e.target.value }))} />
-              <input className="search" type="date" value={cycle.period_end} onChange={(e) => setCycle(c => ({ ...c, period_end: e.target.value }))} />
-              <input className="search" type="date" value={cycle.due_date} onChange={(e) => setCycle(c => ({ ...c, due_date: e.target.value }))} />
+            <input className="search" placeholder="Cycle name (e.g. Q1 2025)" value={cycle.name} onChange={(e) => setCycle(c => ({ ...c, name: e.target.value }))} />
+            <select className="search" value={cycle.period_type} onChange={(e) => setCycle(c => ({ ...c, period_type: e.target.value }))}>
+              <option value="quarterly">Quarterly</option>
+              <option value="bi_annual">Bi-annual</option>
+              <option value="annual">Annual</option>
+            </select>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <input className="search" type="date" placeholder="Period start" value={cycle.period_start} onChange={(e) => setCycle(c => ({ ...c, period_start: e.target.value }))} />
+              <input className="search" type="date" placeholder="Period end" value={cycle.period_end} onChange={(e) => setCycle(c => ({ ...c, period_end: e.target.value }))} />
+              <input className="search" type="date" placeholder="Due date" value={cycle.due_date} onChange={(e) => setCycle(c => ({ ...c, due_date: e.target.value }))} />
             </div>
-            <button className="btn btnPrimary" onClick={createCycle}>Create Cycle</button>
+            <button className="btn btnPrimary" onClick={createCycle} disabled={!cycle.name || !cycle.period_start || !cycle.period_end}>Create Cycle (draft)</button>
           </div>
 
           <div style={{ display: "grid", gap: 10, border: "1px solid var(--border)", borderRadius: 12, padding: 16, background: "var(--panel)" }}>
@@ -175,25 +261,66 @@ export default function AdminPerformance360() {
           <div style={{ display: "grid", gap: 8, border: "1px solid var(--border)", borderRadius: 12, padding: 16, background: "var(--panel)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <h3 style={{ margin: 0 }}>Cycles</h3>
-              <span style={{ color: "var(--muted)", fontSize: 13 }}>{cycles.length} active or historical cycles</span>
+              <span style={{ color: "var(--muted)", fontSize: 13 }}>{cycles.length} cycles</span>
             </div>
             {cycles.map(c => (
-              <button
-                key={c.id}
-                className="btn"
-                style={{ textAlign: "left" }}
-                onClick={() => {
-                  setSummaryTarget((prev) => ({ cycle_id: c.id, employee_user_id: prev.employee_user_id }));
-                  if (summaryTarget.employee_user_id) loadSummary(c.id, summaryTarget.employee_user_id);
-                }}
-              >
-                <strong>{c.name}</strong>
-                <div style={{ color: "var(--muted)", fontSize: 12 }}>
-                  {c.period_start} to {c.period_end} · due {c.due_date || "N/A"}
-                </div>
-              </button>
+              <div key={c.id} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: 12, background: selectedCycle?.id === c.id ? "rgba(139,92,246,.06)" : "transparent" }}>
+                <button
+                  type="button"
+                  className="btn"
+                  style={{ width: "100%", textAlign: "left", marginBottom: 8 }}
+                  onClick={() => { loadCycle(c.id); setSummaryTarget((prev) => ({ cycle_id: c.id, employee_user_id: prev.employee_user_id })); if (summaryTarget.employee_user_id) loadSummary(c.id, summaryTarget.employee_user_id); }}
+                >
+                  <strong>{c.name}</strong>
+                  <div style={{ color: "var(--muted)", fontSize: 12 }}>
+                    {c.period_start} to {c.period_end} · due {c.due_date || "N/A"} · <span style={{ fontWeight: 600, textTransform: "capitalize" }}>{c.status}</span>
+                  </div>
+                </button>
+                {c.status === "draft" && (
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button type="button" className="btn btnPrimary" onClick={() => loadCycle(c.id)}>Edit template</button>
+                    <button type="button" className="btn" style={{ background: "rgba(34,197,94,.12)", color: "#15803d" }} onClick={() => launchCycle(c.id)} disabled={launchingId === c.id}>{launchingId === c.id ? "Launching…" : "Launch cycle"}</button>
+                  </div>
+                )}
+              </div>
             ))}
           </div>
+
+          {selectedCycle && editingTemplate && (
+            <div style={{ display: "grid", gap: 12, border: "1px solid var(--border)", borderRadius: 12, padding: 16, background: "var(--panel)" }}>
+              <h3 style={{ margin: 0 }}>Review template: {selectedCycle.name}</h3>
+              <p style={{ margin: 0, fontSize: 13, color: "var(--muted)" }}>Evaluation criteria and rating scale. Employees and managers will see this when completing self-review and manager review.</p>
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <strong>Criteria</strong>
+                  <button type="button" className="btn btnGhost" onClick={addCriterion}>+ Add criterion</button>
+                </div>
+                <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+                  {(editingTemplate.criteria || []).map((cr) => (
+                    <li key={cr.id} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <input className="search" style={{ flex: 1 }} value={cr.label} onChange={(e) => updateCriterion(cr.id, "label", e.target.value)} placeholder="Criterion name" />
+                      <input className="search" type="number" min={0.1} step={0.1} style={{ width: 60 }} value={cr.weight} onChange={(e) => updateCriterion(cr.id, "weight", parseFloat(e.target.value) || 1)} />
+                      <button type="button" className="btn" style={{ color: "#dc2626" }} onClick={() => removeCriterion(cr.id)}>Remove</button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <strong>Rating scale</strong>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6, flexWrap: "wrap" }}>
+                  <span>Min</span>
+                  <input type="number" className="search" style={{ width: 56 }} value={editingTemplate.rating_scale?.min ?? 1} onChange={(e) => setEditingTemplate((t) => ({ ...t, rating_scale: { ...t.rating_scale, min: parseInt(e.target.value, 10) || 1 } }))} />
+                  <span>Max</span>
+                  <input type="number" className="search" style={{ width: 56 }} value={editingTemplate.rating_scale?.max ?? 5} onChange={(e) => setEditingTemplate((t) => ({ ...t, rating_scale: { ...t.rating_scale, max: parseInt(e.target.value, 10) || 5 } }))} />
+                </div>
+                <div style={{ marginTop: 8 }}>
+                  <label style={{ fontSize: 12, color: "var(--muted)" }}>Labels (comma-separated, one per scale point)</label>
+                  <input className="search" style={{ width: "100%", marginTop: 4 }} value={(editingTemplate.rating_scale?.labels || []).join(", ")} onChange={(e) => setEditingTemplate((t) => ({ ...t, rating_scale: { ...t.rating_scale, labels: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) } }))} placeholder="Needs improvement, Developing, Meets, Exceeds, Exceptional" />
+                </div>
+              </div>
+              <button type="button" className="btn btnPrimary" onClick={saveTemplate}>Save template</button>
+            </div>
+          )}
 
           <div style={{ display: "grid", gap: 10, border: "1px solid var(--border)", borderRadius: 12, padding: 16, background: "var(--panel)" }}>
             <h3 style={{ margin: 0 }}>Review Summary</h3>

@@ -36,6 +36,7 @@ import PersonalUsageReport from "./pages/PersonalUsageReport.jsx";
 import LeaveApplication from "./pages/LeaveApplication.jsx";
 import MyShiftsPage from "./pages/MyShiftsPage.jsx";
 import MyWorkflowsPage from "./pages/MyWorkflowsPage.jsx";
+import PerformanceReviewsPage from "./pages/PerformanceReviewsPage.jsx";
 import ManagerLayout from "./components/ManagerLayout.jsx";
 import ManagerDashboard from "./pages/ManagerDashboard.jsx";
 import ManagerTeam from "./pages/ManagerTeam.jsx";
@@ -94,6 +95,7 @@ export default function App() {
           <Route path="/leave" element={<LeaveApplication />} />
           <Route path="/my-shifts" element={<MyShiftsPage />} />
           <Route path="/my-workflows" element={<MyWorkflowsPage />} />
+          <Route path="/performance-reviews" element={<PerformanceReviewsPage />} />
           <Route path="/payroll" element={<AdminPayroll />} />
         </Route>
 
@@ -118,6 +120,7 @@ export default function App() {
           <Route path="on-behalf" element={<ManagerOnBehalf />} />
           <Route path="coaching" element={<ManagerCoaching />} />
           <Route path="toolkit" element={<ManagerToolkit />} />
+          <Route path="performance-reviews" element={<PerformanceReviewsPage />} />
           <Route path="calendar" element={<CalendarPage />} />
           <Route path="timesheets" element={<TimesheetPage />} />
           <Route path="attendance" element={<AdminAttendancePage />} />

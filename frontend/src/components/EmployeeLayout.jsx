@@ -21,6 +21,7 @@ const NAV_GROUPS = [
     label: "My Work",
     links: [
       { to: "/objectives", label: "Objectives", icon: "🎯" },
+      { to: "/performance-reviews", label: "Performance reviews", icon: "⭐" },
       { to: "/timesheet", label: "Timesheets", icon: "⏱️" },
       { to: "/attendance", label: "Attendance", icon: "📍" },
       { to: "/leave", label: "Leave", icon: "🌴" },
