@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { API, authFetch } from "../api.js";
 import { normalizeEmployeeRecord } from "../utils/employeeRecord.js";
@@ -308,6 +308,15 @@ export default function AdminEmployeeDetail() {
   const [editingEdu, setEditingEdu] = useState(null);
   const [editingAsset, setEditingAsset] = useState(null);
 
+  // Employee switcher (searchable dropdown) and AI review
+  const [employeesList, setEmployeesList] = useState([]);
+  const [employeeSearch, setEmployeeSearch] = useState("");
+  const [employeeDropdownOpen, setEmployeeDropdownOpen] = useState(false);
+  const [aiReview, setAiReview] = useState(null);
+  const [aiReviewLoading, setAiReviewLoading] = useState(false);
+  const [aiReviewGeneratedAt, setAiReviewGeneratedAt] = useState(null);
+  const employeeDropdownRef = useRef(null);
+
   const fetchEmployee = useCallback(async () => {
     setLoading(true);
     try {
@@ -389,6 +398,50 @@ export default function AdminEmployeeDetail() {
       .then((d) => setCoachingReports(Array.isArray(d) ? d : []))
       .catch(() => setCoachingReports([]));
   }, [userId]);
+
+  // Fetch employees list when dropdown opens (for searchable switcher)
+  useEffect(() => {
+    if (!employeeDropdownOpen) return;
+    const params = new URLSearchParams({ include_inactive: "true" });
+    authFetch(`${API}/api/v1/employees/?${params}`)
+      .then((r) => (r?.ok ? r.json() : []))
+      .then((rows) => setEmployeesList(Array.isArray(rows) ? rows.map(normalizeEmployeeRecord) : []))
+      .catch(() => setEmployeesList([]));
+  }, [employeeDropdownOpen]);
+
+  // Fetch AI review for current employee
+  const fetchAiReview = useCallback(() => {
+    if (!userId) return;
+    setAiReviewLoading(true);
+    setAiReview(null);
+    authFetch(`${API}/api/v1/employees/${userId}/ai-review`)
+      .then((r) => (r?.ok ? r.json() : null))
+      .then((d) => {
+        if (d) {
+          setAiReview(d.review ?? "");
+          setAiReviewGeneratedAt(d.generated_at ?? null);
+        }
+      })
+      .catch(() => setAiReview(null))
+      .finally(() => setAiReviewLoading(false));
+  }, [userId]);
+  useEffect(() => {
+    if (!userId || !employee) return;
+    setAiReview(null);
+    setAiReviewGeneratedAt(null);
+    fetchAiReview();
+  }, [userId, employee?.user_id, fetchAiReview]);
+
+  // Close employee dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (employeeDropdownRef.current && !employeeDropdownRef.current.contains(e.target)) {
+        setEmployeeDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   useEffect(() => {
     authFetch(`${API}/api/v1/employees/meta/options`)
@@ -503,8 +556,75 @@ export default function AdminEmployeeDetail() {
 
   const genderLabel = GENDER_OPTIONS.find(g => g.value === (employee.gender || ""))?.label || "— Not specified —";
 
+  const displayName = employee?.name || employee?.email || "";
+  const filteredEmployees = employeeSearch.trim()
+    ? employeesList.filter(
+        (e) =>
+          (e.name || "").toLowerCase().includes(employeeSearch.trim().toLowerCase()) ||
+          (e.email || "").toLowerCase().includes(employeeSearch.trim().toLowerCase())
+      )
+    : employeesList;
+
   return (
     <div className="emp-detail-page">
+      {/* Sticky employee switcher — searchable dropdown */}
+      <div className="emp-detail-switcher" ref={employeeDropdownRef}>
+        <label className="emp-detail-switcher-label">View employee</label>
+        <div className="emp-detail-dropdown-wrap">
+          <button
+            type="button"
+            className="emp-detail-dropdown-trigger"
+            onClick={() => setEmployeeDropdownOpen((o) => !o)}
+            aria-expanded={employeeDropdownOpen}
+            aria-haspopup="listbox"
+          >
+            <span className="emp-detail-dropdown-value">{displayName || "Select…"}</span>
+            <span className="emp-detail-dropdown-arrow">{employeeDropdownOpen ? "▲" : "▼"}</span>
+          </button>
+          {employeeDropdownOpen && (
+            <div className="emp-detail-dropdown-panel" role="listbox">
+              <input
+                type="text"
+                className="emp-detail-dropdown-search"
+                placeholder="Search by name or email…"
+                value={employeeSearch}
+                onChange={(e) => setEmployeeSearch(e.target.value)}
+                autoFocus
+                aria-label="Search employees"
+              />
+              <ul className="emp-detail-dropdown-list">
+                {filteredEmployees.slice(0, 50).map((e) => {
+                  const uid = e.user_id ?? e.user?.user_id;
+                  const name = e.name || e.email || "Unknown";
+                  const isCurrent = uid === userId;
+                  return (
+                    <li key={uid || name}>
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={isCurrent}
+                        className={isCurrent ? "emp-detail-dropdown-item emp-detail-dropdown-item--current" : "emp-detail-dropdown-item"}
+                        onClick={() => {
+                          setEmployeeDropdownOpen(false);
+                          setEmployeeSearch("");
+                          if (uid && uid !== userId) navigate(`/admin/employees/${uid}`);
+                        }}
+                      >
+                        {name}
+                        {e.department ? ` · ${e.department}` : ""}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+              {filteredEmployees.length === 0 && (
+                <p className="emp-detail-dropdown-empty">No employees match your search.</p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Header */}
       <div className="emp-detail-header">
         <button className="emp-detail-back" onClick={() => navigate("/admin/employees")}>
@@ -646,6 +766,36 @@ export default function AdminEmployeeDetail() {
             <div className="emp-overview-label">Employee reports</div>
             <span className="emp-overview-hint">Insights →</span>
           </button>
+        </div>
+
+        {/* AI Review & Insights — ongoing review for HR (objectives, KPIs, evaluations, coaching, documents) */}
+        <div id="section-ai-review" className="emp-detail-card emp-detail-card--ai-review">
+          <div className="emp-card-title">AI Review &amp; Insights</div>
+          <p className="emp-section-desc">
+            Ongoing review of this employee based on objectives, performance evaluations, coaching sessions, documents, leave and timesheet. Use this to monitor wellbeing, performance and spot issues early.
+          </p>
+          {aiReviewLoading ? (
+            <div className="emp-ai-review-loading">
+              <span className="emp-detail-spinner" />
+              <span>Generating review…</span>
+            </div>
+          ) : aiReview ? (
+            <>
+              <div className="emp-ai-review-text">{aiReview}</div>
+              {aiReviewGeneratedAt && (
+                <p className="emp-ai-review-meta">
+                  Generated {new Date(aiReviewGeneratedAt).toLocaleString()}
+                </p>
+              )}
+              <button type="button" className="emp-edit-btn" onClick={fetchAiReview} disabled={aiReviewLoading}>
+                Refresh review
+              </button>
+            </>
+          ) : (
+            <p className="emp-muted">
+              AI review is not available. Ensure OPENAI_API_KEY is set on the server, or use the sections below for manual insight.
+            </p>
+          )}
         </div>
 
         {/* Coaching reports — sessions with this employee (visible to employee, manager, HR) */}

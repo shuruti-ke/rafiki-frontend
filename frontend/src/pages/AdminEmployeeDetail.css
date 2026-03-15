@@ -249,6 +249,62 @@
 .emp-doc-upload-form { align-items: flex-end; }
 .emp-doc-upload-label { font-size: 0.85rem; font-weight: 600; color: var(--navy); margin-right: 4px; }
 
+/* Employee switcher — searchable dropdown at top */
+.emp-detail-switcher {
+  position: sticky; top: 0; z-index: 10;
+  background: var(--white); border-bottom: 1px solid var(--border);
+  padding: 12px 0 16px; margin: -32px -24px 20px -24px; padding-left: 24px; padding-right: 24px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+.emp-detail-switcher-label {
+  display: block; font-size: 0.75rem; font-weight: 700; color: var(--gray);
+  text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px;
+}
+.emp-detail-dropdown-wrap { position: relative; max-width: 360px; }
+.emp-detail-dropdown-trigger {
+  width: 100%; display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; border: 1.5px solid var(--border); border-radius: 10px;
+  background: var(--white); font-size: 0.95rem; color: var(--navy); text-align: left;
+  cursor: pointer; transition: border-color 0.2s; font-family: inherit;
+}
+.emp-detail-dropdown-trigger:hover { border-color: var(--purple); }
+.emp-detail-dropdown-trigger:focus { outline: none; border-color: var(--purple); box-shadow: 0 0 0 3px rgba(123,47,190,0.12); }
+.emp-detail-dropdown-value { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.emp-detail-dropdown-arrow { color: var(--gray); font-size: 0.7rem; margin-left: 8px; }
+.emp-detail-dropdown-panel {
+  position: absolute; top: calc(100% + 6px); left: 0; right: 0;
+  background: var(--white); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.12); max-height: 320px; display: flex; flex-direction: column;
+}
+.emp-detail-dropdown-search {
+  padding: 10px 12px; border: none; border-bottom: 1px solid var(--border);
+  border-radius: 12px 12px 0 0; font-size: 0.9rem; font-family: inherit;
+}
+.emp-detail-dropdown-search:focus { outline: none; }
+.emp-detail-dropdown-list {
+  list-style: none; margin: 0; padding: 6px 0; overflow-y: auto; max-height: 260px;
+}
+.emp-detail-dropdown-item {
+  display: block; width: 100%; padding: 10px 14px; text-align: left;
+  background: none; border: none; font-size: 0.9rem; color: var(--navy);
+  cursor: pointer; font-family: inherit; transition: background 0.15s;
+}
+.emp-detail-dropdown-item:hover { background: var(--light-bg); }
+.emp-detail-dropdown-item--current { background: #EDE9FE; color: var(--purple); font-weight: 600; }
+.emp-detail-dropdown-empty { padding: 16px; margin: 0; font-size: 0.88rem; color: var(--gray); }
+
+/* AI Review & Insights section */
+.emp-detail-card--ai-review { border-left: 4px solid var(--purple); }
+.emp-ai-review-loading {
+  display: flex; align-items: center; gap: 12px; padding: 20px; color: var(--gray);
+}
+.emp-ai-review-text {
+  white-space: pre-wrap; font-size: 0.92rem; line-height: 1.65; color: var(--navy);
+  margin-bottom: 12px; padding: 16px; background: var(--light-bg); border-radius: 10px;
+  border: 1px solid rgba(123,47,190,0.1);
+}
+.emp-ai-review-meta { font-size: 0.8rem; color: var(--gray); margin: 0 0 12px; }
+
 @media (max-width: 640px) {
   .emp-form-grid { grid-template-columns: 1fr; }
   .emp-detail-title-row { flex-wrap: wrap; }

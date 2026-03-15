@@ -3,19 +3,22 @@
 import csv
 import io
 import json
+import logging
 import os
 import uuid
 import secrets
 from datetime import date, datetime, timedelta
 from typing import Optional
 
+import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
-
+from sqlalchemy import or_, text as sql_text
 from sqlalchemy import func
+
+logger = logging.getLogger(__name__)
 
 from app.database import get_db
 from app.dependencies import get_current_org_id, require_admin, require_manager, require_it_admin
@@ -758,6 +761,179 @@ def get_employee_dashboard_summary(
             PerformanceEvaluation.user_id == user_id,
             PerformanceEvaluation.org_id == org_id,
         ).count(),
+    }
+
+
+def _build_employee_review_context(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) -> str:
+    """Build a structured text summary of the employee's data for AI review. No chat content."""
+    from app.models.objective import KeyResult
+
+    u = db.query(User).filter(User.user_id == user_id, User.org_id == org_id).first()
+    if not u:
+        return ""
+    parts = [
+        f"Employee: {u.name or u.email}",
+        f"Role: {getattr(u, 'role', 'user')}",
+        f"Department: {getattr(u, 'department', '') or '—'}",
+        f"Job title: {getattr(u, 'job_title', '') or '—'}",
+    ]
+
+    objs = (
+        db.query(Objective)
+        .filter(Objective.user_id == user_id, Objective.org_id == org_id, Objective.status.in_(["active", "pending_review", "draft"]))
+        .order_by(Objective.created_at.desc())
+        .limit(10)
+        .all()
+    )
+    if objs:
+        parts.append("\nObjectives / OKRs:")
+        for o in objs:
+            parts.append(f"  - {o.title} | progress {o.progress}% | due {o.target_date}")
+            krs = db.query(KeyResult).filter(KeyResult.objective_id == o.id).all()
+            for kr in krs:
+                pct = (int(kr.current_value / kr.target_value * 100) if kr.target_value else 0)
+                parts.append(f"    Key result: {kr.title} {kr.current_value}/{kr.target_value} ({pct}%)")
+    else:
+        parts.append("\nObjectives: None on record.")
+
+    evals = (
+        db.query(PerformanceEvaluation)
+        .filter(PerformanceEvaluation.user_id == user_id, PerformanceEvaluation.org_id == org_id)
+        .order_by(PerformanceEvaluation.created_at.desc())
+        .limit(5)
+        .all()
+    )
+    if evals:
+        parts.append("\nPerformance evaluations:")
+        for e in evals:
+            parts.append(f"  - {e.evaluation_period}: rating {e.overall_rating}/5")
+            if e.strengths:
+                parts.append(f"    Strengths: {e.strengths[:200]}{'…' if len(e.strengths) > 200 else ''}")
+            if e.areas_for_improvement:
+                parts.append(f"    Areas for improvement: {e.areas_for_improvement[:200]}{'…' if len(e.areas_for_improvement) > 200 else ''}")
+    else:
+        parts.append("\nPerformance evaluations: None on record.")
+
+    try:
+        coaching_rows = db.execute(
+            sql_text("""
+                SELECT concern, created_at, outcome_logged
+                FROM coaching_sessions
+                WHERE org_id = :org AND employee_member_id = :uid
+                ORDER BY created_at DESC
+                LIMIT 10
+            """),
+            {"org": str(org_id), "uid": str(user_id)},
+        ).mappings().all()
+        if coaching_rows:
+            parts.append("\nCoaching sessions:")
+            for row in coaching_rows:
+                parts.append(f"  - {row.get('created_at')}: {str(row.get('concern') or '')[:100]} | outcome: {row.get('outcome_logged') or '—'}")
+        else:
+            parts.append("\nCoaching sessions: None on record.")
+    except Exception:
+        parts.append("\nCoaching sessions: (data unavailable)")
+
+    docs = (
+        db.query(EmployeeDocument)
+        .filter(EmployeeDocument.user_id == user_id, EmployeeDocument.org_id == org_id)
+        .all()
+    )
+    if docs:
+        by_type = {}
+        for d in docs:
+            by_type[d.doc_type or "other"] = by_type.get(d.doc_type or "other", 0) + 1
+        parts.append("\nDocuments: " + ", ".join(f"{k}({v})" for k, v in sorted(by_type.items())))
+    else:
+        parts.append("\nDocuments: None on record.")
+
+    try:
+        bal_rows = db.execute(
+            sql_text("""
+                SELECT leave_type, entitled_days, used_days, carried_over_days
+                FROM leave_balances
+                WHERE user_id = :uid AND leave_year = :yr
+            """),
+            {"uid": str(user_id), "yr": date.today().year},
+        ).mappings().all()
+        if bal_rows:
+            parts.append("\nLeave balance (this year):")
+            for b in bal_rows:
+                avail = float(b["entitled_days"]) + float(b.get("carried_over_days") or 0) - float(b["used_days"])
+                parts.append(f"  {b['leave_type']}: {max(0, avail):.1f} days available")
+    except Exception:
+        pass
+
+    cutoff = date.today() - timedelta(days=30)
+    entries = (
+        db.query(TimesheetEntry)
+        .filter(TimesheetEntry.user_id == user_id, TimesheetEntry.date >= cutoff)
+        .all()
+    )
+    if entries:
+        total_h = sum(float(e.hours) for e in entries)
+        parts.append(f"\nTimesheet (last 30 days): {total_h:.1f} hours logged.")
+    else:
+        parts.append("\nTimesheet (last 30 days): No entries.")
+
+    return "\n".join(parts)
+
+
+def _generate_ai_review(context: str, employee_name: str) -> str:
+    """Call OpenAI to generate an HR review. Returns empty string if API unavailable."""
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    base = (os.getenv("OPENAI_BASE_URL", "https://api.openai.com").strip().rstrip("/"))
+    model = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
+    if not api_key:
+        return ""
+    url = f"{base}/v1/chat/completions" if "/v1" not in base else f"{base}/chat/completions"
+    system = (
+        "You are an HR analyst. Based on the structured data provided about an employee, "
+        "write a concise review (2–4 short paragraphs) covering: (1) overall performance and objectives progress, "
+        "(2) wellbeing and engagement indicators, (3) any risks or issues to flag, (4) 1–2 concrete recommendations. "
+        "Do not invent data. Only use information present in the data. Be direct and useful for HR monitoring."
+    )
+    user_msg = f"Employee: {employee_name}\n\nData:\n{context}"
+    try:
+        with httpx.Client() as client:
+            r = client.post(
+                url,
+                headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
+                json={
+                    "model": model,
+                    "max_tokens": 1024,
+                    "messages": [{"role": "system", "content": system}, {"role": "user", "content": user_msg}],
+                    "temperature": 0.3,
+                },
+                timeout=45,
+            )
+        if r.status_code >= 400:
+            logger.warning("AI review OpenAI error: %d %s", r.status_code, r.text[:300])
+            return ""
+        data = r.json()
+        content = (data.get("choices") or [{}])[0].get("message", {}).get("content", "")
+        return (content or "").strip()
+    except Exception as e:
+        logger.warning("AI review request failed: %s", e)
+        return ""
+
+
+@router.get("/{user_id}/ai-review")
+def get_employee_ai_review(
+    user_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    org_id: uuid.UUID = Depends(get_current_org_id),
+    _role: str = Depends(require_admin),
+):
+    """HR: AI-generated review of the employee based on objectives, KPIs, evaluations, coaching, documents, leave, timesheet. No chat content."""
+    u = db.query(User).filter(User.user_id == user_id, User.org_id == org_id).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    context = _build_employee_review_context(db, org_id, user_id)
+    review = _generate_ai_review(context, u.name or u.email or "Employee")
+    return {
+        "review": review or "AI review is not available (check OPENAI_API_KEY). Use the data below for manual insight.",
+        "generated_at": datetime.utcnow().isoformat() + "Z",
     }
 
 
