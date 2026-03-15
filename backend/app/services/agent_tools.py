@@ -589,10 +589,10 @@ def _submit_leave_request(args: dict, user_id: UUID, org_id: UUID, db: Session) 
         ).all()
         for (mgr_id,) in managers:
             _insert_notification(
-                db, user_id=mgr_id, org_id=org_id,
-                kind="leave_pending",
+                db, mgr_id, org_id,
+                f"Leave request: {leave_type} ({start} → {end}) · {working:.0f} day(s)",
+                notification_type="leave_pending",
                 title=f"Leave request: {leave_type} ({start} → {end})",
-                body=f"{working:.0f} working day(s) · {reason or 'No reason given'}",
                 link="/admin/leave",
             )
         db.commit()
@@ -945,6 +945,7 @@ def _check_objectives(args: dict, user_id: UUID, org_id: UUID, db: Session) -> d
 
 
 def _search_knowledge_base(args: dict, user_id: UUID, org_id: UUID, db: Session) -> dict:
+    """Search the `documents` table (KB uploads) + `document_chunks` (extracted text)."""
     query = (args.get("query") or "").strip()
     if not query:
         return {"results": [], "error": "Query is required."}
@@ -952,19 +953,39 @@ def _search_knowledge_base(args: dict, user_id: UUID, org_id: UUID, db: Session)
     try:
         rows = db.execute(
             text("""
-                SELECT id, title, content, category, updated_at
-                FROM knowledge_base_articles
-                WHERE org_id = :oid
-                  AND is_published = TRUE
+                SELECT
+                    d.id,
+                    d.title,
+                    d.description,
+                    d.category,
+                    d.updated_at,
+                    (
+                        SELECT dc.content
+                        FROM document_chunks dc
+                        WHERE dc.document_id = d.id
+                          AND dc.content ILIKE :ql
+                        ORDER BY dc.chunk_index
+                        LIMIT 1
+                    ) AS matching_chunk
+                FROM documents d
+                WHERE d.org_id = :oid
+                  AND d.is_current = TRUE
                   AND (
-                      to_tsvector('english', COALESCE(title,'') || ' ' || COALESCE(content,''))
+                      to_tsvector('english',
+                          COALESCE(d.title, '') || ' ' || COALESCE(d.description, ''))
                       @@ plainto_tsquery('english', :q)
-                      OR title   ILIKE :ql
-                      OR content ILIKE :ql
+                      OR d.title       ILIKE :ql
+                      OR d.description ILIKE :ql
+                      OR EXISTS (
+                          SELECT 1 FROM document_chunks dc2
+                          WHERE dc2.document_id = d.id
+                            AND dc2.content ILIKE :ql
+                      )
                   )
                 ORDER BY
                     ts_rank(
-                        to_tsvector('english', COALESCE(title,'') || ' ' || COALESCE(content,'')),
+                        to_tsvector('english',
+                            COALESCE(d.title, '') || ' ' || COALESCE(d.description, '')),
                         plainto_tsquery('english', :q)
                     ) DESC
                 LIMIT 5
@@ -972,16 +993,17 @@ def _search_knowledge_base(args: dict, user_id: UUID, org_id: UUID, db: Session)
             {"oid": str(org_id), "q": query, "ql": f"%{query}%"},
         ).fetchall()
 
-        results = [
-            {
-                "id":       str(r[0]),
-                "title":    r[1],
-                "snippet":  (r[2] or "")[:500],
-                "category": r[3] or "General",
-                "updated":  str(r[4]) if r[4] else None,
-            }
-            for r in rows
-        ]
+        results = []
+        for r in rows:
+            doc_id, title, description, category, updated_at, chunk = r
+            snippet = (chunk or description or "")[:500]
+            results.append({
+                "id":       str(doc_id),
+                "title":    title,
+                "snippet":  snippet,
+                "category": category or "General",
+                "updated":  str(updated_at) if updated_at else None,
+            })
         return {"results": results, "query": query}
 
     except Exception as exc:
